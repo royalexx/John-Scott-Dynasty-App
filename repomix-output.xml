@@ -1093,8 +1093,8 @@ export function WaiverClaimDialog({
 
 <file path="public/manifest.json">
 {
-  "name": "Dynasty Puck League",
-  "short_name": "Puck Dynasty",
+  "name": "John Scott Dynasty",
+  "short_name": "John Scott Dynasty",
   "description": "Authentic Sleeper-style fantasy dynasty hockey mobile app",
   "start_url": "/",
   "display": "standalone",
@@ -1201,13 +1201,13 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Dynasty Puck League',
+  title: 'John Scott Dynasty',
   description: 'Authentic Sleeper-style fantasy dynasty hockey',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Puck Dynasty',
+    title: 'John Scott Dynasty',
   },
   icons: {
     icon: '/icon.svg',
@@ -3063,7 +3063,7 @@ export default function SleeperDynastyApp() {
           <div className="flex min-w-0 items-center gap-2">
             <button type="button" onClick={() => setDmOpen(true)} aria-label="Open direct messages" className="relative rounded-full p-1 text-zinc-400 hover:bg-[#172338] hover:text-white"><MessageSquare className="size-5" /><span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#f43f5e] text-[9px] font-black text-white">1</span></button>
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-[#22314d] bg-[#162033] text-xs">🏒</div>
-            <h1 className="truncate text-sm font-black uppercase tracking-wider text-white">DYNASTY PUCK LEAGUE...</h1>
+            <h1 className="truncate text-sm font-black uppercase tracking-wider text-white">JOHN SCOTT DYNASTY</h1>
           </div>
           <button type="button" className="p-1 text-zinc-400 hover:text-white"><Settings className="size-5" /></button>
         </header>
@@ -4423,7 +4423,7 @@ export interface LeagueTradeOffer {
 }
 
 export const league = {
-  name: "DYNASTY PUCK LEAGUE 2026",
+  name: "JOHN SCOTT DYNASTY 2026",
   week: 1,
   faabBudget: 100,
   tradeBlock: [

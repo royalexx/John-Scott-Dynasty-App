@@ -1,23 +1,52 @@
 import { NextRequest, NextResponse } from "next/server"
+import fs from "node:fs"
+import path from "node:path"
 
 export const runtime = "nodejs"
 
 // In-memory cache so we only search each player once per server lifecycle
 const idCache = new Map<string, string>()
+type IndexedPlayer = { name: string; nhlId: number }
+let indexedPlayers: IndexedPlayer[] | null = null
+
+function normalizeName(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+function getIndexedPlayer(name: string): IndexedPlayer | undefined {
+  if (indexedPlayers) {
+    const normalizedName = normalizeName(name)
+    return indexedPlayers.find((player) => normalizeName(player.name) === normalizedName)
+  }
+  const filePath = path.join(process.cwd(), "public", "data", "nhl-players.json")
+  if (!fs.existsSync(filePath)) return undefined
+  indexedPlayers = JSON.parse(fs.readFileSync(filePath, "utf-8")) as IndexedPlayer[]
+  const normalizedName = normalizeName(name)
+  return indexedPlayers.find((player) => normalizeName(player.name) === normalizedName)
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const name = searchParams.get("name")?.trim()
 
   if (!name) {
-    return NextResponse.redirect(new URL("/players/player-generic.png", req.url))
+    return new NextResponse(null, { status: 404 })
   }
 
-  const cleanName = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "") // removes accents (e.g. Stützle -> Stutzle)
+  const cleanName = normalizeName(name)
 
   if (idCache.has(cleanName)) {
     const cachedId = idCache.get(cleanName)!
     return NextResponse.redirect(`https://assets.nhle.com/mugs/nhl/latest/${cachedId}.png`, {
+      headers: { "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400" },
+    })
+  }
+
+  const indexedPlayer = getIndexedPlayer(name)
+  if (indexedPlayer) {
+    const playerId = String(indexedPlayer.nhlId)
+    idCache.set(cleanName, playerId)
+    return NextResponse.redirect(`https://assets.nhle.com/mugs/nhl/latest/${playerId}.png`, {
       headers: { "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400" },
     })
   }
@@ -38,9 +67,9 @@ export async function GET(req: NextRequest) {
         })
       }
     }
-  } catch (err) {
-    // Fall back to generic placeholder on search error
+  } catch {
+    // The generic portrait below is the intentional fallback when NHL lookup fails.
   }
 
-  return NextResponse.redirect(new URL("/players/player-generic.png", req.url))
+  return new NextResponse(null, { status: 404 })
 }

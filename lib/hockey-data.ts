@@ -1,53 +1,196 @@
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
 export type RosterSlot = "C" | "W" | "F" | "D" | "G" | "BN" | "TAXI" | "IR"
+export const TAXI_MAX_NHL_GAMES = 50
 
-// Official NHL CDN Player IDs for transparent headshots
-export const NHL_PLAYER_IDS: Record<string, number> = {
-  // Montreal Monarchs (Your Starters)
-  "Nathan MacKinnon": 8477492,
-  "Auston Matthews": 8479318,
-  "Elias Pettersson": 8480012,
-  "Jack Eichel": 8478403,
-  "Leon Draisaitl": 8477934,
-  "Mitch Marner": 8478483,
-  "Cale Makar": 8480069,
-  "Quinn Hughes": 8480800,
-  "Adam Fox": 8479323,
-  "Rasmus Dahlin": 8480839,
-  "Miro Heiskanen": 8480036,
-  "Victor Hedman": 8475167,
-  "Igor Shesterkin": 8478048,
-  "Andrei Vasilevskiy": 8476883,
-
-  // Bench & Prospects
-  "Tim Stützle": 8482093,
-  "Trevor Zegras": 8481533,
-  "Owen Power": 8482671,
-  "Matvei Michkov": 8484387,
-  "Lane Hutson": 8483487,
-  "Connor Bedard": 8484144,
-  "Macklin Celebrini": 8484801,
-  "Dustin Wolf": 8481702,
-  "Logan Stankoven": 8482705,
-  "Will Smith": 8484148,
-  "Cutter Gauthier": 8483431,
-  "Rutger McGroarty": 8483466,
-  "Shane Wright": 8483434,
+export interface PlayerPortraitSource {
+  name?: string
+  nhlId?: number
+  headshot?: string
 }
 
-export function getPlayerPhoto(playerOrName?: any): string {
-  if (!playerOrName) return "/players/player-generic.png"
+export interface PlayerSchedule {
+  day: string
+  date: string
+  time: string
+  status: "Scheduled" | "Live" | "Final"
+  opponent: string
+  home: boolean
+  score?: string
+  weekFantasyPoints: number
+  weekProjectedFantasyPoints: number
+  weekGamesPlayed: number
+  todayFantasyPoints: number | null
+  isToday: boolean
+}
 
-  // 1. If passed an object containing an nhlId
-  if (typeof playerOrName === "object" && playerOrName?.nhlId) {
+export interface NhlScheduleGame {
+  id: number
+  date: string
+  day: string
+  gameState: string
+  startTimeUTC: string
+  awayTeam: { abbrev: string; score?: number | null }
+  homeTeam: { abbrev: string; score?: number | null }
+}
+
+export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLog: PlayerGameLog[] = [], position: Player["position"] = "C", seasonStats?: Record<string, number>, fallbackProjection = 0): PlayerSchedule | undefined {
+  const teamGames = games.filter((game) => game.awayTeam.abbrev === team || game.homeTeam.abbrev === team)
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
+  const currentNhlGame = teamGames.find((game) => game.date === today)
+  const teamGame = currentNhlGame ?? teamGames.find((game) => game.date > today) ?? teamGames.at(-1)
+  if (!teamGame) return undefined
+  const home = teamGame.homeTeam.abbrev === team
+  const status = teamGame.gameState === "LIVE" ? "Live" : ["FINAL", "OFF"].includes(teamGame.gameState) ? "Final" : "Scheduled"
+  const day = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "America/New_York" }).format(new Date(teamGame.startTimeUTC)).toUpperCase()
+  const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(teamGame.startTimeUTC))
+  const weekAnchor = new Date(`${today}T00:00:00`)
+  const weekStart = new Date(weekAnchor)
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+  const weekTeamGames = teamGames.filter((game) => {
+    const date = new Date(`${game.date}T00:00:00`)
+    return date >= weekStart && date <= weekEnd
+  })
+  const weekGames = gameLog.filter((game) => {
+    const date = new Date(`${game.gameDate}T00:00:00`)
+    return date >= weekStart && date <= weekEnd
+  })
+  const calculateGame = (game: PlayerGameLog) => position === "G"
+      ? calculateGoalieFPTS({ gp: 1, wins: game.decision === "W" ? 1 : 0, saves: game.shotsAgainst - game.goalsAgainst, goalsAgainst: game.goalsAgainst, shutouts: game.shutouts, savePct: game.savePctg ?? 0 })
+      : calculateSkaterFPTS({ gp: 1, goals: game.goals, assists: game.assists, sog: game.shots, hits: game.hits, blocks: game.blocks, ppp: game.powerPlayPoints, shg: game.shorthandedGoals, gwg: game.gameWinningGoals })
+  const weekFantasyPoints = weekGames.reduce((total, game) => total + calculateGame(game), 0)
+  const sumLog = (key: keyof PlayerGameLog) => gameLog.reduce((total, game) => total + (Number(game[key]) || 0), 0)
+  const statTotal = (key: string, logKey: keyof PlayerGameLog) => seasonStats?.[key] ?? sumLog(logKey)
+  const goalieWins = seasonStats?.wins ?? gameLog.filter((game) => game.decision === "W").length
+  const goalieSaves = seasonStats?.saves ?? sumLog("shotsAgainst") - sumLog("goalsAgainst")
+  const goalieGoalsAgainst = seasonStats?.goalsAgainst ?? sumLog("goalsAgainst")
+  const goalieSavePct = seasonStats?.savePct ?? (sumLog("shotsAgainst") > 0 ? goalieSaves / sumLog("shotsAgainst") : 0)
+  const gamesPlayed = Math.max(1, seasonStats?.gamesPlayed ?? gameLog.length)
+  const seasonAverageGamePoints = position === "G"
+    ? calculateGoalieFPTS({
+        gp: 1,
+        wins: goalieWins / gamesPlayed,
+        saves: goalieSaves / gamesPlayed,
+        goalsAgainst: goalieGoalsAgainst / gamesPlayed,
+        shutouts: statTotal("shutouts", "shutouts") / gamesPlayed,
+        savePct: goalieSavePct,
+      })
+    : calculateSkaterFPTS({
+        gp: 1,
+        goals: statTotal("goals", "goals") / gamesPlayed,
+        assists: statTotal("assists", "assists") / gamesPlayed,
+        sog: statTotal("shots", "shots") / gamesPlayed,
+        hits: statTotal("hits", "hits") / gamesPlayed,
+        blocks: statTotal("blocks", "blocks") / gamesPlayed,
+        ppp: statTotal("powerPlayPoints", "powerPlayPoints") / gamesPlayed,
+        shg: statTotal("shorthandedGoals", "shorthandedGoals") / gamesPlayed,
+        gwg: statTotal("gameWinningGoals", "gameWinningGoals") / gamesPlayed,
+      })
+  const recentGames = gameLog
+    .filter((game) => game.gameDate <= today)
+    .sort((a, b) => b.gameDate.localeCompare(a.gameDate))
+    .slice(0, 10)
+  const recentAverageGamePoints = recentGames.length
+    ? recentGames.reduce((total, game) => total + calculateGame(game), 0) / recentGames.length
+    : seasonAverageGamePoints
+  const statisticalAverage = seasonAverageGamePoints > 0 || recentAverageGamePoints > 0
+    ? seasonAverageGamePoints * 0.7 + recentAverageGamePoints * 0.3
+    : fallbackProjection
+  const blendedAverageGamePoints = statisticalAverage > 0 ? statisticalAverage : fallbackProjection
+  const completedWeekDates = new Set(weekGames.map((game) => game.gameDate))
+  const remainingWeekGames = weekTeamGames.filter((game) => game.date > today || (game.date === today && !completedWeekDates.has(game.date))).length
+  const weekProjection = weekFantasyPoints + blendedAverageGamePoints * remainingWeekGames
+  const todayGame = gameLog.find((game) => game.gameDate === today)
+  const teamScore = home ? teamGame.homeTeam.score : teamGame.awayTeam.score
+  const opponentScore = home ? teamGame.awayTeam.score : teamGame.homeTeam.score
+  return {
+    day,
+    date: teamGame.date,
+    time,
+    status,
+    opponent: `${home ? "vs" : "@"} ${home ? teamGame.awayTeam.abbrev : teamGame.homeTeam.abbrev}`,
+    home,
+    score: teamScore != null && opponentScore != null ? `${teamScore}-${opponentScore}` : undefined,
+    weekFantasyPoints: Number(weekFantasyPoints.toFixed(1)),
+    weekProjectedFantasyPoints: Number(weekProjection.toFixed(1)),
+    weekGamesPlayed: weekGames.length,
+    todayFantasyPoints: todayGame ? calculateGame(todayGame) : null,
+    isToday: currentNhlGame !== undefined,
+  }
+}
+
+export interface PlayerProfile {
+  sweaterNumber?: number | null
+  heightInInches?: number | null
+  height?: string | null
+  weightInPounds?: number | null
+  birthDate?: string | null
+  age?: number | null
+  birthplace?: string | null
+  shoots?: string | null
+  experience?: number | string | null
+  draft?: { year?: number; round?: number; pick?: number; team?: string | null } | null
+}
+
+export interface PlayerGameLog {
+  gameId: number
+  gameDate: string
+  teamAbbrev?: string
+  opponentAbbrev?: string
+  homeRoadFlag?: "H" | "R"
+  goals: number
+  assists: number
+  shots: number
+  hits: number
+  blocks: number
+  pim: number
+  points: number
+  plusMinus: number
+  powerPlayPoints: number
+  shorthandedGoals: number
+  gameWinningGoals: number
+  toi: string
+  decision?: string | null
+  shotsAgainst: number
+  goalsAgainst: number
+  savePctg?: number | null
+  shutouts: number
+  powerPlayToi?: string
+  penaltyKillToi?: string
+}
+
+export interface PlayerSeasonSummary {
+  season: number
+  team: string
+  gamesPlayed: number
+  goals: number
+  assists: number
+  points: number
+  shots: number
+  pim: number
+  plusMinus: number
+  wins: number
+  saves: number
+  goalsAgainst: number
+  shutouts: number
+  savePctg?: number | null
+  fantasyPoints?: number
+}
+
+export function getPlayerPhoto(playerOrName?: string | PlayerPortraitSource): string {
+  if (!playerOrName) return ""
+
+  if (typeof playerOrName === "object" && playerOrName.headshot) {
+    return playerOrName.headshot
+  }
+
+  if (typeof playerOrName === "object" && playerOrName.nhlId) {
     return `https://assets.nhle.com/mugs/nhl/latest/${playerOrName.nhlId}.png`
   }
 
-  // 2. If passed a player name string
-  const name = typeof playerOrName === "string" ? playerOrName : playerOrName?.name
-  if (!name) return "/players/player-generic.png"
-
-  return "/players/player-generic.png"
+  const name = typeof playerOrName === "string" ? playerOrName : playerOrName.name
+  return name ? `/api/headshot?name=${encodeURIComponent(name)}` : ""
 }
 
 export interface SkaterStats {
@@ -118,6 +261,15 @@ export interface Player {
   gamesPlayed?: number
   gameState?: "Pre-game" | "In Progress" | "Final"
   timeRemaining?: number
+  nhlId?: number
+  headshot?: string
+  profile?: PlayerProfile
+  currentSeasonStats?: Record<string, number>
+  gameLog?: PlayerGameLog[]
+  historicalSeasons?: PlayerSeasonSummary[]
+  schedule?: PlayerSchedule
+  nhlGamesPlayed?: number
+  injuryStatus?: PlayerStatus
 }
 
 export interface MarketPlayer {
@@ -143,6 +295,17 @@ export interface MarketPlayer {
   shutouts?: number
   savePct?: number
   stats?: SkaterStats | GoalieStats
+  nhlId?: number
+  headshot?: string
+  profile?: PlayerProfile
+  currentSeasonStats?: Record<string, number>
+  gameLog?: PlayerGameLog[]
+  historicalSeasons?: PlayerSeasonSummary[]
+  schedule?: PlayerSchedule
+  nhlGamesPlayed?: number
+  injuryStatus?: PlayerStatus
+  injuryVerification?: "verified" | "single-source" | "conflict"
+  injurySources?: string[]
 }
 
 export interface WaiverClaim {
@@ -183,7 +346,7 @@ export interface LeagueTradeOffer {
 }
 
 export const league = {
-  name: "DYNASTY PUCK LEAGUE 2026",
+  name: "JOHN SCOTT DYNASTY 2026",
   week: 1,
   faabBudget: 100,
   tradeBlock: [
@@ -199,9 +362,9 @@ export const defaultFaabBudget = 100
 export const roster: Player[] = [
   { id: "p1", name: "Nathan MacKinnon", position: "C", slot: "C", team: "COL", opponent: "vs BOS", gameTime: "7:00 PM", status: null, todayPts: 16.3, projPts: 18.2, stats: { gp: 24, goals: 16, assists: 25, sog: 104, hits: 22, blocks: 11, ppp: 8, gwg: 2, shg: 0 }, gameState: "In Progress", timeRemaining: 40 },
   { id: "p2", name: "Auston Matthews", position: "C", slot: "C", team: "TOR", opponent: "@ OTT", gameTime: "7:00 PM", status: null, todayPts: 16.5, projPts: 18.5, stats: { gp: 22, goals: 18, assists: 14, sog: 98, hits: 31, blocks: 24, ppp: 7, gwg: 3, shg: 0 }, gameState: "Final", timeRemaining: 0 },
-  { id: "p3", name: "Jack Hughes", position: "C", slot: "C", team: "NJD", opponent: "vs NYR", gameTime: "7:00 PM", status: "DTD", todayPts: 11.5, projPts: 12.9, gameState: "Pre-game", timeRemaining: 60 },
+  { id: "p3", name: "Jack Hughes", position: "C", slot: "C", team: "NJD", opponent: "vs NYR", gameTime: "7:00 PM", status: null, todayPts: 11.5, projPts: 12.9, gameState: "Pre-game", timeRemaining: 60 },
   { id: "p4", name: "Artemi Panarin", position: "LW", slot: "W", team: "NYR", opponent: "@ NJD", gameTime: "7:00 PM", status: null, todayPts: 13.0, projPts: 14.6, gameState: "In Progress", timeRemaining: 40 },
-  { id: "p5", name: "David Pastrnak", position: "RW", slot: "W", team: "BOS", opponent: "@ COL", gameTime: "7:00 PM", status: "DTD", todayPts: 13.5, projPts: 15.1, gameState: "Pre-game", timeRemaining: 60 },
+  { id: "p5", name: "David Pastrnak", position: "RW", slot: "W", team: "BOS", opponent: "@ COL", gameTime: "7:00 PM", status: null, todayPts: 13.5, projPts: 15.1, gameState: "Pre-game", timeRemaining: 60 },
   { id: "p6", name: "Kirill Kaprizov", position: "LW", slot: "W", team: "MIN", opponent: "vs DAL", gameTime: "7:00 PM", status: null, todayPts: 10.3, projPts: 11.5 },
   { id: "p7", name: "Mikko Rantanen", position: "RW", slot: "W", team: "DAL", opponent: "@ MIN", gameTime: "7:00 PM", status: null, todayPts: 11.3, projPts: 12.6 },
   { id: "p8", name: "Jason Robertson", position: "LW", slot: "W", team: "DAL", opponent: "@ MIN", gameTime: "7:00 PM", status: null, todayPts: 10.0, projPts: 11.2 },
@@ -218,12 +381,12 @@ export const roster: Player[] = [
   { id: "p19", name: "Igor Shesterkin", position: "G", slot: "G", team: "NYR", opponent: "@ NJD", gameTime: "7:00 PM", status: null, todayPts: 14.0, projPts: 15.2, stats: { gp: 19, wins: 14, saves: 524, goalsAgainst: 40, shutouts: 3, savePct: 0.924 }, gameState: "In Progress", timeRemaining: 40 },
   { id: "p20", name: "Andrei Vasilevskiy", position: "G", slot: "G", team: "TBL", opponent: "vs FLA", gameTime: "7:00 PM", status: null, todayPts: 13.2, projPts: 14.8, stats: { gp: 20, wins: 15, saves: 510, goalsAgainst: 44, shutouts: 4, savePct: 0.921 }, gameState: "Final", timeRemaining: 0 },
   { id: "p21", name: "Tim Stützle", position: "C", slot: "BN", team: "OTT", opponent: "vs BUF", gameTime: "7:00 PM", status: null, todayPts: 0.0, projPts: 12.4 },
-  { id: "p22", name: "Trevor Zegras", position: "C", slot: "BN", team: "ANA", opponent: "@ LAK", gameTime: "7:00 PM", status: "O", todayPts: 0.0, projPts: 0.0 },
+  { id: "p22", name: "Trevor Zegras", position: "C", slot: "BN", team: "ANA", opponent: "@ LAK", gameTime: "7:00 PM", status: null, todayPts: 0.0, projPts: 0.0 },
   { id: "p23", name: "Owen Power", position: "D", slot: "BN", team: "BUF", opponent: "@ OTT", gameTime: "7:00 PM", status: null, todayPts: 0.0, projPts: 11.2 },
   { id: "p24", name: "Matvei Michkov", position: "RW", slot: "BN", team: "PHI", opponent: "vs PIT", gameTime: "7:00 PM", status: null, todayPts: 0.0, projPts: 13.0 },
   { id: "p25", name: "Connor Bedard", position: "C", slot: "TAXI", team: "CHI", opponent: "vs DAL", gameTime: "8:00 PM", status: "TAXI", todayPts: 0.0, projPts: 14.5, gamesPlayed: 22, stats: { gp: 22, goals: 12, assists: 17, sog: 76, hits: 18, blocks: 12, ppp: 5, gwg: 1, shg: 0 } },
   { id: "p26", name: "Macklin Celebrini", position: "C", slot: "TAXI", team: "SJS", opponent: "@ LAK", gameTime: "10:30 PM", status: "TAXI", todayPts: 0.0, projPts: 13.8, gamesPlayed: 21, stats: { gp: 21, goals: 11, assists: 15, sog: 68, hits: 19, blocks: 14, ppp: 5, gwg: 1, shg: 0 } },
-  { id: "p27", name: "Lane Hutson", position: "D", slot: "IR", team: "MTL", opponent: "vs TOR", gameTime: "7:00 PM", status: "IR", todayPts: 0.0, projPts: 0.0, stats: { gp: 23, goals: 4, assists: 19, sog: 48, hits: 12, blocks: 26, ppp: 4, gwg: 1, shg: 0 } },
+  { id: "p27", name: "Lane Hutson", position: "D", slot: "IR", team: "MTL", opponent: "vs TOR", gameTime: "7:00 PM", status: null, todayPts: 0.0, projPts: 0.0, stats: { gp: 23, goals: 4, assists: 19, sog: 48, hits: 12, blocks: 26, ppp: 4, gwg: 1, shg: 0 } },
 ]
 
 const starterSlots: Array<{ slot: Extract<RosterSlot, "C" | "W" | "F" | "D" | "G">; position: Player["position"] }> = [
@@ -266,9 +429,6 @@ function createTeamRoster(teamName: string, names: string[]): Player[] {
   }[teamName] ?? "NHL"
   return names.map((name, index) => {
     const slotInfo = starterSlots[index]
-    const todayPts = Math.round((7 + (index % 7) * 1.35) * 10) / 10
-    const stats = createPlayerSeasonStats({ id: `${teamCode.toLowerCase()}-${index + 1}`, name, position: slotInfo.position })
-    const seasonFpts = slotInfo.position === "G" ? calculateGoalieFPTS(stats as GoalieStats) : calculateSkaterFPTS(stats as SkaterStats)
     return {
       id: `${teamCode.toLowerCase()}-${index + 1}`,
       name,
@@ -278,11 +438,10 @@ function createTeamRoster(teamName: string, names: string[]): Player[] {
       opponent: index % 2 === 0 ? "vs MTL" : "@ MTL",
       gameTime: "7:00 PM",
       status: null,
-      todayPts,
-      projPts: Math.round((seasonFpts / stats.gp) * 3.5 * 10) / 10,
-      stats,
-      gameState: index % 3 === 0 ? "Final" : index % 3 === 1 ? "In Progress" : "Pre-game",
-      timeRemaining: index % 3 === 0 ? 0 : index % 3 === 1 ? 40 : 60,
+      todayPts: null,
+      projPts: 0,
+      gameState: "Pre-game",
+      timeRemaining: 60,
     }
   })
 }
@@ -291,9 +450,29 @@ const dedicatedTeamRosters: Record<string, Player[]> = Object.fromEntries(
   Object.entries(teamStarterNames).map(([teamName, names]) => [teamName, createTeamRoster(teamName, names)]),
 )
 
-export function getTeamRoster(teamName: string, userRoster: Player[]): Player[] {
+export function getTeamRoster(teamName: string, userRoster: Player[], databasePlayers: MarketPlayer[] = []): Player[] {
   if (teamName === "Montreal Monarchs") return userRoster
-  return dedicatedTeamRosters[teamName] ?? []
+  const ownedNames = new Set(userRoster.map((player) => player.name.toLowerCase()))
+  return (dedicatedTeamRosters[teamName] ?? []).filter((player) => !ownedNames.has(player.name.toLowerCase())).map((player) => {
+    const databasePlayer = databasePlayers.find((candidate) => candidate.name.toLowerCase() === player.name.toLowerCase())
+    if (!databasePlayer) return player
+    return {
+      ...player,
+      team: databasePlayer.team,
+      nhlId: databasePlayer.nhlId,
+      headshot: databasePlayer.headshot,
+      profile: databasePlayer.profile,
+      currentSeasonStats: databasePlayer.currentSeasonStats,
+      gameLog: databasePlayer.gameLog,
+      historicalSeasons: databasePlayer.historicalSeasons,
+      schedule: databasePlayer.schedule,
+      opponent: databasePlayer.schedule?.opponent ?? player.opponent,
+      projPts: databasePlayer.projection,
+      todayPts: databasePlayer.schedule?.todayFantasyPoints ?? null,
+      status: databasePlayer.injuryStatus ?? null,
+      injuryStatus: databasePlayer.injuryStatus ?? null,
+    }
+  })
 }
 
 export const marketPlayers: MarketPlayer[] = [
@@ -322,19 +501,6 @@ export const activities: ActivityItem[] = [
   { id: "a3", owner: "Jordan", action: "DROP", player: "Max Domi", detail: "C - TOR", time: "Yesterday, 18:20" },
 ]
 
-export interface PlayerNewsItem {
-  player: string
-  team: string
-  headline: string
-  analysis: string
-}
-
-export const playerNews: PlayerNewsItem[] = [
-  { player: "Nathan MacKinnon", team: "COL", headline: "Nathan MacKinnon rest day on Monday", analysis: "MacKinnon is expected to return to the top line for the next game and remains an elite fantasy play." },
-  { player: "Lane Hutson", team: "MTL", headline: "Lane Hutson nearing a return", analysis: "The rookie defenseman continues skating and could rejoin the lineup later this week." },
-  { player: "Igor Shesterkin", team: "NYR", headline: "Shesterkin confirmed for tonight", analysis: "New York will turn to Shesterkin between the pipes in a favorable matchup." },
-]
-
 export interface MatchupSummary {
   id: string
   homeTeam: string
@@ -349,6 +515,11 @@ export interface MatchupSummary {
   totalMinutes: number
 }
 
+export type LiveMatchupSummary = MatchupSummary & {
+  projectedHome: number
+  projectedAway: number
+}
+
 export const weekMatchups: MatchupSummary[] = [
   { id: "m1", homeTeam: "Montreal Monarchs", homeOwner: "You", homeRecord: "2-0", homeScore: 185.28, awayTeam: "Toronto Titans", awayOwner: "Jordan", awayRecord: "1-1", awayScore: 179.94, status: "In Progress", totalMinutes: 180 },
   { id: "m2", homeTeam: "Vancouver Voyagers", homeOwner: "Alex R.", homeRecord: "2-0", homeScore: 143.04, awayTeam: "Calgary Comets", awayOwner: "Casey", awayRecord: "0-2", awayScore: 83.8, status: "In Progress", totalMinutes: 180 },
@@ -357,6 +528,36 @@ export const weekMatchups: MatchupSummary[] = [
   { id: "m5", homeTeam: "Colorado Summit", homeOwner: "Morgan", homeRecord: "2-0", homeScore: 192.4, awayTeam: "Florida Waves", awayOwner: "Jamie", awayRecord: "1-1", awayScore: 180.14, status: "In Progress", totalMinutes: 180 },
   { id: "m6", homeTeam: "Minnesota Northstars", homeOwner: "Chris", homeRecord: "0-2", homeScore: 129.76, awayTeam: "Tampa Bay Bolts", awayOwner: "Drew", awayRecord: "2-0", awayScore: 167.32, status: "Final", totalMinutes: 180 },
 ]
+
+/** Returns the league schedule for a scoring week using a round-robin rotation. */
+export function getWeekMatchups(week: number): MatchupSummary[] {
+  const safeWeek = Math.max(1, Math.floor(week))
+  if (safeWeek === 1) return weekMatchups
+
+  const teams = weekMatchups.flatMap((matchup) => [
+    { team: matchup.homeTeam, owner: matchup.homeOwner },
+    { team: matchup.awayTeam, owner: matchup.awayOwner },
+  ])
+  const round = (safeWeek - 1) % (teams.length - 1)
+  const rotated = [teams[0], ...teams.slice(1).map((_, index) => teams[1 + ((index + round) % (teams.length - 1))])]
+  return Array.from({ length: teams.length / 2 }, (_, index) => {
+    const home = rotated[index]
+    const away = rotated[teams.length - 1 - index]
+    return {
+      id: `w${safeWeek}-m${index + 1}`,
+      homeTeam: home.team,
+      homeOwner: home.owner,
+      homeRecord: "0-0",
+      homeScore: 0,
+      awayTeam: away.team,
+      awayOwner: away.owner,
+      awayRecord: "0-0",
+      awayScore: 0,
+      status: "Scheduled",
+      totalMinutes: 180,
+    }
+  })
+}
 
 export interface ScheduleRow {
   week: number
@@ -383,6 +584,9 @@ export interface MatchupPlayer {
   todayPts: number | null
   projPts: number
   empty?: boolean
+  schedule?: PlayerSchedule
+  gameLog?: PlayerGameLog[]
+  currentSeasonStats?: Record<string, number>
 }
 
 export interface MatchupRow {
@@ -395,7 +599,7 @@ export const matchupStartersByMatchup: Record<string, MatchupRow[]> = {
   m1: [
     { slot: "C", home: { name: "Nathan MacKinnon", position: "C", team: "COL", opponent: "vs BOS", status: null, todayPts: 16.3, projPts: 18.2 }, away: { name: "Auston Matthews", position: "C", team: "TOR", opponent: "@ OTT", status: null, todayPts: 16.5, projPts: 18.5 } },
     { slot: "LW", home: { name: "Artemi Panarin", position: "LW", team: "NYR", opponent: "@ NJD", status: null, todayPts: 13.0, projPts: 14.6 }, away: { name: "Matthew Knies", position: "LW", team: "TOR", opponent: "@ OTT", status: null, todayPts: 8.6, projPts: 14.9 } },
-    { slot: "RW", home: { name: "David Pastrnak", position: "RW", team: "BOS", opponent: "@ COL", status: "DTD", todayPts: 13.5, projPts: 15.1 }, away: { name: "Mitch Marner", position: "RW", team: "TOR", opponent: "@ OTT", status: null, todayPts: 13.2, projPts: 18.1 } },
+    { slot: "RW", home: { name: "David Pastrnak", position: "RW", team: "BOS", opponent: "@ COL", status: null, todayPts: 13.5, projPts: 15.1 }, away: { name: "Mitch Marner", position: "RW", team: "TOR", opponent: "@ OTT", status: null, todayPts: 13.2, projPts: 18.1 } },
     { slot: "D", home: { name: "Cale Makar", position: "D", team: "COL", opponent: "vs BOS", status: null, todayPts: 15.2, projPts: 16.4 }, away: { name: "Morgan Rielly", position: "D", team: "TOR", opponent: "@ OTT", status: null, todayPts: 7.8, projPts: 12.6 } },
     { slot: "D", home: { name: "Quinn Hughes", position: "D", team: "VAN", opponent: "vs SEA", status: null, todayPts: 12.8, projPts: 14.0 }, away: { name: "Cale Fleury", position: "D", team: "TOR", opponent: "@ OTT", status: null, todayPts: null, projPts: 9.4 } },
     { slot: "G", home: { name: "Igor Shesterkin", position: "G", team: "NYR", opponent: "@ NJD", status: null, todayPts: 14.0, projPts: 15.2 }, away: { name: "Joseph Woll", position: "G", team: "TOR", opponent: "@ OTT", status: null, todayPts: 10.5, projPts: 13.7 } },
@@ -449,45 +653,118 @@ export const chatMessages: ChatMessage[] = [
   { id: "c3", author: "Priya", avatarInitials: "PT", message: "Anyone streaming a G tonight? Shesterkin is banged up", time: "6:51 PM" },
 ]
 
-export function getPlayerDetail(player: { name: string; position: Player["position"]; team: string; projPts: number }) {
-  const forwardRole = player.position === "LW" || player.position === "RW" || player.position === "C" ? player.position : null
-  const defenseRole = player.position === "D" ? "LD" : null
-  const goalieRole = player.position === "G"
+export function getPlayerDetail(player: { name: string; position: Player["position"]; team: string; projPts: number; profile?: PlayerProfile; currentSeasonStats?: Record<string, number>; marketPlayer?: MarketPlayer; gameLog?: PlayerGameLog[]; historicalSeasons?: PlayerSeasonSummary[] }, scheduleGames: NhlScheduleGame[] = []) {
+  const profile = player.profile ?? player.marketPlayer?.profile
+  const seasonStats = player.currentSeasonStats ?? player.marketPlayer?.currentSeasonStats
+  const syncedGameLog = (player.gameLog ?? player.marketPlayer?.gameLog ?? []).map((game) => {
+    const fpts = player.position === "G"
+      ? calculateGoalieFPTS({ gp: 1, wins: game.decision === "W" ? 1 : 0, saves: game.shotsAgainst - game.goalsAgainst, goalsAgainst: game.goalsAgainst, shutouts: game.shutouts, savePct: game.savePctg ?? 0 })
+      : calculateSkaterFPTS({ gp: 1, goals: game.goals, assists: game.assists, sog: game.shots, hits: game.hits, blocks: game.blocks, ppp: game.powerPlayPoints, shg: game.shorthandedGoals, gwg: game.gameWinningGoals })
+    return {
+      date: game.gameDate,
+      opp: `${game.homeRoadFlag === "H" ? "vs" : "@"} ${game.opponentAbbrev ?? "—"}`,
+      result: game.points > 0 ? "Played" : "Played",
+      g: game.goals,
+      a: game.assists,
+      pts: game.points,
+      pim: game.pim,
+      sog: game.shots,
+      hits: game.hits,
+      blk: game.blocks,
+      gwg: game.gameWinningGoals,
+      shg: game.shorthandedGoals,
+      wins: game.decision === "W" ? 1 : 0,
+      saves: game.shotsAgainst - game.goalsAgainst,
+      shotsAgainst: game.shotsAgainst,
+      ga: game.goalsAgainst,
+      shutout: game.shutouts > 0,
+      decision: game.decision ?? null,
+      toi: game.toi,
+      fpts: Number(fpts.toFixed(1)),
+      svPct: game.savePctg != null ? game.savePctg.toFixed(3) : "—",
+      plusMinus: game.plusMinus,
+      powerPlayToi: game.powerPlayToi ?? "—",
+      penaltyKillToi: game.penaltyKillToi ?? "—",
+    }
+  })
+  const loggedDates = new Set(syncedGameLog.map((game) => game.date))
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
+  const missedGames = scheduleGames
+    .filter((game) => game.date <= today && (game.awayTeam.abbrev === player.team || game.homeTeam.abbrev === player.team) && !loggedDates.has(game.date))
+    .map((game) => {
+      const home = game.homeTeam.abbrev === player.team
+      return {
+        date: game.date,
+        opp: `${home ? "vs" : "@"} ${home ? game.awayTeam.abbrev : game.homeTeam.abbrev}`,
+        result: "Did not play",
+        g: 0, a: 0, pts: 0, pim: 0, sog: 0, hits: 0, blk: 0, gwg: 0, shg: 0,
+        wins: 0, saves: 0, shotsAgainst: 0, ga: 0, shutout: false, decision: "—",
+        toi: "—", powerPlayToi: "—", penaltyKillToi: "—", fpts: 0, svPct: "—", plusMinus: 0,
+      }
+    })
+  const syncedHistory = (player.historicalSeasons ?? player.marketPlayer?.historicalSeasons ?? []).map((season) => {
+    const stats = player.position === "G"
+      ? calculateGoalieFPTS({ gp: season.gamesPlayed, wins: season.wins, saves: season.saves, goalsAgainst: season.goalsAgainst, shutouts: season.shutouts, savePct: season.savePctg ?? 0 })
+      : calculateSkaterFPTS({ gp: season.gamesPlayed, goals: season.goals, assists: season.assists, sog: season.shots, hits: 0, blocks: 0 })
+    return {
+      season: `${String(season.season).slice(0, 4)}-${String(season.season).slice(4)}`,
+      team: season.team,
+      gp: season.gamesPlayed,
+      g: season.goals,
+      a: season.assists,
+      pts: season.points,
+      pim: season.pim,
+      hits: 0,
+      blk: 0,
+      saves: season.saves,
+      ga: season.goalsAgainst,
+      shutouts: season.shutouts,
+      wins: season.wins,
+      fptsPerGame: season.gamesPlayed ? Number((stats / season.gamesPlayed).toFixed(1)) : 0,
+      fpts: stats.toFixed(1),
+      rank: `${player.position}`,
+    }
+  })
+  const currentGames = seasonStats?.gamesPlayed ?? 0
+  const syncedSeasonFpts = player.position === "G"
+    ? calculateGoalieFPTS({ gp: currentGames, wins: seasonStats?.wins ?? 0, saves: seasonStats?.saves ?? 0, goalsAgainst: seasonStats?.goalsAgainst ?? 0, shutouts: seasonStats?.shutouts ?? 0, savePct: seasonStats?.savePct ?? 0 })
+    : calculateSkaterFPTS({ gp: currentGames, goals: seasonStats?.goals ?? 0, assists: seasonStats?.assists ?? 0, sog: seasonStats?.shots ?? 0, hits: seasonStats?.hits ?? 0, blocks: seasonStats?.blocks ?? 0, ppp: seasonStats?.powerPlayPoints ?? 0, shg: seasonStats?.shorthandedGoals ?? 0, gwg: seasonStats?.gameWinningGoals ?? 0 })
   return {
-    bio: { age: 24, heightWeight: "6'1\" · 195 lbs", birthplace: "Canada", draft: "Round 1, Pick 1", draftShort: "R1, 1", experience: "6 yrs", shoots: "Left" },
-    seasonTotals: { g: 32, a: 45, pts: 77, pim: 18, sog: 210, hits: 45, blk: 32, saves: 0, ga: 0, shutouts: 0, wins: 0, fpts: 248.5, fptsPerGame: 3.8 },
-    gameLog: [
-      { date: "Sep 28", opp: "vs BOS", result: "W 4-2", g: 1, a: 1, pts: 2, pim: 0, sog: 5, hits: 3, blk: 1, gwg: 1, shg: 0, wins: 0, saves: 0, shotsAgainst: 0, ga: 0, shutout: false, decision: null, toi: "22:14", fpts: 16.3, svPct: ".000", plusMinus: 2 },
-      { date: "Sep 26", opp: "@ NYR", result: "L 1-3", g: 0, a: 1, pts: 1, pim: 2, sog: 4, hits: 2, blk: 0, gwg: 0, shg: 0, wins: 0, saves: 0, shotsAgainst: 0, ga: 0, shutout: false, decision: null, toi: "20:45", fpts: 5.5, svPct: ".000", plusMinus: -1 },
-      { date: "Sep 24", opp: "vs FLA", result: "W 5-2", g: 2, a: 0, pts: 2, pim: 0, sog: 6, hits: 1, blk: 1, gwg: 0, shg: 0, wins: 0, saves: 0, shotsAgainst: 0, ga: 0, shutout: false, decision: null, toi: "21:14", fpts: 10.5, svPct: ".000", plusMinus: 2 },
-      { date: "Sep 22", opp: "@ TOR", result: "W 3-1", g: 0, a: 2, pts: 2, pim: 2, sog: 5, hits: 0, blk: 0, gwg: 0, shg: 0, wins: 0, saves: 0, shotsAgainst: 0, ga: 0, shutout: false, decision: null, toi: "19:45", fpts: 6.5, svPct: ".000", plusMinus: 1 },
-    ],
-    pastSeasons: [
-      { season: "2025-26", team: player.team, gp: 80, g: 42, a: 60, pts: 102, pim: 24, hits: 55, blk: 40, saves: 0, ga: 0, shutouts: 0, wins: 0, fptsPerGame: 4.1, fpts: "328.0", rank: "#4 C" },
-      { season: "2024-25", team: player.team, gp: 79, g: 38, a: 54, pts: 92, pim: 18, hits: 48, blk: 35, saves: 0, ga: 0, shutouts: 0, wins: 0, fptsPerGame: 3.9, fpts: "308.1", rank: "#7 C" },
-      { season: "2023-24", team: player.team, gp: 82, g: 35, a: 49, pts: 84, pim: 16, hits: 42, blk: 31, saves: 0, ga: 0, shutouts: 0, wins: 0, fptsPerGame: 3.5, fpts: "287.4", rank: "#11 C" },
-    ],
-    depthChart: [
-      { line: "Line 1", slots: [{ label: "LW", name: forwardRole === "LW" ? player.name : "A. Panarin", isTarget: forwardRole === "LW" }, { label: "C", name: forwardRole === "C" ? player.name : "N. MacKinnon", isTarget: forwardRole === "C" }, { label: "RW", name: forwardRole === "RW" ? player.name : "D. Pastrnak", isTarget: forwardRole === "RW" }] },
-      { line: "Line 2", slots: [{ label: "LW", name: "K. Kaprizov", isTarget: false }, { label: "C", name: "J. Hughes", isTarget: false }, { label: "RW", name: "M. Rantanen", isTarget: false }] },
-      { line: "Line 3", slots: [{ label: "LW", name: "B. Tkachuk", isTarget: false }, { label: "C", name: "E. Pettersson", isTarget: false }, { label: "RW", name: "M. Marner", isTarget: false }] },
-      { line: "Line 4", slots: [{ label: "LW", name: "M. Knies", isTarget: false }, { label: "C", name: "T. Stützle", isTarget: false }, { label: "RW", name: "M. Domi", isTarget: false }] },
-      { line: "Pair 1", slots: [{ label: "LD", name: defenseRole === "LD" ? player.name : "Q. Hughes", isTarget: defenseRole === "LD" }, { label: "RD", name: "C. Makar", isTarget: false }] },
-      { line: "Pair 2", slots: [{ label: "LD", name: "A. Fox", isTarget: false }, { label: "RD", name: "V. Hedman", isTarget: false }] },
-      { line: "Pair 3", slots: [{ label: "LD", name: "R. Dahlin", isTarget: false }, { label: "RD", name: "M. Heiskanen", isTarget: false }] },
-      { line: "Goalies", slots: [{ label: "STARTER", name: goalieRole ? player.name : "I. Shesterkin", isTarget: goalieRole }, { label: "BACKUP", name: "A. Vasilevskiy", isTarget: false }] },
-      { line: "PP1", slots: [{ label: "LW", name: forwardRole === "LW" ? player.name : "A. Panarin", isTarget: forwardRole === "LW" }, { label: "C", name: forwardRole === "C" ? player.name : "N. MacKinnon", isTarget: forwardRole === "C" }, { label: "RW", name: forwardRole === "RW" ? player.name : "D. Pastrnak", isTarget: forwardRole === "RW" }, { label: "F", name: "M. Rantanen", isTarget: false }, { label: defenseRole ? "LD" : "LD", name: defenseRole ? player.name : "C. Makar", isTarget: !!defenseRole }] },
-      { line: "PP2", slots: [{ label: "LW", name: "A. Panarin", isTarget: false }, { label: "C", name: "J. Hughes", isTarget: false }, { label: "RW", name: "M. Rantanen", isTarget: false }, { label: "D", name: "A. Fox", isTarget: false }, { label: "D", name: "R. Dahlin", isTarget: false }] },
-      { line: "PK1", slots: [{ label: "F", name: "B. Tkachuk", isTarget: false }, { label: "F", name: "T. Stützle", isTarget: false }, { label: "LD", name: "V. Hedman", isTarget: false }, { label: "RD", name: "M. Heiskanen", isTarget: false }] },
-      { line: "PK2", slots: [{ label: "F", name: "K. Kaprizov", isTarget: false }, { label: "F", name: "E. Pettersson", isTarget: false }, { label: "LD", name: "C. Makar", isTarget: false }, { label: "RD", name: "Q. Hughes", isTarget: false }] },
-    ],
-    transactions: [
-      { date: "Oct 2025", type: "Draft" as const, description: `Drafted in Round 1 of the Startup Dynasty Draft.` },
-    ],
-    teamRanks: [
-      { label: "OFF", value: "#3" }, { label: "DEF", value: "#8" }, { label: "PP", value: "24.8%" }, { label: "PK", value: "81.2%" },
-    ],
-    news: { headline: `${player.name} tallies 3 points in win vs BOS`, analysis: "The top-line star continues to drive elite shot volume and power-play production. Keep him locked into every active lineup." },
-    projections: [{ week: "Wk 1", fpts: player.projPts.toFixed(1) }, { week: "Wk 2", fpts: (player.projPts + 1.2).toFixed(1) }, { week: "Wk 3", fpts: (player.projPts - 0.4).toFixed(1) }],
+    bio: {
+      age: profile?.age ?? "—",
+      heightWeight: [profile?.height, profile?.weightInPounds ? `${profile.weightInPounds} lbs` : null].filter(Boolean).join(" · ") || "—",
+      birthplace: profile?.birthplace ?? "—",
+      draft: profile?.draft ? `Round ${profile.draft.round ?? "—"}, Pick ${profile.draft.pick ?? "—"}` : "—",
+      draftShort: profile?.draft ? `R${profile.draft.round ?? "—"}, ${profile.draft.pick ?? "—"}` : "—",
+      experience: profile?.experience != null ? `${profile.experience} yrs` : "—",
+      shoots: profile?.shoots ?? "—",
+    },
+    seasonTotals: {
+      gp: currentGames,
+      g: seasonStats?.goals ?? 0,
+      a: seasonStats?.assists ?? 0,
+      pts: seasonStats?.points ?? 0,
+      pim: seasonStats?.pim ?? 0,
+      sog: seasonStats?.shots ?? 0,
+      hits: seasonStats?.hits ?? 0,
+      blk: seasonStats?.blocks ?? 0,
+      saves: seasonStats?.saves ?? 0,
+      ga: seasonStats?.goalsAgainst ?? 0,
+      shutouts: seasonStats?.shutouts ?? 0,
+      wins: seasonStats?.wins ?? 0,
+      ppp: seasonStats?.powerPlayPoints ?? 0,
+      shg: seasonStats?.shorthandedGoals ?? 0,
+      gwg: seasonStats?.gameWinningGoals ?? 0,
+      plusMinus: seasonStats?.plusMinus ?? 0,
+      fpts: syncedSeasonFpts,
+      fptsPerGame: currentGames ? Number((syncedSeasonFpts / currentGames).toFixed(1)) : 0,
+    },
+    gameLog: [...syncedGameLog, ...missedGames].sort((a, b) => b.date.localeCompare(a.date)),
+    pastSeasons: syncedHistory,
+    depthChart: [],
+    transactions: [],
+    teamRanks: [],
+    news: null,
+    projections: [],
   }
 }

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react"
 import { AlertTriangle, Check, ChevronLeft, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { type MarketPlayer, getPlayerPhoto, type Player, type RosterSlot, type WaiverClaim } from "@/lib/hockey-data"
+import { type MarketPlayer, type Player, type RosterSlot, type WaiverClaim } from "@/lib/hockey-data"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 const colors: Record<string, string> = {
   C: "bg-[#1d4ed8] text-white",
@@ -45,13 +46,13 @@ function DropRow({ player, selected, onSelect }: { player: Player; selected: boo
       >
         {player.slot}
       </span>
-      <img src={getPlayerPhoto(player.name)} alt={player.name} className="size-7 shrink-0 rounded-full object-cover bg-[#1b2842]" onError={(e) => { (e.target as HTMLImageElement).src = "/players/player-generic.png" }} />
+      <PlayerPortrait player={player} name={player.name} className="size-7 bg-[#1b2842]" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-bold text-white">{player.name}</span>
         <span className="block text-[10px] text-[#5e7090]">{player.team} · {player.opponent}</span>
       </span>
       <span className="text-xs font-black tabular-nums text-white">
-        {player.projPts.toFixed(1)}
+        {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}
       </span>
     </button>
   )

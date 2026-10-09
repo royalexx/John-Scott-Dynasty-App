@@ -3,7 +3,8 @@
 import { Shield, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import { getPlayerPhoto, type Player } from "@/lib/hockey-data"
+import { TAXI_MAX_NHL_GAMES, type Player } from "@/lib/hockey-data"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type StartingSlot = Extract<Player["slot"], "C" | "W" | "F" | "D" | "G">
 
@@ -26,6 +27,14 @@ function eligibleStartingSlots(player: Player): StartingSlot[] {
   return [player.position]
 }
 
+function isInjured(player: Player): boolean {
+  return player.status === "IR" || player.status === "O" || player.status === "DTD"
+}
+
+function isTaxiEligible(player: Player): boolean {
+  return !isInjured(player) && player.nhlGamesPlayed != null && player.nhlGamesPlayed < TAXI_MAX_NHL_GAMES
+}
+
 function eligibleTargets(player: Player | null, roster: Player[], emptySlot?: StartingSlot) {
   const slots: Array<{ slot: Player["slot"]; label: string; target?: Player }> = []
   if (emptySlot) {
@@ -33,7 +42,10 @@ function eligibleTargets(player: Player | null, roster: Player[], emptySlot?: St
       .filter((candidate) => candidate.slot === "BN" && eligibleStartingSlots(candidate).includes(emptySlot))
       .map((candidate) => ({ slot: emptySlot, label: "Empty starting slot", target: candidate }))
   }
-  if (player?.slot === "BN") {
+  if (player && isInjured(player)) {
+    if (player.slot !== "IR") slots.push({ slot: "IR", label: "Injured Reserve" })
+    if (player.slot !== "BN") slots.push({ slot: "BN", label: "Bench player" })
+  } else if (player?.slot === "BN" || player?.slot === "TAXI" || player?.slot === "IR") {
     eligibleStartingSlots(player).forEach((slot) => {
       const occupants = roster.filter((candidate) => candidate.slot === slot && candidate.id !== player.id)
       if (occupants.length) {
@@ -57,24 +69,12 @@ function eligibleTargets(player: Player | null, roster: Player[], emptySlot?: St
         if (destination) slots.push({ slot: destination, label: "Bench player", target })
       })
   }
-  if (player?.gamesPlayed != null && player.gamesPlayed < 80) slots.push({ slot: "TAXI", label: "Taxi Squad" })
-  if (player && (player.status === "DTD" || player.status === "O" || player.status === "IR")) slots.push({ slot: "IR", label: "Injured Reserve" })
+  if (player && isTaxiEligible(player) && player.slot !== "TAXI") slots.push({ slot: "TAXI", label: "Taxi Squad" })
   return slots.filter((option, index, all) => all.findIndex((candidate) => candidate.slot === option.slot && candidate.target?.id === option.target?.id) === index)
 }
 
 function PlayerAvatar({ player }: { player: Player }) {
-  return (
-    <div className="size-10 shrink-0 overflow-hidden rounded-full border border-[#24375b] bg-[#1b2842]">
-      <img 
-        src={getPlayerPhoto(player.name)} 
-        alt={player.name} 
-        className="size-full object-cover"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = "/players/player-generic.png"
-        }}
-      />
-    </div>
-  )
+  return <PlayerPortrait player={player} name={player.name} className="size-10 border border-[#24375b] bg-[#1b2842]" />
 }
 
 export function LineupSlotDialog({
@@ -111,9 +111,9 @@ export function LineupSlotDialog({
           {player ? <PlayerAvatar player={player} /> : <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-dashed border-[#34476a] text-[#5e7090]">+</div>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-white">{player?.name ?? `Empty ${emptySlot} starter`}</p>
-            <p className="truncate text-[11px] text-[#5e7090]">{player ? `${player.team} · ${player.opponent}` : "Select an eligible bench player"}</p>
+            <p className="truncate text-[11px] text-[#5e7090]">{player ? <>{player.team} · {player.opponent}{player.status && <span className="ml-1 font-black text-rose-300">{player.status}</span>}</> : "Select an eligible bench player"}</p>
           </div>
-          {player && <span className="text-sm font-black tabular-nums text-white">proj {player.projPts.toFixed(1)}</span>}
+          {player && <span className="text-sm font-black tabular-nums text-white">proj {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</span>}
         </div>
 
         <div className="max-h-[45vh] overflow-y-auto px-3 pb-5">
@@ -121,7 +121,7 @@ export function LineupSlotDialog({
           {targets.map((option, index) => (
             <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" onClick={() => { if (player) onMove(player.id, option.slot, option.target?.id); else if (option.target) onMove(option.target.id, option.slot); onOpenChange(false) }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
               <span className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
-              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-[10px] text-[#5e7090]">{option.target.team} · {option.target.opponent}</small></span><span className="text-xs font-black text-white">proj {option.target.projPts.toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
+              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-[10px] text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
             </button>
           ))}
           {!targets.length && <p className="rounded-lg border border-dashed border-[#34476a] px-3 py-5 text-center text-xs text-[#5e7090]">No eligible swap targets</p>}

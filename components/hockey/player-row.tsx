@@ -3,8 +3,9 @@
 import Image from "next/image"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
-import {getPlayerPhoto, type Player } from "@/lib/hockey-data"
+import type { Player } from "@/lib/hockey-data"
 import { PlayerDetailDialog } from "@/components/hockey/player-detail-dialog"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 // Exact Sleeper position container badge colors
 const slotBadgeStyles: Record<string, string> = {
@@ -74,16 +75,7 @@ export function PlayerRow({
             onClick={() => onSelect ? onSelect(player) : setOpen(true)}
             className="flex min-w-0 items-center gap-2.5 text-left"
           >
-            <div className="size-8 shrink-0 overflow-hidden rounded-full border border-[#202e48] bg-[#141d2f]">
-              <img
-                src={getPlayerPhoto(player.name)}
-                alt={player.name}
-                className="size-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/players/player-generic.png"
-                }}
-              />
-            </div>
+            <PlayerPortrait player={player} name={player.name} className="size-8 border border-[#202e48] bg-[#141d2f]" />
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -115,7 +107,7 @@ export function PlayerRow({
             {player.todayPts != null ? player.todayPts.toFixed(2) : "—"}
           </p>
           <p className="text-[10px] font-bold tabular-nums text-[#5e7090]">
-            proj {player.projPts.toFixed(2)}
+            proj {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(2)}
           </p>
         </button>
       </div>

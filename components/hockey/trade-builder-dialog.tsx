@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { ArrowLeft, Check, ChevronRight, CircleHelp, Handshake, Shield, X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getPlayerPhoto, type Player } from "@/lib/hockey-data"
+import type { Player } from "@/lib/hockey-data"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 
 export interface TradePick {
@@ -51,18 +52,7 @@ export interface TradeBuilderDialogProps {
 type Step = 1 | 2 | 3
 
 function PlayerAvatar({ player }: { player: Player }) {
-  return (
-    <div className="size-9 shrink-0 overflow-hidden rounded-full border border-[#2a3f66] bg-[#172338]">
-      <img 
-        src={getPlayerPhoto(player.name)} 
-        alt={player.name} 
-        className="size-full object-cover"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src = "/players/player-generic.png"
-        }}
-      />
-    </div>
-  )
+  return <PlayerPortrait player={player} name={player.name} className="size-9 border border-[#2a3f66]" />
 }
 
 function TeamAvatar({ team }: { team: TradeTeam }) {
@@ -211,7 +201,7 @@ function CompactTradePlayerRow({ player, selected, owner, onToggle, onPlayerClic
   return <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onToggle() }} className={cn("flex w-full cursor-pointer items-center gap-1.5 rounded-lg border p-1.5 transition-colors", selected ? "border-[#19ffff]/50 bg-[#0c2231] text-white" : "border-[#141e33] bg-[#0d1424] text-[#cbd5e1] hover:bg-[#111c2e]")}>
     <input type="checkbox" checked={selected} onChange={(event) => { event.stopPropagation(); onToggle() }} onClick={(event) => event.stopPropagation()} aria-label={`Select ${player.name}`} className="size-3.5 shrink-0 rounded accent-[#19ffff]" />
     <span className={cn("flex size-5 shrink-0 items-center justify-center rounded text-[8px] font-black", positionClass)}>{position === "LW" || position === "RW" ? "W" : position}</span>
-    <button type="button" onClick={(event) => { event.stopPropagation(); onPlayerClick?.(player, owner) }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"><PlayerAvatar player={player} /><span className="min-w-0"><b className="block truncate text-[11px] font-bold leading-tight text-white">{shortName}</b><small className="block text-[9px] tabular-nums text-[#5e7090]">{player.projPts.toFixed(1)}</small></span></button>
+    <button type="button" onClick={(event) => { event.stopPropagation(); onPlayerClick?.(player, owner) }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"><PlayerAvatar player={player} /><span className="min-w-0"><b className="block truncate text-[11px] font-bold leading-tight text-white">{shortName}</b>    <small className="block text-[9px] tabular-nums text-[#5e7090]">{(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</small></span></button>
   </div>
 }
 

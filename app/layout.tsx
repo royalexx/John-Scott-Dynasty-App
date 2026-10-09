@@ -11,13 +11,13 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Dynasty Puck League',
+  title: 'John Scott Dynasty',
   description: 'Authentic Sleeper-style fantasy dynasty hockey',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Puck Dynasty',
+    title: 'John Scott Dynasty',
   },
   icons: {
     icon: '/icon.svg',

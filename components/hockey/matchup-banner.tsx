@@ -89,12 +89,12 @@ export function MatchupBanner({
             style={{ width: `${awayWinPct}%` }}
           />
         </div>
-        <div className="mt-1.5 grid grid-cols-2 text-[11px] font-bold tabular-nums">
-          <div className="flex items-center gap-2">
-            <span className="text-[#19ffff]">{homeWinPct}% • {homeGamesLeft} games left</span>
+        <div className="mt-1.5 grid grid-cols-2 gap-2 text-[11px] font-bold tabular-nums">
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="truncate text-[#19ffff]">{homeWinPct}% • {homeGamesLeft} left</span>
           </div>
-          <div className="flex items-center justify-end gap-2">
-            <span className="text-[#ff2a85]">{awayGamesLeft} games left • {awayWinPct}%</span>
+          <div className="min-w-0 flex items-center justify-end gap-2">
+            <span className="truncate text-[#ff2a85]">{awayGamesLeft} left • {awayWinPct}%</span>
           </div>
         </div>
       </div>
