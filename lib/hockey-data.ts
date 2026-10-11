@@ -1,3 +1,5 @@
+import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
+
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
 export type RosterSlot = "C" | "W" | "F" | "D" | "G" | "BN" | "TAXI" | "IR"
 export const TAXI_MAX_NHL_GAMES = 50
@@ -33,7 +35,7 @@ export interface NhlScheduleGame {
   homeTeam: { abbrev: string; score?: number | null }
 }
 
-export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLog: PlayerGameLog[] = [], position: Player["position"] = "C", seasonStats?: Record<string, number>, fallbackProjection = 0): PlayerSchedule | undefined {
+export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLog: PlayerGameLog[] = [], position: Player["position"] = "C", seasonStats?: Record<string, number>, fallbackProjection = 0, fantasyWeek = getCurrentFantasyWeek()): PlayerSchedule | undefined {
   const teamGames = games.filter((game) => game.awayTeam.abbrev === team || game.homeTeam.abbrev === team)
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
   const currentNhlGame = teamGames.find((game) => game.date === today)
@@ -43,18 +45,12 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
   const status = teamGame.gameState === "LIVE" ? "Live" : ["FINAL", "OFF"].includes(teamGame.gameState) ? "Final" : "Scheduled"
   const day = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "America/New_York" }).format(new Date(teamGame.startTimeUTC)).toUpperCase()
   const time = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(new Date(teamGame.startTimeUTC))
-  const weekAnchor = new Date(`${today}T00:00:00`)
-  const weekStart = new Date(weekAnchor)
-  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekEnd.getDate() + 6)
+  const { startDate, endDate } = getFantasyWeekDates(fantasyWeek)
   const weekTeamGames = teamGames.filter((game) => {
-    const date = new Date(`${game.date}T00:00:00`)
-    return date >= weekStart && date <= weekEnd
+    return game.date >= startDate && game.date <= endDate
   })
   const weekGames = gameLog.filter((game) => {
-    const date = new Date(`${game.gameDate}T00:00:00`)
-    return date >= weekStart && date <= weekEnd
+    return game.gameDate >= startDate && game.gameDate <= endDate
   })
   const calculateGame = (game: PlayerGameLog) => position === "G"
       ? calculateGoalieFPTS({ gp: 1, wins: game.decision === "W" ? 1 : 0, saves: game.shotsAgainst - game.goalsAgainst, goalsAgainst: game.goalsAgainst, shutouts: game.shutouts, savePct: game.savePctg ?? 0 })
@@ -405,11 +401,13 @@ const teamStarterNames: Record<string, string[]> = {
   "Calgary Comets": ["Nazem Kadri", "Jonathan Huberdeau", "Blake Coleman", "Andrei Kuzmenko", "Yegor Sharangovich", "Connor Zary", "Martin Pospisil", "Adam Klapka", "Kevin Rooney", "Ryan Lomberg", "Rasmus Andersson", "MacKenzie Weegar", "Kevin Bahl", "Daniil Miromanov", "Jake Bean", "Oliver Kylington", "Dustin Wolf", "Dan Vladar", "Parker Bell", "Connor Murphy"],
   "Ottawa Outlaws": ["Tim Stützle", "Josh Norris", "Claude Giroux", "Brady Tkachuk", "Drake Batherson", "Parker Kelly", "Shane Pinto", "Ridly Greig", "Michael Amadio", "David Perron", "Jake Sanderson", "Thomas Chabot", "Artem Zub", "Nick Jensen", "Tyler Kleven", "Jacob Bernard-Docker", "Linus Ullmark", "Anton Forsberg", "Leevi Merilainen", "Zack Ostapchuk"],
   "Edmonton Ember": ["Connor McDavid", "Leon Draisaitl", "Ryan Nugent-Hopkins", "Zach Hyman", "Viktor Arvidsson", "Jeff Skinner", "Mattias Janmark", "Adam Henrique", "Corey Perry", "Connor Brown", "Evan Bouchard", "Mattias Ekholm", "Darnell Nurse", "Brett Kulak", "Ty Emberson", "John Klingberg", "Stuart Skinner", "Calvin Pickard", "Cody Ceci", "James Hamblin"],
+  "Team WisconsinVVB": ["Connor McDavid", "Leon Draisaitl", "Ryan Nugent-Hopkins", "Zach Hyman", "Viktor Arvidsson", "Jeff Skinner", "Mattias Janmark", "Adam Henrique", "Corey Perry", "Connor Brown", "Evan Bouchard", "Mattias Ekholm", "Darnell Nurse", "Brett Kulak", "Ty Emberson", "John Klingberg", "Stuart Skinner", "Calvin Pickard", "Cody Ceci", "James Hamblin"],
   "Detroit Motors": ["Dylan Larkin", "Alex DeBrincat", "Lucas Raymond", "Patrick Kane", "J.T. Compher", "Andrew Copp", "Rasmussen", "Jonatan Berggren", "Vladimir Tarasenko", "Marco Kasper", "Moritz Seider", "Ben Chiarot", "Jeff Petry", "Simon Edvinsson", "Justin Holl", "Shayne Gostisbehere", "Alex Lyon", "Cam Talbot", "Kasperi Kapanen", "Christian Fischer"],
   "Boston Blades": ["David Pastrnak", "Brad Marchand", "Charlie Coyle", "Morgan Geekie", "Pavel Zacha", "Elias Lindholm", "Trent Frederic", "Pius Suter", "Justin Brazeau", "Max Jones", "Charlie McAvoy", "Hampus Lindholm", "Brandon Carlo", "Mason Lohrei", "Andrew Peeke", "Jordan Oesterle", "Jeremy Swayman", "Joonas Korpisalo", "Mark Kastelic", "John Beecher"],
   "Colorado Summit": ["Nathan MacKinnon", "Mikko Rantanen", "Valeri Nichushkin", "Casey Mittelstadt", "Ross Colton", "Artturi Lehkonen", "Miles Wood", "Logan O'Connor", "Joel Kiviranta", "Ivan Ivan", "Cale Makar", "Devon Toews", "Josh Manson", "Samuel Girard", "Jacob MacDonald", "Sam Malinski", "Alexandar Georgiev", "Mackenzie Blackwood", "Calvin Jones", "John Ludvig"],
   "Florida Waves": ["Aleksander Barkov", "Matthew Tkachuk", "Sam Reinhart", "Carter Verhaeghe", "Evan Rodrigues", "Sam Bennett", "Anton Lundell", "Eetu Luostarinen", "Jesper Boqvist", "Mackie Samoskevich", "Aaron Ekblad", "Gustav Forsling", "Brandon Montour", "Niko Mikkola", "Dmitry Kulikov", "Uvis Balinskis", "Sergei Bobrovsky", "Spencer Knight", "Adam Boqvist", "Jaycob Megna"],
   "Minnesota Northstars": ["Kirill Kaprizov", "Joel Eriksson Ek", "Matt Boldy", "Marco Rossi", "Ryan Hartman", "Marcus Johansson", "Marcus Foligno", "Frederick Gaudreau", "Jakub Lauko", "Liam Ohgren", "Brock Faber", "Jonas Brodin", "Jacob Middleton", "Jared Spurgeon", "Declan Chisholm", "Zach Bogosian", "Filip Gustavsson", "Marc-Andre Fleury", "Daemon Hunt", "David Jiricek"],
+  "Daejon Love's Team": ["Kirill Kaprizov", "Joel Eriksson Ek", "Matt Boldy", "Marco Rossi", "Ryan Hartman", "Marcus Johansson", "Marcus Foligno", "Frederick Gaudreau", "Jakub Lauko", "Liam Ohgren", "Brock Faber", "Jonas Brodin", "Jacob Middleton", "Jared Spurgeon", "Declan Chisholm", "Zach Bogosian", "Filip Gustavsson", "Marc-Andre Fleury", "Daemon Hunt", "David Jiricek"],
   "Tampa Bay Bolts": ["Brayden Point", "Nikita Kucherov", "Steven Stamkos", "Jake Guentzel", "Brandon Hagel", "Anthony Cirelli", "Nicholas Paul", "Conor Sheary", "Nick Perbix", "Gage Goncalves", "Victor Hedman", "Ryan McDonagh", "Darren Raddysh", "Erik Cernak", "Emil Lilleberg", "Max Crozier", "Andrei Vasilevskiy", "Jonas Johansson", "Mitchell Chaffee", "Luke Glendening"],
 }
 

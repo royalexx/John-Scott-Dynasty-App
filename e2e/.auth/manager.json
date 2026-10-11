@@ -1,0 +1,15 @@
+{
+  "cookies": [
+    {
+      "name": "dynasty_manager",
+      "value": "%7B%22managerId%22%3A%22fd0fd582-2e06-495c-ad14-3030126ab0dc%22%2C%22teamId%22%3A%22f28472b0-098c-4342-a245-64c341e37444%22%2C%22handle%22%3A%22commissioner%22%2C%22teamName%22%3A%22Montreal%20Monarchs%22%7D",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1794347167.999997,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

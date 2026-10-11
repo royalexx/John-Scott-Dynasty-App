@@ -1,6 +1,8 @@
+"use client"
+
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { getPlayerPhoto, type PlayerPortraitSource } from "@/lib/hockey-data"
-import { useState } from "react"
 
 export function PlayerPortrait({
   player,
@@ -11,26 +13,42 @@ export function PlayerPortrait({
   name: string
   className?: string
 }) {
-  const [loaded, setLoaded] = useState(false)
+  const [hasError, setHasError] = useState(false)
   const source = player ?? { name }
   const photo = getPlayerPhoto(source)
-  const initials = name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+  const initials = name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+
+  if (!photo || hasError) {
+    return (
+      <span
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full bg-[#1b2842] text-[9px] font-black text-[#8ba0c7]",
+          className
+        )}
+      >
+        {initials}
+      </span>
+    )
+  }
 
   return (
-    <span className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b2842] text-[9px] font-black text-[#8ba0c7]", className)}>
-      {photo && (
-        <img
-          src={photo}
-          alt=""
-          className="size-full scale-[1.35] object-cover object-[50%_18%]"
-          onLoad={() => setLoaded(true)}
-          onError={(event) => {
-            setLoaded(false)
-            event.currentTarget.style.display = "none"
-          }}
-        />
+    <span
+      className={cn(
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b2842]",
+        className
       )}
-      {!loaded && <span aria-hidden="true">{initials}</span>}
+    >
+      <img
+        src={photo}
+        alt=""
+        className="size-full scale-[1.35] object-cover object-[50%_18%]"
+        onError={() => setHasError(true)}
+      />
     </span>
   )
 }

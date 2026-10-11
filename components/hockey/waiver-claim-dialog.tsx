@@ -66,6 +66,7 @@ export function WaiverClaimDialog({
   open,
   onOpenChange,
   onConfirm,
+  teamId,
 }: {
   player: MarketPlayer | null
   roster: Player[]
@@ -74,6 +75,7 @@ export function WaiverClaimDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: (claim: WaiverClaim) => void
+  teamId?: string
 }) {
   const [step, setStep] = useState<1 | 2>(1)
   const [bid, setBid] = useState(0)
@@ -101,6 +103,19 @@ export function WaiverClaimDialog({
 
   const confirm = () => {
     if (!dropped) return
+    if (teamId && player.nhlId && dropped.nhlId) {
+      void fetch("/api/waivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId, playerToAddId: player.nhlId, playerToDropId: dropped.nhlId, bidAmount: bid }),
+      }).then(async (response) => {
+        const data = await response.json() as { error?: string; claim?: WaiverClaim }
+        if (!response.ok || !data.claim) throw new Error(data.error ?? "Could not submit waiver claim")
+        onConfirm(data.claim)
+        close()
+      }).catch((error: unknown) => console.error("Could not submit waiver claim", error))
+      return
+    }
     onConfirm({
       id: `claim-${Date.now()}`,
       playerToAdd: player,

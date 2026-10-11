@@ -2,7 +2,7 @@ import { Calendar, ArrowLeftRight, Receipt, Newspaper, Settings } from "lucide-r
 
 type TeamAction = "schedule" | "settings" | "transactions" | "news" | "trade"
 export type { TeamAction }
-export function TeamHeader({ teamName, pendingClaims, onAction }: { teamName: string; pendingClaims: number; onAction: (action: TeamAction) => void }) {
+export function TeamHeader({ teamName, pendingClaims, faabBalance, onAction }: { teamName: string; pendingClaims: number; faabBalance?: number; onAction: (action: TeamAction) => void }) {
   const actions = [
     { label: "sched.", icon: Calendar, action: "schedule" as const },
     { label: "trade", icon: ArrowLeftRight, action: "trade" as const },
@@ -16,7 +16,7 @@ export function TeamHeader({ teamName, pendingClaims, onAction }: { teamName: st
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-black text-white">{teamName}</p>
           <p className="text-[10px] font-bold text-[#8ba0c7]">1-1 • 4th</p>
-          <p className="text-[10px] text-[#5e7090]">PF 356.06 • PA 318.40</p>
+          <p className="text-[10px] text-[#5e7090]">FAAB ${faabBalance ?? 100} • PF 356.06 • PA 318.40</p>
         </div>
         <button type="button" onClick={() => onAction("settings")} aria-label="Team settings" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><Settings className="size-5" /></button>
       </div>

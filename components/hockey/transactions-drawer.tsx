@@ -1,24 +1,34 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import type { ActivityItem, WaiverClaim } from "@/lib/hockey-data"
 
-export function TransactionsDrawer({ open, claims, activities, onOpenChange, onCancel }: {
+export function TransactionsDrawer({ open, claims, activities, onOpenChange, onCancel, teamId }: {
   open: boolean
   claims: WaiverClaim[]
   activities: ActivityItem[]
   onOpenChange: (open: boolean) => void
   onCancel: (claim: WaiverClaim) => void
+  teamId?: string
 }) {
   const [selected, setSelected] = useState<WaiverClaim | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [liveClaims, setLiveClaims] = useState<WaiverClaim[]>(claims)
+  useEffect(() => {
+    if (!teamId) return
+    fetch(`/api/waivers?teamId=${encodeURIComponent(teamId)}`, { cache: "no-store" })
+      .then(async (response) => response.ok ? (await response.json() as { claims?: WaiverClaim[] }).claims ?? [] : [])
+      .then(setLiveClaims)
+      .catch((error: unknown) => console.error("Could not load waiver claims", error))
+  }, [teamId])
+  const displayedClaims = teamId ? liveClaims : claims
   const close = () => { setSelected(null); setConfirming(false); onOpenChange(false) }
   if (!open) return null
   return <Sheet open={open} onOpenChange={(value) => !value && close()}><SheetContent side="bottom" className="mx-auto max-h-[82vh] max-w-[430px] overflow-y-auto rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
     <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#5e7090]" /><div className="flex items-center justify-between border-b border-[#172338] px-4 pb-3 pt-2"><h2 className="text-lg font-black">Transactions</h2><button type="button" onClick={close} aria-label="Close"><X className="size-5 text-[#8ba0c7]" /></button></div>
-    <div className="p-4"><h3 className="text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Waiver Claims</h3>{claims.length === 0 ? <p className="mt-2 rounded-lg border border-dashed border-[#263858] p-3 text-xs text-[#5e7090]">No pending waivers</p> : <div className="mt-2 space-y-2">{claims.map((claim, index) => <button key={claim.id} type="button" onClick={() => setSelected(claim)} className="flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left"><span className="text-lg font-black text-[#5e7090]">{index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-[#19ffff]">+ ADD {claim.playerToAdd.name}</p><p className="truncate text-xs font-bold text-[#ff2a85]">- DROP {claim.playerToDrop.name}</p></div><div className="text-right text-[9px] font-bold text-[#5e7090]">RUNS AT {claim.runTime}<br />BID ${claim.bidAmount}</div></button>)}</div>}<h3 className="mt-6 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Transaction History</h3><div className="mt-2 space-y-2">{activities.map((activity) => <div key={activity.id} className="rounded-lg border border-[#172338] bg-[#111c30] p-3"><p className="text-[10px] text-[#5e7090]">{activity.owner} · {activity.time}</p><p className="mt-1 text-xs font-bold text-white"><span className={activity.action === "ADD" ? "text-[#19ffff]" : "text-[#ff2a85]"}>{activity.action === "ADD" ? "+ ADD" : activity.action === "DROP" ? "- DROP" : "TRADE"}</span> {activity.player} <span className="text-[#5e7090]">({activity.detail})</span></p></div>)}</div></div>
-    {selected && <div className="border-t border-[#172338] bg-[#101829] p-4"><p className="text-sm font-black text-white">{confirming ? "Cancel Waiver - Please confirm you want to do this!" : `Manage waiver for ${selected.playerToAdd.name}`}</p>{confirming ? <div className="mt-3 flex gap-2"><button type="button" onClick={() => setConfirming(false)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">No</button><button type="button" onClick={() => { onCancel(selected); setSelected(null); setConfirming(false) }} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white">Yes</button></div> : <div className="mt-3 flex gap-2"><button type="button" onClick={() => setSelected(null)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">Cancel</button><button type="button" onClick={() => setConfirming(true)} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black uppercase text-white">Cancel Waiver</button></div>}</div>}
+    <div className="p-4"><h3 className="text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Waiver Claims</h3>{displayedClaims.length === 0 ? <p className="mt-2 rounded-lg border border-dashed border-[#263858] p-3 text-xs text-[#5e7090]">No pending waivers</p> : <div className="mt-2 space-y-2">{displayedClaims.map((claim, index) => <button key={claim.id} type="button" onClick={() => setSelected(claim)} className="flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left"><span className="text-lg font-black text-[#5e7090]">{index + 1}</span><div className="min-w-0 flex-1"><p className="truncate text-xs font-bold text-[#19ffff]">+ ADD {claim.playerToAdd.name}</p><p className="truncate text-xs font-bold text-[#ff2a85]">- DROP {claim.playerToDrop?.name ?? "No player"}</p></div><div className="text-right text-[9px] font-bold text-[#5e7090]">BID ${claim.bidAmount}</div></button>)}</div>}<h3 className="mt-6 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Transaction History</h3><div className="mt-2 space-y-2">{activities.map((activity) => <div key={activity.id} className="rounded-lg border border-[#172338] bg-[#111c30] p-3"><p className="text-[10px] text-[#5e7090]">{activity.owner} · {activity.time}</p><p className="mt-1 text-xs font-bold text-white"><span className={activity.action === "ADD" ? "text-[#19ffff]" : "text-[#ff2a85]"}>{activity.action === "ADD" ? "+ ADD" : activity.action === "DROP" ? "- DROP" : "TRADE"}</span> {activity.player} <span className="text-[#5e7090]">({activity.detail})</span></p></div>)}</div></div>
+    {selected && <div className="border-t border-[#172338] bg-[#101829] p-4"><p className="text-sm font-black text-white">{confirming ? "Cancel Waiver - Please confirm you want to do this!" : `Manage waiver for ${selected.playerToAdd.name}`}</p>{confirming ? <div className="mt-3 flex gap-2"><button type="button" onClick={() => setConfirming(false)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">No</button><button type="button" onClick={() => { if (teamId) void fetch("/api/waivers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId, claimId: selected.id }) }).then((response) => { if (!response.ok) throw new Error("Could not cancel waiver"); setLiveClaims((current) => current.filter((claim) => claim.id !== selected.id)); onCancel(selected) }).catch((error: unknown) => console.error("Could not cancel waiver", error)); else onCancel(selected); setSelected(null); setConfirming(false) }} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white">Yes</button></div> : <div className="mt-3 flex gap-2"><button type="button" onClick={() => setSelected(null)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">Cancel</button><button type="button" onClick={() => setConfirming(true)} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black uppercase text-white">Cancel Waiver</button></div>}</div>}
   </SheetContent></Sheet>
 }

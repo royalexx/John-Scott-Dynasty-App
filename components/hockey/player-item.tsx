@@ -71,7 +71,7 @@ export const PlayerItem = React.memo(function PlayerItem({
       </div>
 
       <button type="button" onClick={onSelect} className="min-h-11 min-w-11 shrink-0 cursor-pointer pl-2 text-right">
-        <p className="text-xs font-black text-white tabular-nums leading-tight">{player.schedule?.weekFantasyPoints.toFixed(1) ?? "—"}</p>
+        <p className="text-xs font-black text-white tabular-nums leading-tight">{player.schedule ? (player.schedule.weekGamesPlayed > 0 ? player.schedule.weekFantasyPoints : player.projPts).toFixed(1) : "—"}</p>
         <p className="text-[10px] font-semibold text-[#5e7090] tabular-nums leading-tight">{player.schedule ? `${player.schedule.weekGamesPlayed} GP` : "week"}</p>
       </button>
     </div>

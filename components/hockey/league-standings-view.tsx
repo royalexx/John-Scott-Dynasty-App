@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { Flame } from "lucide-react"
-import { activities, standings, weekMatchups } from "@/lib/hockey-data"
-export function LeagueStandingsView({ week, teamName }: { week: number; teamName: string }) {
+import { standings, weekMatchups, type ActivityItem } from "@/lib/hockey-data"
+export function LeagueStandingsView({ week, teamName, activities = [] }: { week: number; teamName: string; activities?: ActivityItem[] }) {
   return (
     <div className="flex flex-col pb-6">
       <div className="border-b border-[#111929] px-3.5 py-3">
@@ -69,9 +69,9 @@ export function LeagueStandingsView({ week, teamName }: { week: number; teamName
       <div className="flex flex-col gap-2 px-3.5">
         {activities.map((act) => (
           <div key={act.id} className="rounded-lg border border-[#172338] bg-[#0d1424] px-3 py-2.5">
-            <p className="text-[10px] font-bold text-white">{act.owner}<span className="ml-2 font-normal text-[#5e7090]">FREE AGENCY · {act.time}</span></p>
+            <p className="text-[10px] font-bold text-white">{act.owner}<span className="ml-2 font-normal text-[#5e7090]">{act.action === "TRADE" ? "TRADE" : "FREE AGENCY"} · {act.time}</span></p>
             <p className="mt-1 text-xs text-white">
-              <span className={cn("mr-2 font-black", act.action === "ADD" ? "text-[#19ffff]" : "text-[#ff2a85]")}>{act.action === "ADD" ? "+ ADD" : "- DROP"}</span>
+              <span className={cn("mr-2 font-black", act.action === "ADD" ? "text-[#19ffff]" : act.action === "TRADE" ? "text-[#aeb4ff]" : "text-[#ff2a85]")}>{act.action === "ADD" ? "+ ADD" : act.action === "TRADE" ? "↔ TRADE" : "- DROP"}</span>
               {act.player} <span className="text-[#5e7090]">({act.detail})</span>
             </p>
           </div>

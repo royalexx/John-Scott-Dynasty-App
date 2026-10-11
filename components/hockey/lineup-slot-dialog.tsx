@@ -84,6 +84,7 @@ export function LineupSlotDialog({
   open,
   onOpenChange,
   onMove,
+  teamId,
 }: {
   player: Player | null
   emptySlot?: StartingSlot | null
@@ -91,6 +92,7 @@ export function LineupSlotDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   onMove: (playerId: string, destSlot: Player["slot"], targetPlayerId?: string) => void
+  teamId?: string
 }) {
   if (!open || (!player && !emptySlot)) return null
   const targets = eligibleTargets(player, roster, emptySlot ?? undefined)
@@ -119,7 +121,24 @@ export function LineupSlotDialog({
         <div className="max-h-[45vh] overflow-y-auto px-3 pb-5">
           <p className="px-1 py-2 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Eligible swap targets</p>
           {targets.map((option, index) => (
-            <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" onClick={() => { if (player) onMove(player.id, option.slot, option.target?.id); else if (option.target) onMove(option.target.id, option.slot); onOpenChange(false) }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
+            <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" onClick={() => {
+              const movedPlayer = player ?? option.target
+              if (!movedPlayer) return
+              if (teamId && movedPlayer.nhlId) {
+                void fetch("/api/roster/move", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ teamId, playerId: movedPlayer.nhlId, targetSlot: option.slot }),
+                }).then((response) => {
+                  if (!response.ok) throw new Error("Could not update roster placement")
+                  onMove(movedPlayer.id, option.slot, option.target?.id)
+                  onOpenChange(false)
+                }).catch((error: unknown) => console.error("Could not update roster placement", error))
+                return
+              }
+              onMove(movedPlayer.id, option.slot, option.target?.id)
+              onOpenChange(false)
+            }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
               <span className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
               {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-[10px] text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
             </button>

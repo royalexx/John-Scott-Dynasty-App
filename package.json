@@ -5,18 +5,22 @@
   "packageManager": "pnpm@12.3.4",
   "scripts": {
     "sync-players": "node scripts/sync-players.mjs",
-    "prebuild": "pnpm run sync-players",
+    "prisma:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
+    "prebuild": "node scripts/sync-players.mjs",
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
+    "@ducanh2912/next-pwa": "^10.2.9",
+    "@prisma/client": "^6.19.3",
     "@vercel/analytics": "1.6.1",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "@ducanh2912/next-pwa": "^10.2.9",
     "lucide-react": "^1.16.0",
     "next": "16.3.3",
     "react": "^19",
@@ -25,13 +29,19 @@
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "shadcn": "^4.11.0",
     "postcss": "^8.5",
+    "prisma": "^6.19.3",
+    "shadcn": "^4.11.0",
     "tailwindcss": "^4.3.3",
+    "ts-node": "10.9.2",
     "typescript": "5.7.3"
+  },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
   }
 }

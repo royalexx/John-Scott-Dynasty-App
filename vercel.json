@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync",
+      "schedule": "*/2 0-5,23 * * *"
+    },
+    {
+      "path": "/api/cron/waivers",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

@@ -114,9 +114,12 @@ function PlayerSide({
 }
 
 function Score({ player, align }: { player: MatchupPlayer; align: "left" | "right" }) {
+  const displayedPoints = player.schedule && player.schedule.weekGamesPlayed > 0
+    ? player.schedule.weekFantasyPoints
+    : player.schedule?.weekProjectedFantasyPoints
   return (
     <div className={cn("w-full shrink-0", align === "left" ? "pr-2 text-right" : "pl-2 text-left")}>
-      <p className="text-sm font-bold tabular-nums text-white">{player.schedule ? player.schedule.weekFantasyPoints.toFixed(1) : "—"}</p>
+      <p className="text-sm font-bold tabular-nums text-white">{displayedPoints != null ? displayedPoints.toFixed(1) : "—"}</p>
       <p className="text-[10px] tabular-nums text-[#5e7090]">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
     </div>
   )
@@ -331,8 +334,8 @@ export function MatchupPanel({
   const liveSummary = {
     ...summary,
     homeTeam: displaySummary.homeTeam,
-    homeScore: rows.reduce((sum, row) => sum + (row.home.schedule?.weekFantasyPoints ?? row.home.todayPts ?? 0), 0),
-    awayScore: rows.reduce((sum, row) => sum + (row.away.schedule?.weekFantasyPoints ?? row.away.todayPts ?? 0), 0),
+    homeScore: rows.reduce((sum, row) => sum + (row.home.schedule && row.home.schedule.weekGamesPlayed > 0 ? row.home.schedule.weekFantasyPoints : row.home.schedule?.weekProjectedFantasyPoints ?? row.home.todayPts ?? 0), 0),
+    awayScore: rows.reduce((sum, row) => sum + (row.away.schedule && row.away.schedule.weekGamesPlayed > 0 ? row.away.schedule.weekFantasyPoints : row.away.schedule?.weekProjectedFantasyPoints ?? row.away.todayPts ?? 0), 0),
   }
   useEffect(() => {
     onLiveSummary?.({ ...liveSummary, projectedHome, projectedAway })
