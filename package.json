@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "sync-players": "node scripts/sync-players.mjs",
-    "prisma:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
+    "prisma:seed": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\"}' ts-node prisma/seed.ts",
     "prebuild": "node scripts/sync-players.mjs",
     "postinstall": "prisma generate",
     "dev": "next dev",
@@ -42,6 +42,6 @@
     "typescript": "5.7.3"
   },
   "prisma": {
-    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+    "seed": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\"}' ts-node prisma/seed.ts"
   }
 }
