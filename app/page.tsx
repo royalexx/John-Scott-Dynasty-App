@@ -6,7 +6,7 @@ import { getCurrentFantasyWeek, getFantasyWeekDates } from "@/lib/season-calenda
 import { getPlayerSchedule, type NhlScheduleGame, type Player, type PlayerGameLog } from "@/lib/hockey-data"
 import { prisma } from "@/lib/prisma"
 import { formatActivity } from "@/lib/activity-format"
-import { cookies } from "next/headers"
+import { getManagerSession } from "@/lib/auth-session"
 import { PinGate, type PinGateTeam } from "@/components/auth/pin-gate"
 import DashboardClient from "./dashboard-client"
 
@@ -29,20 +29,10 @@ export default async function Page() {
       managerId: candidate.manager.id,
       managerName: candidate.manager.name,
       managerHandle: candidate.manager.handle,
+      isCommissioner: candidate.manager.isCommissioner,
       avatarUrl: candidate.manager.avatarUrl,
     }))
-    const sessionValue = (await cookies()).get("dynasty_manager")?.value
-    let session: { managerId: string; teamId: string } | null = null
-    if (sessionValue) {
-      try {
-        const parsed = JSON.parse(sessionValue) as { managerId?: unknown; teamId?: unknown }
-        if (typeof parsed.managerId === "string" && typeof parsed.teamId === "string") {
-          session = { managerId: parsed.managerId, teamId: parsed.teamId }
-        }
-      } catch {
-        session = null
-      }
-    }
+    const session = await getManagerSession()
     const team = session
       ? league.teams.find((candidate) => candidate.id === session?.teamId && candidate.managerId === session?.managerId)
       : undefined
@@ -158,6 +148,7 @@ export default async function Page() {
           leagueId: league.id,
           teamId: team.id,
           managerHandle: team.manager.handle,
+          isCommissioner: session?.isCommissioner ?? false,
           teamName: team.name,
           teamLogo: team.logoUrl ?? undefined,
           userFaab: team.faabBalance,
@@ -172,8 +163,20 @@ export default async function Page() {
             pointsFor: row.pointsFor,
             pointsAgainst: row.pointsAgainst,
             faabRemaining: row.team.faabBalance,
+            streak: row.streak,
           })) ?? initialDashboardData.standings,
           activities: activityRecords.map(formatActivity),
+          league: {
+            rosterPositions: (league.rosterPositions as Record<string, number> | null) ?? undefined,
+            scoringSettings: (league.scoringSettings as Record<string, unknown>) ?? undefined,
+            waiverSettings: (league.waiverSettings as Record<string, unknown> | null) ?? undefined,
+            tradeSettings: (league.tradeSettings as Record<string, unknown> | null) ?? undefined,
+            draftSettings: (league.draftSettings as Record<string, unknown> | null) ?? undefined,
+            taxiSlots: league.taxiSlots,
+            taxiMaxGames: league.taxiMaxGames,
+            irSlots: league.irSlots,
+            currentWeek: league.currentWeek,
+          },
           draftPicks: pickInventory.owned.map((pick) => `${pick.season} ${getOrdinal(pick.round)} Round`),
           draftPickAssets: pickInventory.owned.map((pick) => ({
             id: pick.id,

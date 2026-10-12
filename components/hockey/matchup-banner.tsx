@@ -52,9 +52,9 @@ export function MatchupBanner({
             {summary.homeOwner} · {summary.homeRecord}
           </p>
           <p className={`text-2xl font-bold tabular-nums ${homeWinning ? "text-[#aeb4ff]" : "text-zinc-300"}`}>
-            {summary.homeScore.toFixed(1)}
+            {summary.homeScore.toFixed(2)}
           </p>
-          <p className="text-[11px] tabular-nums text-zinc-500">proj {projectedHome.toFixed(1)}</p>
+          <p className="text-[11px] leading-tight text-zinc-500"><span className="block">proj</span><span className="block tabular-nums">{projectedHome.toFixed(1)}</span></p>
         </div>
         <span className="shrink-0 text-sm font-medium text-zinc-500">vs</span>
         <div className="min-w-0 flex-1 text-right">
@@ -69,9 +69,9 @@ export function MatchupBanner({
             {summary.awayOwner} · {summary.awayRecord}
           </p>
           <p className={`text-2xl font-bold tabular-nums ${!homeWinning ? "text-[#aeb4ff]" : "text-zinc-300"}`}>
-            {summary.awayScore.toFixed(1)}
+            {summary.awayScore.toFixed(2)}
           </p>
-          <p className="text-[11px] tabular-nums text-zinc-500">proj {projectedAway.toFixed(1)}</p>
+          <p className="text-[11px] leading-tight text-zinc-500"><span className="block">proj</span><span className="block tabular-nums">{projectedAway.toFixed(1)}</span></p>
         </div>
       </div>
 

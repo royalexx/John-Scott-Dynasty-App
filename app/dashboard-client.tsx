@@ -28,7 +28,7 @@ import {
   draftPicks as fallbackDraftPicks, 
   activities as fallbackActivities,
   weekMatchups,
-  teamSchedule,
+  getMatchupsForWeek,
   getTeamRoster,
   calculatePlayerFPTS,
   calculateSkaterFPTS,
@@ -91,15 +91,15 @@ function preloadPortraits(urls: string[]) {
   }
 }
 
-const startingSlots: Array<{ slot: "C" | "W" | "F" | "D" | "G"; capacity: number }> = [
-  { slot: "C", capacity: 3 },
-  { slot: "W", capacity: 6 },
-  { slot: "F", capacity: 3 },
-  { slot: "D", capacity: 6 },
-  { slot: "G", capacity: 2 },
-]
-
 export default function SleeperDynastyApp({ initialData }: { initialData: DashboardInitialData }) {
+  const configuredSlots = initialData.league?.rosterPositions ?? { C: 3, W: 6, F: 3, D: 6, G: 2 }
+  const startingSlots: Array<{ slot: "C" | "W" | "F" | "D" | "G"; capacity: number }> = [
+    { slot: "C", capacity: configuredSlots.C ?? 3 },
+    { slot: "W", capacity: configuredSlots.W ?? 6 },
+    { slot: "F", capacity: configuredSlots.F ?? 3 },
+    { slot: "D", capacity: configuredSlots.D ?? 6 },
+    { slot: "G", capacity: configuredSlots.G ?? 2 },
+  ]
   const initialRoster = initialData.roster.length > 0 ? initialData.roster : fallbackRoster
   const standings = initialData.standings.length > 0 ? initialData.standings : fallbackStandings
   const draftPicks = initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
@@ -159,8 +159,8 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           const schedule = getPlayerSchedule(player.team, weekGames, playerLogs, player.position, player.currentSeasonStats, player.projPts, week)
           return {
             ...player,
-            schedule: schedule ?? player.schedule,
-            todayPts: schedule?.todayFantasyPoints ?? player.todayPts ?? null,
+            schedule,
+            todayPts: schedule?.todayFantasyPoints ?? null,
           }
         }))
         setAllDynastyPlayers((current) => current.map((player) => ({
@@ -236,7 +236,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
       })
       .catch((error: unknown) => console.error("Error loading market players:", error))
     return () => { isMounted = false }
-  }, [week])
+  }, [])
   const [selectedMatchupId, setSelectedMatchupId] = useState(weekMatchups[0].id)
   const [liveMatchups, setLiveMatchups] = useState<Record<string, LiveMatchupSummary>>({})
   const handleLiveSummary = useCallback((summary: LiveMatchupSummary) => {
@@ -249,7 +249,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [chatOpen, setChatOpen] = useState(false)
   const [chatPreview, setChatPreview] = useState("No messages yet")
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
-  const [teamDrawer, setTeamDrawer] = useState<"schedule" | "settings" | "transactions" | "news" | null>(null)
+  const [teamDrawer, setTeamDrawer] = useState<"schedule" | "team-settings" | "settings" | "transactions" | "news" | null>(null)
   const [playerNicknames, setPlayerNicknames] = useState<Record<string, string>>({})
   const [tradeMode, setTradeMode] = useState(false)
   const [teamName, setTeamName] = useState(initialData.teamName)
@@ -258,6 +258,10 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [userFaab, setUserFaab] = useState(initialData.userFaab ?? fallbackFaabBudget)
   const [claimPlayer, setClaimPlayer] = useState<MarketPlayer | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  useEffect(() => {
+    const userMatchup = getMatchupsForWeek(week).find((matchup) => matchup.homeTeam === teamName || matchup.awayTeam === teamName)
+    if (userMatchup) setSelectedMatchupId(userMatchup.id)
+  }, [teamName, week])
   const [tradeBlock, setTradeBlock] = useState<TradeBlockEntry[]>(league.tradeBlock)
   const [tradeBuilderOpen, setTradeBuilderOpen] = useState(false)
   const [activeTradeFilter, setActiveTradeFilter] = useState<"ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED">("ALL")
@@ -266,6 +270,19 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [leagueTeams, setLeagueTeams] = useState<Array<{ id: string; name: string }>>([])
   const [counterTrade, setCounterTrade] = useState<{ offer: LeagueTradeOffer; partnerId: string; offering: string[]; receiving: string[] } | null>(null)
   const [prefilledTrade, setPrefilledTrade] = useState<{ partnerId: string; offering: string[]; receiving: string[] } | null>(null)
+  const allLeagueRosterIds = useMemo(() => {
+    const ids = new Set<number | string>()
+    const addPlayers = (players: Player[]) => {
+      players.forEach((player) => {
+        if (player.nhlId) ids.add(Number(player.nhlId))
+        ids.add(player.id)
+        ids.add(player.name)
+      })
+    }
+    addPlayers(roster)
+    leagueTeams.forEach((team) => addPlayers(getTeamRoster(team.name, roster, allDynastyPlayers)))
+    return ids
+  }, [allDynastyPlayers, leagueTeams, roster])
 
   const loadActivities = useCallback(async () => {
     if (!initialData.leagueId) return
@@ -414,21 +431,6 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   function submitClaim(claim: WaiverClaim) {
     setPendingClaims((current) => [...current, claim])
     setUserFaab((current) => current - claim.bidAmount)
-    if (initialData.teamId && claim.playerToAdd.nhlId) {
-      void fetch("/api/waivers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teamId: initialData.teamId,
-          playerToAddId: claim.playerToAdd.nhlId,
-          playerToDropId: claim.playerToDrop?.nhlId ?? null,
-          bidAmount: claim.bidAmount,
-        }),
-      }).then((response) => {
-        if (!response.ok) throw new Error(`Waiver submission failed with status ${response.status}`)
-        return loadActivities()
-      }).catch((error: unknown) => console.error("Waiver submission failed to persist:", error))
-    }
     setToast(`${claim.playerToAdd.name} has been added to your waivers`)
     window.setTimeout(() => setToast(null), 3000)
   }
@@ -617,7 +619,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-[#22314d] bg-[#162033] text-xs">🏒</div>
             <h1 className="truncate text-sm font-black uppercase tracking-wider text-white">JOHN SCOTT DYNASTY</h1>
           </div>
-          <button type="button" className="p-1 text-zinc-400 hover:text-white"><Settings className="size-5" /></button>
+          <button type="button" onClick={() => setTeamDrawer("settings")} aria-label="League & Team Settings" className="p-1 text-zinc-400 transition hover:text-white"><Settings className="size-5" /></button>
         </header>
 
         {/* 4 Core Tabs */}
@@ -758,8 +760,15 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             </div>
           )}
 
-          {activeTab === "PLAYERS" && <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={handleAcceptTrade} onDeclineTrade={handleDeclineTrade} onCounterTrade={handleCounterTrade} onInitiateTrade={handleInitiateTradeWithPlayer} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={() => { setCounterTrade(null); setPrefilledTrade(null); setTradeBuilderOpen(true) }} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />}
+          {activeTab === "PLAYERS" && <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={handleAcceptTrade} onDeclineTrade={handleDeclineTrade} onCounterTrade={handleCounterTrade} onInitiateTrade={handleInitiateTradeWithPlayer} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={() => { setCounterTrade(null); setPrefilledTrade(null); setTradeBuilderOpen(true) }} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />}
           {activeTab === "LEAGUE" && <LeagueFeed week={week} teamName={teamName} teamLogo={teamLogo} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} matchups={weekMatchups} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />}
+        </div>
+
+        <div className="absolute inset-x-3 bottom-2 z-20">
+          <button type="button" onClick={() => setChatOpen(true)} className="flex w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
+            <MessageSquare className="size-3.5 shrink-0 text-[#19ffff]" />
+            <span className="truncate text-[11px] text-[#8ba0c7]"><b className="text-white">Chat:</b> {chatPreview}</span>
+          </button>
         </div>
 
         <LeagueChatDrawer
@@ -788,6 +797,8 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           setTeamName={setTeamName}
           teamLogo={teamLogo}
           setTeamLogo={setTeamLogo}
+          managerHandle={initialData.managerHandle}
+          isCommissioner={initialData.isCommissioner}
           pendingClaims={pendingClaims}
           teamId={initialData.teamId}
           activities={activities}

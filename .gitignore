@@ -5,6 +5,9 @@ __v0_jsx-dev-runtime.ts
 .snowflake/
 .v0-trash/
 .vercel/
+playwright-report/
+test-results/
+e2e/.auth/
 
 # Environment variables
 .env*.local

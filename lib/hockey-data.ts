@@ -307,7 +307,7 @@ export interface MarketPlayer {
 export interface WaiverClaim {
   id: string
   playerToAdd: MarketPlayer
-  playerToDrop: Player
+  playerToDrop: Player | null
   bidAmount: number
   status: "pending" | "processed"
   runTime: string
@@ -518,29 +518,32 @@ export type LiveMatchupSummary = MatchupSummary & {
   projectedAway: number
 }
 
-export const weekMatchups: MatchupSummary[] = [
-  { id: "m1", homeTeam: "Montreal Monarchs", homeOwner: "You", homeRecord: "2-0", homeScore: 185.28, awayTeam: "Toronto Titans", awayOwner: "Jordan", awayRecord: "1-1", awayScore: 179.94, status: "In Progress", totalMinutes: 180 },
-  { id: "m2", homeTeam: "Vancouver Voyagers", homeOwner: "Alex R.", homeRecord: "2-0", homeScore: 143.04, awayTeam: "Calgary Comets", awayOwner: "Casey", awayRecord: "0-2", awayScore: 83.8, status: "In Progress", totalMinutes: 180 },
-  { id: "m3", homeTeam: "Ottawa Outlaws", homeOwner: "Priya", homeRecord: "1-1", homeScore: 173.54, awayTeam: "Edmonton Ember", awayOwner: "Sam", awayRecord: "0-2", awayScore: 136.04, status: "Final", totalMinutes: 180 },
-  { id: "m4", homeTeam: "Detroit Motors", homeOwner: "Riley", homeRecord: "1-1", homeScore: 156.22, awayTeam: "Boston Blades", awayOwner: "Taylor", awayRecord: "1-1", awayScore: 151.87, status: "In Progress", totalMinutes: 180 },
-  { id: "m5", homeTeam: "Colorado Summit", homeOwner: "Morgan", homeRecord: "2-0", homeScore: 192.4, awayTeam: "Florida Waves", awayOwner: "Jamie", awayRecord: "1-1", awayScore: 180.14, status: "In Progress", totalMinutes: 180 },
-  { id: "m6", homeTeam: "Minnesota Northstars", homeOwner: "Chris", homeRecord: "0-2", homeScore: 129.76, awayTeam: "Tampa Bay Bolts", awayOwner: "Drew", awayRecord: "2-0", awayScore: 167.32, status: "Final", totalMinutes: 180 },
-]
+const canonicalTeams = [
+  { team: "Montreal Monarchs", owner: "@commissioner" },
+  { team: "Toronto Titans", owner: "@jordan" },
+  { team: "Vancouver Voyagers", owner: "@alexr" },
+  { team: "Colorado Summit", owner: "@morgan" },
+  { team: "Florida Waves", owner: "@jamie" },
+  { team: "Detroit Motors", owner: "@riley" },
+  { team: "Boston Blades", owner: "@taylor" },
+  { team: "Ottawa Outlaws", owner: "@priya" },
+  { team: "Tampa Bay Bolts", owner: "@drew" },
+  { team: "Calgary Comets", owner: "@casey" },
+  { team: "Team WisconsinVVB", owner: "@wisconsin" },
+  { team: "Daejon Love's Team", owner: "@melchior" },
+] as const
 
-/** Returns the league schedule for a scoring week using a round-robin rotation. */
-export function getWeekMatchups(week: number): MatchupSummary[] {
-  const safeWeek = Math.max(1, Math.floor(week))
-  if (safeWeek === 1) return weekMatchups
-
-  const teams = weekMatchups.flatMap((matchup) => [
-    { team: matchup.homeTeam, owner: matchup.homeOwner },
-    { team: matchup.awayTeam, owner: matchup.awayOwner },
-  ])
-  const round = (safeWeek - 1) % (teams.length - 1)
-  const rotated = [teams[0], ...teams.slice(1).map((_, index) => teams[1 + ((index + round) % (teams.length - 1))])]
-  return Array.from({ length: teams.length / 2 }, (_, index) => {
-    const home = rotated[index]
-    const away = rotated[teams.length - 1 - index]
+/** Returns the six canonical league matchups for a regular-season week. */
+export function getMatchupsForWeek(week: number): MatchupSummary[] {
+  const safeWeek = Math.min(24, Math.max(1, Math.floor(week)))
+  const round = (safeWeek - 1) % 11
+  const secondHalf = safeWeek > 12
+  const rotated = [canonicalTeams[0], ...canonicalTeams.slice(1).map((_, index) => canonicalTeams[1 + ((index + round) % 11)])]
+  return Array.from({ length: 6 }, (_, index) => {
+    const first = rotated[index]
+    const second = rotated[11 - index]
+    const home = secondHalf ? second : first
+    const away = secondHalf ? first : second
     return {
       id: `w${safeWeek}-m${index + 1}`,
       homeTeam: home.team,
@@ -557,6 +560,9 @@ export function getWeekMatchups(week: number): MatchupSummary[] {
   })
 }
 
+export const weekMatchups = getMatchupsForWeek(1)
+export const getWeekMatchups = getMatchupsForWeek
+
 export interface ScheduleRow {
   week: number
   opponent: string
@@ -565,13 +571,24 @@ export interface ScheduleRow {
   result: "WIN" | "LOSS" | "SCHEDULED"
 }
 
-export const teamSchedule: ScheduleRow[] = Array.from({ length: 14 }, (_, index) => ({
-  week: index + 1,
-  opponent: weekMatchups[index % weekMatchups.length].awayTeam,
-  opponentOwner: weekMatchups[index % weekMatchups.length].awayOwner,
-  score: index < 3 ? `${185 - index * 9}.28 - ${179 - index * 11}.94` : "—",
-  result: index < 3 ? (index === 1 ? "LOSS" : "WIN") : "SCHEDULED",
-}))
+export function getScheduleForTeam(teamName: string): ScheduleRow[] {
+  return Array.from({ length: 24 }, (_, index) => {
+    const matchup = getMatchupsForWeek(index + 1).find((candidate) => candidate.homeTeam === teamName || candidate.awayTeam === teamName)
+    if (!matchup) {
+      return { week: index + 1, opponent: "—", opponentOwner: "—", score: "—", result: "SCHEDULED" }
+    }
+    const home = matchup.homeTeam === teamName
+    return {
+      week: index + 1,
+      opponent: home ? matchup.awayTeam : matchup.homeTeam,
+      opponentOwner: home ? matchup.awayOwner : matchup.homeOwner,
+      score: "—",
+      result: "SCHEDULED",
+    }
+  })
+}
+
+export const teamSchedule = getScheduleForTeam("Montreal Monarchs")
 
 export interface MatchupPlayer {
   name: string
@@ -618,13 +635,14 @@ export interface StandingRow {
   pointsFor: number
   pointsAgainst: number
   faabRemaining: number
+  streak?: string | null
 }
 
 export const standings: StandingRow[] = [
-  { rank: 1, delta: null, team: "Montreal Monarchs", owner: "You", wins: 2, losses: 0, pointsFor: 448.24, pointsAgainst: 314.96, faabRemaining: 100 },
-  { rank: 2, delta: "+3", team: "Team WisconsinVVB", owner: "@WisconsinVVB", wins: 2, losses: 0, pointsFor: 368.06, pointsAgainst: 270.3, faabRemaining: 75 },
-  { rank: 3, delta: "-1", team: "Daejon Love's Team", owner: "@Melchior1", wins: 2, losses: 0, pointsFor: 360.16, pointsAgainst: 217.96, faabRemaining: 100 },
-  { rank: 4, delta: "+2", team: "Toronto Titans", owner: "@danick504", wins: 1, losses: 1, pointsFor: 356.06, pointsAgainst: 318.4, faabRemaining: 100 },
+  { rank: 1, delta: null, team: "Montreal Monarchs", owner: "@commissioner", wins: 2, losses: 0, pointsFor: 448.24, pointsAgainst: 314.96, faabRemaining: 100 },
+  { rank: 2, delta: "+3", team: "Team WisconsinVVB", owner: "@wisconsin", wins: 2, losses: 0, pointsFor: 368.06, pointsAgainst: 270.3, faabRemaining: 75 },
+  { rank: 3, delta: "-1", team: "Daejon Love's Team", owner: "@melchior", wins: 2, losses: 0, pointsFor: 360.16, pointsAgainst: 217.96, faabRemaining: 100 },
+  { rank: 4, delta: "+2", team: "Toronto Titans", owner: "@jordan", wins: 1, losses: 1, pointsFor: 356.06, pointsAgainst: 318.4, faabRemaining: 100 },
   { rank: 5, delta: "+1", team: "Vancouver Voyagers", owner: "@alexr", wins: 1, losses: 1, pointsFor: 344.82, pointsAgainst: 331.44, faabRemaining: 88 },
   { rank: 6, delta: "-2", team: "Colorado Summit", owner: "@morgan", wins: 1, losses: 1, pointsFor: 338.21, pointsAgainst: 329.18, faabRemaining: 62 },
   { rank: 7, delta: null, team: "Florida Waves", owner: "@jamie", wins: 1, losses: 1, pointsFor: 326.7, pointsAgainst: 342.11, faabRemaining: 91 },

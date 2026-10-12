@@ -68,6 +68,7 @@ model User {
   name             String
   handle           String          @unique
   pin              String          @default("1234")
+  isCommissioner     Boolean         @default(false)
   avatarUrl        String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -87,6 +88,10 @@ model League {
   irSlots         Int
   taxiMaxGames    Int           @default(160)
   scoringSettings Json
+  rosterPositions Json?
+  waiverSettings  Json?
+  tradeSettings   Json?
+  draftSettings   Json?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   teams           Team[]

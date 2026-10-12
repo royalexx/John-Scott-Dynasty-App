@@ -113,14 +113,25 @@ function PlayerSide({
   )
 }
 
+export function getActualPoints(player: Player | MatchupPlayer | null): string {
+  if (!player || !player.schedule) return "—"
+  if (player.schedule.weekGamesPlayed === 0) return "0.0"
+  return (player.schedule.weekFantasyPoints ?? 0).toFixed(1)
+}
+
+export function getProjectedPoints(player: Player | MatchupPlayer | null): string {
+  if (!player || !player.schedule) return "—"
+  return (player.schedule.weekProjectedFantasyPoints ?? player.projPts ?? 0).toFixed(1)
+}
+
 function Score({ player, align }: { player: MatchupPlayer; align: "left" | "right" }) {
-  const displayedPoints = player.schedule && player.schedule.weekGamesPlayed > 0
-    ? player.schedule.weekFantasyPoints
-    : player.schedule?.weekProjectedFantasyPoints
   return (
     <div className={cn("w-full shrink-0", align === "left" ? "pr-2 text-right" : "pl-2 text-left")}>
-      <p className="text-sm font-bold tabular-nums text-white">{displayedPoints != null ? displayedPoints.toFixed(1) : "—"}</p>
-      <p className="text-[10px] tabular-nums text-[#5e7090]">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
+      <p className="text-sm font-bold tabular-nums text-white">{getActualPoints(player)}</p>
+      <p className="text-[10px] leading-tight text-[#5e7090]">
+        <span className="block">proj</span>
+        <span className="block tabular-nums">{getProjectedPoints(player)}</span>
+      </p>
     </div>
   )
 }
@@ -189,8 +200,8 @@ function MatchupCard({ summary, onClick }: { summary: (typeof weekMatchups)[numb
         </div>
       </div>
       <div className="mt-3 flex items-end justify-between">
-        <div><p className="text-2xl font-black tabular-nums text-white">{summary.homeScore.toFixed(2)}</p><p className="text-[10px] text-[#5e7090]">proj {projectedHome.toFixed(2)}</p></div>
-        <div className="text-right"><p className="text-2xl font-black tabular-nums text-white">{summary.awayScore.toFixed(2)}</p><p className="text-[10px] text-[#5e7090]">proj {projectedAway.toFixed(2)}</p></div>
+        <div><p className="text-2xl font-black tabular-nums text-white">{summary.homeScore.toFixed(2)}</p><p className="text-[10px] leading-tight text-[#5e7090]"><span className="block">proj</span><span className="block tabular-nums">{projectedHome.toFixed(2)}</span></p></div>
+        <div className="text-right"><p className="text-2xl font-black tabular-nums text-white">{summary.awayScore.toFixed(2)}</p><p className="text-[10px] leading-tight text-[#5e7090]"><span className="block">proj</span><span className="block tabular-nums">{projectedAway.toFixed(2)}</span></p></div>
       </div>
       <div className="mt-3"><WinBar homePct={homePct} /></div>
     </button>
@@ -277,7 +288,7 @@ export function MatchupPanel({
   onLiveSummary?: (summary: LiveMatchupSummary) => void
 }) {
   const weekSchedule = getWeekMatchups(week)
-  const userMatchup = weekSchedule.find((matchup) => matchup.homeOwner === "You" || matchup.homeTeam === "Montreal Monarchs") ?? weekSchedule[0]
+  const userMatchup = weekSchedule.find((matchup) => matchup.homeTeam === teamName || matchup.awayTeam === teamName) ?? weekSchedule[0]
   const [localMatchupId, setLocalMatchupId] = useState(userMatchup.id)
   const selectedMatchupId = controlledMatchupId ?? localMatchupId
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
@@ -300,8 +311,8 @@ export function MatchupPanel({
   }, [controlledMatchupId])
   const matchupIndex = Math.max(0, weekSchedule.findIndex((matchup) => matchup.id === selectedMatchupId))
   const summary = weekSchedule[matchupIndex] ?? userMatchup
-  const isUserMatchup = summary.homeOwner === "You" || summary.homeTeam === "Montreal Monarchs"
-  const displaySummary = isUserMatchup ? { ...summary, homeTeam: teamName } : summary
+  const isUserMatchup = summary.homeTeam === teamName
+  const displaySummary = summary
   const sourceHomeRoster = getTeamRoster(summary.homeTeam, roster, players)
   const sourceAwayRoster = getTeamRoster(summary.awayTeam, roster, players)
   useEffect(() => {
@@ -326,6 +337,12 @@ export function MatchupPanel({
   const expectedTotal = (players: Player[]) => players
     .filter((player) => ["C", "W", "F", "D", "G"].includes(player.slot))
     .reduce((sum, player) => sum + (player.schedule?.weekProjectedFantasyPoints ?? player.projPts), 0)
+  const actualTotal = (players: Player[]) => players
+    .filter((player) => ["C", "W", "F", "D", "G"].includes(player.slot))
+    .reduce((sum, player) => {
+      if (!player.schedule || player.schedule.weekGamesPlayed === 0) return sum
+      return sum + (player.schedule.weekFantasyPoints ?? 0)
+    }, 0)
   const projectedHome = expectedTotal(homeRoster)
   const projectedAway = expectedTotal(awayRoster)
   const isStarter = (player: Player) => ["C", "W", "F", "D", "G"].includes(player.slot)
@@ -334,8 +351,8 @@ export function MatchupPanel({
   const liveSummary = {
     ...summary,
     homeTeam: displaySummary.homeTeam,
-    homeScore: rows.reduce((sum, row) => sum + (row.home.schedule && row.home.schedule.weekGamesPlayed > 0 ? row.home.schedule.weekFantasyPoints : row.home.schedule?.weekProjectedFantasyPoints ?? row.home.todayPts ?? 0), 0),
-    awayScore: rows.reduce((sum, row) => sum + (row.away.schedule && row.away.schedule.weekGamesPlayed > 0 ? row.away.schedule.weekFantasyPoints : row.away.schedule?.weekProjectedFantasyPoints ?? row.away.todayPts ?? 0), 0),
+    homeScore: actualTotal(homeRoster),
+    awayScore: actualTotal(awayRoster),
   }
   useEffect(() => {
     onLiveSummary?.({ ...liveSummary, projectedHome, projectedAway })
@@ -392,7 +409,10 @@ export function MatchupPanel({
                 }} className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}>{row.slot}</button>
                 <Score player={row.away} align="right" />
                 <div className="min-w-0 text-left">
-                  <PlayerSide player={row.away} align="right" onSelect={(player) => onSelectPlayer?.(player as Player)} />
+                  <PlayerSide player={row.away} align="right" onSelect={(player) => {
+                    const selected = awayRoster.find((candidate) => candidate.name === player.name)
+                    onSelectPlayer?.(selected ?? player as Player)
+                  }} />
                   {!row.away.empty && <PlayerStats player={row.away} align="right" />}
                 </div>
               </div>

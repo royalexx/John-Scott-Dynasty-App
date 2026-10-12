@@ -109,8 +109,8 @@ export function LeagueFeed({
   const weeklyRecords = getWeeklyRecords(week)
   const displayMatchups = weekSchedule.map((matchup) => {
     const live = liveMatchups[matchup.id]
-    const isUserHome = matchup.homeOwner === "You" || matchup.homeTeam === "Montreal Monarchs"
-    const isUserAway = matchup.awayOwner === "You" || matchup.awayTeam === "Montreal Monarchs"
+    const isUserHome = matchup.homeTeam === teamName
+    const isUserAway = matchup.awayTeam === teamName
     const displayMatchup = {
       ...matchup,
       homeTeam: isUserHome ? teamName : matchup.homeTeam,
@@ -125,8 +125,8 @@ export function LeagueFeed({
         awayRecord: recordFor(matchup.awayTeam, weeklyRecords),
       }
     }
-    const home = calculateRosterSummary(isUserHome ? "Montreal Monarchs" : matchup.homeTeam, roster, players)
-    const away = calculateRosterSummary(isUserAway ? "Montreal Monarchs" : matchup.awayTeam, roster, players)
+    const home = calculateRosterSummary(matchup.homeTeam, roster, players)
+    const away = calculateRosterSummary(matchup.awayTeam, roster, players)
     return {
       ...displayMatchup,
       homeRecord: recordFor(matchup.homeTeam, weeklyRecords),
@@ -138,9 +138,9 @@ export function LeagueFeed({
     }
   })
   const liveStandings = standings.map((row) => {
-    const live = displayMatchups.find((matchup) => matchup.homeTeam === row.team || matchup.awayTeam === row.team || (row.team === "Montreal Monarchs" && (matchup.homeTeam === teamName || matchup.awayTeam === teamName)))
+    const live = displayMatchups.find((matchup) => matchup.homeTeam === row.team || matchup.awayTeam === row.team)
     if (!live) return row
-    const isHome = live.homeTeam === row.team || (row.team === "Montreal Monarchs" && live.homeTeam === teamName)
+    const isHome = live.homeTeam === row.team
     return { ...row, pointsFor: isHome ? live.homeScore : live.awayScore, pointsAgainst: isHome ? live.awayScore : live.homeScore }
   })
 
@@ -151,6 +151,7 @@ export function LeagueFeed({
         <MatchupsSection week={week} matchups={displayMatchups} teamName={teamName} teamLogo={teamLogo} onSelect={(matchup) => onSelectMatchup?.(matchup.id)} onWeekChange={onWeekChange} />
         <StandingsSection
           standings={liveStandings}
+          teamName={teamName}
           playoffMode={playoffMode}
           onToggle={() => setPlayoffMode((value) => !value)}
           onDetails={() => setShowStandings(true)}
@@ -234,8 +235,8 @@ function TeamMatchup({ team, logo, owner, record, result, score, projected, win,
   return <div className={cn("min-w-0", align === "right" && "text-right")}><div className={cn("flex items-center gap-2", align === "right" && "flex-row-reverse")}><div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#172338]">{logo ? <img src={logo} alt="" className="size-full object-cover" /> : "🏒"}</div><p className="truncate text-xs font-black">{team}</p></div><p className="mt-1 truncate text-[9px] text-[#6d86ab]">{owner} · {record}{result ? ` · ${result}` : ""}</p><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-black", win >= 50 ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300")}>{win}% WIN</span><p className="mt-1 text-lg font-black tabular-nums">{score.toFixed(2)}</p><p className="text-[9px] text-[#5e7090]">{projected === undefined && !result ? "projection unavailable" : `proj. ${(projected ?? score).toFixed(2)}`}</p></div>
 }
 
-function StandingsSection({ standings, playoffMode, onToggle, onDetails, onTrade }: { standings: StandingRow[]; playoffMode: boolean; onToggle: () => void; onDetails: () => void; onTrade?: (team: StandingRow) => void }) {
-  return <section><div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onDetails} className="text-[10px] font-bold text-[#19ffff]">Details &gt;</button></div><button type="button" onClick={onToggle} className="rounded-full border border-[#294463] bg-[#102642] px-2.5 py-1.5 text-[9px] font-black text-[#19ffff]">☲ {playoffMode ? "STAND." : "PLAYOFF"}</button></div>{playoffMode ? <PlayoffBracket standings={standings} /> : <div className="overflow-hidden rounded-xl border border-[#16233b] bg-[#0d1424]"><div className="grid grid-cols-[32px_1fr_58px_50px_50px] gap-1 border-b border-[#16233b] px-2 py-2 text-[8px] font-black uppercase tracking-wider text-[#5e7090]"><span>Rank</span><span>Name</span><span>Waiver</span><span className="text-right">PF</span><span className="text-right">PA</span></div>{standings.map((row) => <div key={row.team} className={cn("grid grid-cols-[32px_1fr_58px_50px_50px] items-center gap-1 border-b border-[#111929] px-2 py-2 last:border-0", row.owner === "You" && "bg-[#0c2231]")}><div><b className="text-xs">{row.rank}</b><span className={cn("block text-[8px] font-bold", row.delta?.startsWith("+") ? "text-emerald-300" : "text-rose-300")}>{row.delta ? `${row.delta.startsWith("+") ? "▲" : "▼"} ${row.delta.replace("-", "")}` : "—"}</span></div><button type="button" onClick={() => onTrade?.(row)} className="min-w-0 text-left"><p className="truncate text-[10px] font-black">{row.team}</p><p className="truncate text-[8px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses} · <span className="text-emerald-300">2W</span></p></button><span className="text-[9px] font-bold text-amber-300">${row.faabRemaining} <span className="text-[#6d86ab]">(6)</span></span><span className="text-right text-[9px] tabular-nums">{row.pointsFor.toFixed(1)}</span><span className="text-right text-[9px] tabular-nums">{row.pointsAgainst.toFixed(1)}</span></div>)}</div>}</section>
+function StandingsSection({ standings, teamName, playoffMode, onToggle, onDetails, onTrade }: { standings: StandingRow[]; teamName: string; playoffMode: boolean; onToggle: () => void; onDetails: () => void; onTrade?: (team: StandingRow) => void }) {
+  return <section><div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onDetails} className="text-[10px] font-bold text-[#19ffff]">Details &gt;</button></div><button type="button" onClick={onToggle} className="rounded-full border border-[#294463] bg-[#102642] px-2.5 py-1.5 text-[9px] font-black text-[#19ffff]">☲ {playoffMode ? "STAND." : "PLAYOFF"}</button></div>{playoffMode ? <PlayoffBracket standings={standings} /> : <div className="overflow-hidden rounded-xl border border-[#16233b] bg-[#0d1424]"><div className="grid grid-cols-[32px_1fr_58px_50px_50px] gap-1 border-b border-[#16233b] px-2 py-2 text-[8px] font-black uppercase tracking-wider text-[#5e7090]"><span>Rank</span><span>Name</span><span>Waiver</span><span className="text-right">PF</span><span className="text-right">PA</span></div>{standings.map((row) => <div key={row.team} className={cn("grid grid-cols-[32px_1fr_58px_50px_50px] items-center gap-1 border-b border-[#111929] px-2 py-2 last:border-0", row.team === teamName && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}><div><b className="text-xs">{row.rank}</b><span className={cn("block text-[8px] font-bold", row.delta?.startsWith("+") ? "text-emerald-300" : "text-rose-300")}>{row.delta ? `${row.delta.startsWith("+") ? "▲" : "▼"} ${row.delta.replace("-", "")}` : "—"}</span></div><button type="button" onClick={() => onTrade?.(row)} className="min-w-0 text-left"><p className="truncate text-[10px] font-black">{row.team}</p><p className="truncate text-[8px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses}{row.streak && <> · <span className={row.streak.endsWith("W") ? "text-emerald-300" : "text-rose-300"}>{row.streak}</span></>}</p></button><span className="text-[9px] font-bold text-amber-300">${row.faabRemaining} <span className="text-[#6d86ab]">(6)</span></span><span className="text-right text-[9px] tabular-nums">{row.pointsFor.toFixed(1)}</span><span className="text-right text-[9px] tabular-nums">{row.pointsAgainst.toFixed(1)}</span></div>)}</div>}</section>
 }
 
 function PlayoffBracket({ standings }: { standings: StandingRow[] }) {

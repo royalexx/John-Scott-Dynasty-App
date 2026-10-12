@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     teamId: team.id,
     handle: user.handle,
     teamName: team.name,
+    isCommissioner: user.isCommissioner,
   })
   const response = NextResponse.json({ success: true, teamId: team.id, teamName: team.name })
   response.cookies.set("dynasty_manager", session, {

@@ -16,9 +16,13 @@ export interface SubmitWaiverClaimParams {
 export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
   if (!Number.isInteger(params.bidAmount) || params.bidAmount < 0) throw new Error("Bid amount must be a non-negative integer")
   return prisma.$transaction(async (tx) => {
-    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true } })
+    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true } } } })
     if (!team) throw new Error("Team not found")
     if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
+    if (params.playerToDropId == null) {
+      const rosterCount = await tx.rosterSlot.count({ where: { teamId: params.teamId } })
+      if (rosterCount >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
+    }
 
     const addPlayer = await tx.player.findUnique({ where: { id: params.playerToAddId }, select: { id: true } })
     if (!addPlayer) throw new Error("Player to add not found")
@@ -73,6 +77,13 @@ export async function processWaiversForLeague(leagueId: string) {
         }
         await tx.rosterSlot.delete({ where: { id: dropSlot.id } })
         await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.DROP, details: { playerId: claim.playerToDropId, playerName: claim.playerToDrop?.name ?? null } } })
+      } else {
+        const rosterCount = await tx.rosterSlot.count({ where: { teamId: claim.teamId } })
+        const league = await tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true } })
+        if (!league || rosterCount >= league.rosterSize) {
+          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
+          return
+        }
       }
       await tx.team.update({ where: { id: claim.teamId }, data: { faabBalance: { decrement: claim.bidAmount } } })
       await tx.rosterSlot.create({ data: { teamId: claim.teamId, playerId: claim.playerToAddId, slot: SlotType.BN } })

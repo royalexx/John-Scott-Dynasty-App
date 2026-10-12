@@ -9,6 +9,20 @@ import { PlayersSubTabView } from "@/components/hockey/players-sub-tab-view"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type PositionFilter = "ALL" | "C" | "W" | "F" | "D" | "G"
+type SkaterSort = "FPTS" | "G" | "A" | "PTS" | "SOG" | "HIT" | "BLK"
+type GoalieSort = "FPTS" | "W" | "SV" | "SV%" | "GAA" | "SO"
+type MarketSort = SkaterSort | GoalieSort
+const skaterSortOptions: SkaterSort[] = ["FPTS", "G", "A", "PTS", "SOG", "HIT", "BLK"]
+const goalieSortOptions: GoalieSort[] = ["FPTS", "W", "SV", "SV%", "GAA", "SO"]
+function matchesPosition(playerPos: string, filter: PositionFilter): boolean {
+  if (filter === "ALL") return true
+  if (filter === "C") return playerPos === "C"
+  if (filter === "W") return ["W", "LW", "RW"].includes(playerPos)
+  if (filter === "F") return ["C", "W", "LW", "RW", "F"].includes(playerPos)
+  if (filter === "D") return ["D", "LD", "RD"].includes(playerPos)
+  if (filter === "G") return playerPos === "G"
+  return false
+}
 type HorizonMode = "stats" | "projections"
 type HockeyHorizon = "Last 7 Days" | "Last 14 Days" | "Last 30 Days" | "Season Totals" | "Season Avg / Per Game" | "This Week" | "Next 14 Days" | "Rest of Season (ROS)"
 function marketStat(player: MarketPlayer, stat: "gp" | "goals" | "assists" | "sog" | "hits" | "blocks" | "wins" | "saves" | "goalsAgainst" | "shutouts" | "savePct" | "plusMinus" | "ppp"): number {
@@ -88,7 +102,7 @@ function MarketListHeader({ position }: { position: "skater" | "goalie" }) {
   const labels = position === "goalie" ? ["GP", "W", "SV", "SV%", "GA", "GAA", "SO", "FPTS"] : ["GP", "G", "A", "PTS", "SOG", "HIT", "BLK", "PPP", "+/-", "FPTS"]
   return <div className="grid grid-cols-[repeat(8,minmax(44px,1fr))] gap-2 text-center text-[8px] font-black text-[#5e7090] sm:grid-cols-[repeat(10,minmax(48px,1fr))]">{labels.map((label) => <span key={label}>{label}</span>)}</div>
 }
-export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeMode = false }: { teamName: string; roster: Player[]; players: MarketPlayer[]; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeMode?: boolean }) {
+export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, allLeagueRosterIds, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeMode = false }: { teamName: string; roster: Player[]; players: MarketPlayer[]; allLeagueRosterIds?: Set<number | string>; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeMode?: boolean }) {
   const [subTab, setSubTab] = useState<"search" | "available" | "leaders" | "trade">(tradeMode ? "trade" : "available")
   const [filter, setFilter] = useState<PositionFilter>("ALL")
   const [availability, setAvailability] = useState<"ALL" | "FA" | "W">("ALL")
@@ -96,15 +110,42 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, t
   const [horizonMode, setHorizonMode] = useState<HorizonMode>("projections")
   const [horizon, setHorizon] = useState<HockeyHorizon>("This Week")
   const [gridView, setGridView] = useState<"grid" | "list">("grid")
-  const [availableSort, setAvailableSort] = useState<"FPTS" | "G" | "A" | "SOG" | "HIT" | "BLK">("FPTS")
-  const players = [...dynastyPlayers]
-    .filter((p) => (filter === "ALL" || (filter === "W" ? ["LW", "RW"].includes(p.position) : p.position === filter)) && (availability === "ALL" || (availability === "FA" ? p.waiver === "FA" : p.waiver !== "FA")))
-    .sort((a, b) => {
-      const value = (player: MarketPlayer) => {
-        return availableSort === "FPTS" ? getSyncedPlayerFPTS(player) : availableSort === "G" ? marketStat(player, "goals") : availableSort === "A" ? marketStat(player, "assists") : availableSort === "SOG" ? marketStat(player, "sog") : availableSort === "HIT" ? marketStat(player, "hits") : marketStat(player, "blocks")
-      }
-      return value(b) - value(a)
+  const [availableSort, setAvailableSort] = useState<MarketSort>("FPTS")
+  const isGoalieFilter = filter === "G"
+  const currentSortOptions = isGoalieFilter ? goalieSortOptions : skaterSortOptions
+  const handlePositionChange = (pos: PositionFilter) => {
+    setFilter(pos)
+    if (pos === "G" && !goalieSortOptions.includes(availableSort as GoalieSort)) setAvailableSort("FPTS")
+    else if (pos !== "G" && !skaterSortOptions.includes(availableSort as SkaterSort)) setAvailableSort("FPTS")
+  }
+  const players = useMemo(() => [...dynastyPlayers]
+    .filter((p) => {
+      const playerId = p.nhlId ? Number(p.nhlId) : p.name
+      if (allLeagueRosterIds?.has(playerId) || allLeagueRosterIds?.has(p.name)) return false
+      const availabilityMatch = availability === "ALL" ? true : availability === "FA" ? p.waiver === "FA" : p.waiver !== "FA"
+      return matchesPosition(p.position, filter) && availabilityMatch
     })
+    .sort((a, b) => {
+      const getStat = (player: MarketPlayer, sort: MarketSort) => {
+        if (sort === "FPTS") return getSyncedPlayerFPTS(player)
+        if (sort === "G") return marketStat(player, "goals")
+        if (sort === "A") return marketStat(player, "assists")
+        if (sort === "PTS") return marketStat(player, "goals") + marketStat(player, "assists")
+        if (sort === "SOG") return marketStat(player, "sog")
+        if (sort === "HIT") return marketStat(player, "hits")
+        if (sort === "BLK") return marketStat(player, "blocks")
+        if (sort === "W") return marketStat(player, "wins")
+        if (sort === "SV") return marketStat(player, "saves")
+        if (sort === "SV%") return marketStat(player, "savePct")
+        if (sort === "SO") return marketStat(player, "shutouts")
+        if (sort === "GAA") {
+          const gp = marketStat(player, "gp")
+          return gp > 0 ? -(marketStat(player, "goalsAgainst") / gp) : -99
+        }
+        return 0
+      }
+      return getStat(b, availableSort) - getStat(a, availableSort)
+    }), [allLeagueRosterIds, availability, availableSort, dynastyPlayers, filter])
   const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: "vs BOS", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
   return (
     <div className="flex flex-col">
@@ -125,9 +166,9 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, t
       {subTab !== "available" ? <PlayersSubTabView teamName={teamName} tab={subTab} roster={roster} players={dynastyPlayers} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} onCounterTrade={onCounterTrade} onInitiateTrade={onInitiateTrade} horizonMode={horizonMode} horizon={horizon} onSelect={onSelect} onClaim={onClaim} onOpenTradeBuilder={onOpenTradeBuilder} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} /> : <>
       <div className="border-b border-[#111929] px-3 py-2">
         <div className="flex items-center gap-2"><h2 className="text-sm font-black text-white">{tradeMode ? "Trade Center" : "Available"}</h2><button type="button" onClick={() => setGridView(gridView === "grid" ? "list" : "grid")} className="cursor-pointer text-[#5e7090] transition-all duration-150 hover:text-white active:scale-95">{gridView === "grid" ? <List className="size-4" /> : <Grid2X2 className="size-4" />}</button><div className="flex gap-1.5">{(["ALL", "FA", "W"] as const).map((value) => <button key={value} type="button" onClick={() => setAvailability(value)} className={cn("rounded-full border px-2 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", availability === value ? "border-[#19ffff] bg-[#19ffff] text-[#080c14]" : "border-[#17233c] bg-[#101829] text-[#5e7090] cursor-pointer hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{value}</button>)}</div></div>
-        <div className="mt-2 flex gap-1 overflow-x-auto"><span className="py-1 text-[9px] font-black text-[#5e7090]">SORT</span>{(["FPTS", "G", "A", "SOG", "HIT", "BLK"] as const).map((value) => <button key={value} type="button" onClick={() => setAvailableSort(value)} className={cn("rounded-full px-2 py-1 text-[9px] font-black", availableSort === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
+        <div className="mt-2 flex gap-1 overflow-x-auto"><span className="py-1 text-[9px] font-black text-[#5e7090]">SORT</span>{currentSortOptions.map((value) => <button key={value} type="button" onClick={() => setAvailableSort(value)} className={cn("rounded-full px-2 py-1 text-[9px] font-black", availableSort === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto border-b border-[#111929] px-3 py-1.5">{(["ALL", "C", "W", "F", "D", "G"] as PositionFilter[]).map((pos) => <button key={pos} type="button" onClick={() => setFilter(pos)} className={cn("rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", filter === pos ? "border-[#19ffff] bg-[#19ffff] text-black hover:brightness-110" : "cursor-pointer border-[#17233c] bg-[#101829] text-[#5e7090] hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{pos}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto border-b border-[#111929] px-3 py-1.5">{(["ALL", "C", "W", "F", "D", "G"] as PositionFilter[]).map((pos) => <button key={pos} type="button" onClick={() => handlePositionChange(pos)} className={cn("rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", filter === pos ? "border-[#19ffff] bg-[#19ffff] text-black hover:brightness-110" : "cursor-pointer border-[#17233c] bg-[#101829] text-[#5e7090] hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{pos}</button>)}</div>
       {gridView === "list" ? (
         <div className="overflow-x-auto border-y border-[#111929]">
           <div className="min-w-[760px]">
@@ -137,7 +178,7 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, t
             </div>
             {players.slice(0, 50).map((p) => {
               const position = p.position === "G" ? "goalie" : "skater"
-              return <div key={p.name} onClick={() => selectPlayer(p)} className="grid cursor-pointer grid-cols-[220px_minmax(0,1fr)] gap-3 border-b border-[#111929] bg-[#0d1424] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
+              return <div key={p.nhlId ? `nhl-${p.nhlId}` : p.name} onClick={() => selectPlayer(p)} className="grid cursor-pointer grid-cols-[220px_minmax(0,1fr)] gap-3 border-b border-[#111929] bg-[#0d1424] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
                 <div className="sticky left-0 z-10 flex min-w-0 items-center gap-2 bg-[#0d1424]">
                   <PlayerPortrait player={p} name={p.name} className="size-8 shrink-0" />
                   <div className="min-w-0"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="truncate text-[10px] text-[#5e7090]">{p.position} · {p.team}{p.injuryStatus && <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span>}</p></div>
@@ -150,7 +191,7 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, t
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-px border-y border-[#111929] bg-[#111929]">
-          {players.slice(0, 50).map((p) => <div key={p.name} onClick={() => selectPlayer(p)} className="cursor-pointer border-b border-[#111929] bg-[#0d1424] p-3 transition-colors duration-150 hover:bg-[#0f1828]/80">
+          {players.slice(0, 50).map((p) => <div key={p.nhlId ? `nhl-${p.nhlId}` : p.name} onClick={() => selectPlayer(p)} className="cursor-pointer border-b border-[#111929] bg-[#0d1424] p-3 transition-colors duration-150 hover:bg-[#0f1828]/80">
             <div className="flex items-start gap-2"><PlayerPortrait player={p} name={p.name} className="size-8" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="text-[10px] text-[#5e7090]">{p.position} · {p.team} · vs BOS {p.injuryStatus && <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span>}</p><button type="button" onClick={(event) => { event.stopPropagation(); onClaim(p) }} className={cn("mt-1 cursor-pointer rounded px-1 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", p.waiver === "FA" ? "bg-emerald-400/15 text-emerald-300 hover:brightness-110" : "bg-amber-400/15 text-amber-300 hover:brightness-110")}>{p.waiver}</button></div><button type="button" aria-label={`Add or claim ${p.name}`} onClick={(event) => { event.stopPropagation(); onClaim(p) }} className="flex size-6 cursor-pointer items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] transition-all duration-150 hover:scale-110 hover:bg-[#19ffff] hover:text-[#080c14] hover:border-[#19ffff] hover:shadow-[0_0_10px_rgba(25,255,255,0.4)] active:scale-90"><Plus className="size-3.5" /></button></div>
             {settings.viewType === "Projections" && <AvailableStats player={p} viewType="Projections" horizon={horizon} />}
             {settings.viewType === "Stats" && <AvailableStats player={p} viewType="Stats" horizon={horizon} />}

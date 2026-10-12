@@ -21,6 +21,7 @@ export type LeagueActivityFilter = "ALL" | ActivityItem["action"]
 
 export interface LeaguePanelProps {
   leagueName?: string
+  teamName?: string
   week?: number
   standings?: StandingRow[]
   matchups?: MatchupSummary[]
@@ -49,6 +50,7 @@ const activityStyles = {
 
 export function LeaguePanel({
   leagueName = defaultLeague.name,
+  teamName,
   week = defaultLeague.week,
   standings = defaultStandings,
   matchups = weekMatchups,
@@ -97,7 +99,7 @@ export function LeaguePanel({
         {tabs.map(({ id, label }) => <button key={id} type="button" onClick={() => changeTab(id)} className={cn("relative px-1 py-3 text-[10px] font-black tracking-wide transition sm:text-xs", tab === id ? "text-[#19ffff]" : "text-[#6d86ab] hover:text-white")}>{label}{tab === id && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-[#19ffff]" />}</button>)}
       </nav>
 
-      {tab === "standings" && <div className="p-4 sm:p-5"><StandingsList standings={standings} onTeamRoster={onTeamRoster} onTrade={onTrade} /></div>}
+      {tab === "standings" && <div className="p-4 sm:p-5"><StandingsList standings={standings} teamName={teamName} onTeamRoster={onTeamRoster} onTrade={onTrade} /></div>}
       {tab === "bracket" && <Bracket matchups={matchups} mode={bracketMode} onModeChange={setBracketMode} week={week} />}
       {tab === "teams" && <Teams standings={standings} roster={roster} onTeamRoster={onTeamRoster} onTrade={onTrade} onSelectPlayer={selectPlayer} />}
       {tab === "activity" && <Activity activities={filteredActivities} filter={activityFilter} onFilterChange={setActivityFilter} roster={roster} onSelectPlayer={selectPlayer} />}
@@ -105,8 +107,8 @@ export function LeaguePanel({
   )
 }
 
-function StandingsList({ standings, onTeamRoster, onTrade }: { standings: StandingRow[]; onTeamRoster?: (team: StandingRow) => void; onTrade?: (team: StandingRow) => void }) {
-  return <section><div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-black">League standings</h2><span className="text-[10px] text-[#5e7090]">W-L · PF · PA · FAAB</span></div><div className="overflow-hidden rounded-xl border border-[#172338]">{standings.map((team) => <div key={team.team}>{team.rank === 7 && <div className="flex items-center gap-2 border-y border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />Playoff cutoff · Top 6</div>}<div className={cn("flex items-center gap-2 border-b border-[#172338] bg-[#0d1424] px-2 py-3 last:border-0", team.rank === 1 && "bg-[#0c2231]")}><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#172338] text-xs font-black">{team.rank}</span><button type="button" onClick={() => onTeamRoster?.(team)} className="min-w-0 flex-1 text-left hover:text-[#19ffff]"><p className="truncate text-xs font-black">{team.team}</p><p className="truncate text-[10px] text-[#6d86ab]">{team.owner}</p></button><span className="text-right text-[10px] font-bold tabular-nums"><b>{team.wins}-{team.losses}</b><span className="block text-[#6d86ab]">{team.pointsFor.toFixed(1)} PF · {team.pointsAgainst.toFixed(1)} PA</span><span className="block text-amber-300">${team.faabRemaining}</span></span><button type="button" onClick={() => onTrade?.(team)} aria-label={`Trade with ${team.team}`} className="rounded-md p-1.5 text-[#6d86ab] hover:bg-[#172338] hover:text-[#19ffff]"><ArrowLeftRight className="size-3.5" /></button></div></div>)}</div></section>
+function StandingsList({ standings, teamName, onTeamRoster, onTrade }: { standings: StandingRow[]; teamName?: string; onTeamRoster?: (team: StandingRow) => void; onTrade?: (team: StandingRow) => void }) {
+  return <section><div className="mb-2 flex items-center justify-between"><h2 className="text-sm font-black">League standings</h2><span className="text-[10px] text-[#5e7090]">W-L · PF · PA · FAAB</span></div><div className="overflow-hidden rounded-xl border border-[#172338]">{standings.map((team) => <div key={team.team}>{team.rank === 7 && <div className="flex items-center gap-2 border-y border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />Playoff cutoff · Top 6</div>}<div className={cn("flex items-center gap-2 border-b border-[#172338] bg-[#0d1424] px-2 py-3 last:border-0", team.team === teamName && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}><span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#172338] text-xs font-black">{team.rank}</span><button type="button" onClick={() => onTeamRoster?.(team)} className="min-w-0 flex-1 text-left hover:text-[#19ffff]"><p className="truncate text-xs font-black">{team.team}</p><p className="truncate text-[10px] text-[#6d86ab]">{team.owner}</p></button><span className="text-right text-[10px] font-bold tabular-nums"><b>{team.wins}-{team.losses}</b><span className="block text-[#6d86ab]">{team.pointsFor.toFixed(1)} PF · {team.pointsAgainst.toFixed(1)} PA</span><span className="block text-amber-300">${team.faabRemaining}</span></span><button type="button" onClick={() => onTrade?.(team)} aria-label={`Trade with ${team.team}`} className="rounded-md p-1.5 text-[#6d86ab] hover:bg-[#172338] hover:text-[#19ffff]"><ArrowLeftRight className="size-3.5" /></button></div></div>)}</div></section>
 }
 
 function Bracket({ matchups, mode, onModeChange, week }: { matchups: MatchupSummary[]; mode: "REGULAR" | "PLAYOFF"; onModeChange: (mode: "REGULAR" | "PLAYOFF") => void; week: number }) {

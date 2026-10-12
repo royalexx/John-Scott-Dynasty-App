@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
-import { getTeamRoster, roster, standings } from "../lib/hockey-data"
+import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
 
 type RegistryPlayer = {
   nhlId: number
@@ -55,7 +55,14 @@ async function main() {
 
   const league = await prisma.league.upsert({
     where: { id: "00000000-0000-0000-0000-000000000001" },
-    update: { currentSeason: 2026, currentWeek: 1 },
+    update: {
+      currentSeason: 2026,
+      currentWeek: 1,
+      rosterPositions: { C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7 },
+      waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
+      tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },
+      draftSettings: { type: "LINEAR", rounds: 5, timerSeconds: 120, scheduledDate: "2027-08-15T18:00:00Z", orderType: "REVERSE_STANDINGS" },
+    },
     create: {
       id: "00000000-0000-0000-0000-000000000001",
       name: "John Scott Dynasty",
@@ -69,19 +76,27 @@ async function main() {
         format: "head-to-head-points",
         points: { goal: 3, assist: 2, shot: 0.2, hit: 0.2, block: 0.2, win: 4, save: 0.2 },
       },
+      rosterPositions: { C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7 },
+      waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
+      tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },
+      draftSettings: { type: "LINEAR", rounds: 5, timerSeconds: 120, scheduledDate: "2027-08-15T18:00:00Z", orderType: "REVERSE_STANDINGS" },
     },
   })
 
   const teams = []
   for (const [index, standing] of standings.entries()) {
+    const isCommish = standing.owner === "You" || standing.owner === "@commissioner" || standing.team === "Montreal Monarchs"
+    const handle = standing.owner === "You" ? "commissioner" : standing.owner.replace(/^@/, "")
+    const name = standing.owner === "You" ? "Commissioner" : handle
     const user = await prisma.user.upsert({
-      where: { handle: standing.owner === "You" ? "commissioner" : standing.owner.slice(1) },
-      update: { name: standing.owner === "You" ? "Commissioner" : standing.owner.slice(1), pin: "1234" },
+      where: { handle },
+      update: { name, pin: "1234", isCommissioner: isCommish },
       create: {
-        email: `${standing.owner === "You" ? "commissioner" : standing.owner.slice(1)}@example.com`,
-        name: standing.owner === "You" ? "Commissioner" : standing.owner,
-        handle: standing.owner === "You" ? "commissioner" : standing.owner.slice(1),
+        email: `${handle}@example.com`,
+        name,
+        handle,
         pin: "1234",
+        isCommissioner: isCommish,
       },
     })
     const team = await prisma.team.upsert({
@@ -96,6 +111,25 @@ async function main() {
       },
     })
     teams.push(team)
+  }
+
+  await prisma.matchup.deleteMany({ where: { leagueId: league.id, season: league.currentSeason } })
+  const teamByName = new Map(teams.map((team) => [team.name, team]))
+  for (let week = 1; week <= 24; week += 1) {
+    for (const matchup of getMatchupsForWeek(week)) {
+      const homeTeam = teamByName.get(matchup.homeTeam)
+      const awayTeam = teamByName.get(matchup.awayTeam)
+      if (!homeTeam || !awayTeam) continue
+      await prisma.matchup.create({
+        data: {
+          leagueId: league.id,
+          season: league.currentSeason,
+          week,
+          homeTeamId: homeTeam.id,
+          awayTeamId: awayTeam.id,
+        },
+      })
+    }
   }
 
   const registryByName = new Map(registry.map((player) => [player.name.toLowerCase(), player]))

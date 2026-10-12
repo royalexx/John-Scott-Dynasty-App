@@ -10,6 +10,7 @@ export type PinGateTeam = {
   managerId: string
   managerName: string
   managerHandle: string
+  isCommissioner?: boolean
   avatarUrl?: string | null
 }
 
@@ -73,7 +74,7 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
                 className="flex min-h-24 items-center gap-3 rounded-2xl border border-[#1b2b46] bg-[#0d1424] p-3 text-left transition hover:border-[#19ffff]/60 hover:bg-[#102642] active:scale-[0.98]"
               >
                 {team.avatarUrl ? <img src={team.avatarUrl} alt="" className="size-10 rounded-full object-cover" /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#172338] text-xs font-black text-[#19ffff]">{team.managerName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
-                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-[10px] text-[#6d86ab]">@{team.managerHandle}</small></span>
+                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-[10px] text-[#6d86ab]">@{team.managerHandle}</small>{team.isCommissioner && <small className="mt-1 inline-block rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-black text-amber-300">👑 Commish</small>}</span>
               </button>
             ))}
           </div>

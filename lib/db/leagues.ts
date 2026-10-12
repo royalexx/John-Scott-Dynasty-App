@@ -7,7 +7,7 @@ export async function getLeague(leagueId: string) {
     include: {
       teams: {
         orderBy: { name: "asc" },
-        include: { manager: { select: { id: true, name: true, handle: true, avatarUrl: true } } },
+        include: { manager: { select: { id: true, name: true, handle: true, avatarUrl: true, isCommissioner: true } } },
       },
     },
   })
@@ -29,7 +29,7 @@ export async function getLeagueStandings(leagueId: string, season?: number) {
     }),
     prisma.matchup.findMany({
       where: { leagueId, season: targetSeason },
-      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, week: true },
     }),
   ])
 
@@ -52,7 +52,25 @@ export async function getLeagueStandings(leagueId: string, season?: number) {
         },
         { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 },
       )
-      return { team, ...record }
+      const completedResults = matchups
+        .filter((matchup) => matchup.homeScore !== null && matchup.awayScore !== null)
+        .sort((a, b) => b.week - a.week)
+        .map((matchup) => {
+          const isHome = matchup.homeTeamId === team.id
+          const score = Number(isHome ? matchup.homeScore : matchup.awayScore)
+          const opponent = Number(isHome ? matchup.awayScore : matchup.homeScore)
+          return score === opponent ? null : score > opponent ? "W" : "L"
+        })
+      const latestResult = completedResults[0]
+      const streakCount = latestResult
+        ? completedResults.findIndex((result) => result !== latestResult)
+        : 0
+      const resolvedStreakCount = streakCount === -1 ? completedResults.length : streakCount
+      return {
+        team,
+        ...record,
+        streak: latestResult && resolvedStreakCount > 0 ? `${resolvedStreakCount}${latestResult}` : null,
+      }
     })
     .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)
 }

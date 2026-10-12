@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils"
-import { Flame } from "lucide-react"
 import { standings, weekMatchups, type ActivityItem } from "@/lib/hockey-data"
 export function LeagueStandingsView({ week, teamName, activities = [] }: { week: number; teamName: string; activities?: ActivityItem[] }) {
   return (
@@ -47,15 +46,14 @@ export function LeagueStandingsView({ week, teamName, activities = [] }: { week:
       </div>
 
       {standings.map((row) => (
-        <div key={row.team} className={cn("grid grid-cols-[36px_1fr_58px_58px_58px] items-center border-b border-[#111929] px-3.5 py-2.5", row.owner === "You" && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}>
+        <div key={row.team} className={cn("grid grid-cols-[36px_1fr_58px_58px_58px] items-center border-b border-[#111929] px-3.5 py-2.5", row.team === teamName && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}>
           <div className="flex flex-col">
             <span className="text-xs font-black text-white">{row.rank}</span>
             {row.delta && <span className={cn("text-[9px] font-bold", row.delta.startsWith("+") ? "text-emerald-400" : "text-[#ff2a85]")}>{row.delta}</span>}
           </div>
           <div className="min-w-0 pr-1">
-            <p className={cn("flex items-center gap-1 truncate text-xs font-bold", row.owner === "You" ? "text-[#19ffff]" : "text-white")}>
-              {row.owner === "You" ? teamName : row.team}
-              {row.owner === "You" && <Flame className="size-3 fill-orange-400 text-orange-400" />}
+            <p className={cn("flex items-center gap-1 truncate text-xs font-bold", row.team === teamName ? "text-[#19ffff]" : "text-white")}>
+              {row.team}
             </p>
             <p className="text-[10px] text-[#5e7090] truncate">{row.owner} · {row.wins}-{row.losses}</p>
           </div>

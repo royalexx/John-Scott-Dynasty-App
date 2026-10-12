@@ -1,6 +1,6 @@
-import { Calendar, ArrowLeftRight, Receipt, Newspaper, Settings } from "lucide-react"
+import { Calendar, ArrowLeftRight, Receipt, Newspaper, Pencil } from "lucide-react"
 
-type TeamAction = "schedule" | "settings" | "transactions" | "news" | "trade"
+type TeamAction = "schedule" | "team-settings" | "settings" | "transactions" | "news" | "trade"
 export type { TeamAction }
 export function TeamHeader({ teamName, pendingClaims, faabBalance, onAction }: { teamName: string; pendingClaims: number; faabBalance?: number; onAction: (action: TeamAction) => void }) {
   const actions = [
@@ -18,7 +18,7 @@ export function TeamHeader({ teamName, pendingClaims, faabBalance, onAction }: {
           <p className="text-[10px] font-bold text-[#8ba0c7]">1-1 • 4th</p>
           <p className="text-[10px] text-[#5e7090]">FAAB ${faabBalance ?? 100} • PF 356.06 • PA 318.40</p>
         </div>
-        <button type="button" onClick={() => onAction("settings")} aria-label="Team settings" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><Settings className="size-5" /></button>
+        <button type="button" onClick={() => onAction("team-settings")} aria-label="Edit team customization" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><Pencil className="size-5" /></button>
       </div>
       <div className="mt-3 grid grid-cols-4 gap-2">
         {actions.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={() => onAction(action)} className="flex flex-col items-center gap-1 text-[9px] font-black text-[#8ba0c7] hover:text-[#19ffff]"><span className="relative flex size-8 items-center justify-center rounded-full border border-[#263858] bg-[#141e33]"><Icon className="size-4" />{action === "transactions" && pendingClaims > 0 && <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[#f43f5e] text-[9px] font-black text-white shadow-md">{pendingClaims}</span>}</span>{label}</button>)}

@@ -102,12 +102,11 @@ export function WaiverClaimDialog({
   }
 
   const confirm = () => {
-    if (!dropped) return
-    if (teamId && player.nhlId && dropped.nhlId) {
+    if (teamId && player.nhlId) {
       void fetch("/api/waivers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId, playerToAddId: player.nhlId, playerToDropId: dropped.nhlId, bidAmount: bid }),
+        body: JSON.stringify({ teamId, playerToAddId: player.nhlId, playerToDropId: dropped?.nhlId ?? null, bidAmount: bid }),
       }).then(async (response) => {
         const data = await response.json() as { error?: string; claim?: WaiverClaim }
         if (!response.ok || !data.claim) throw new Error(data.error ?? "Could not submit waiver claim")
@@ -119,7 +118,7 @@ export function WaiverClaimDialog({
     onConfirm({
       id: `claim-${Date.now()}`,
       playerToAdd: player,
-      playerToDrop: dropped,
+      playerToDrop: dropped ?? null,
       bidAmount: bid,
       status: "pending",
       runTime: "Wed 3:05 AM",
@@ -174,10 +173,11 @@ export function WaiverClaimDialog({
 
             <div className="mx-3 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
               <AlertTriangle className="size-4 shrink-0" />
-              Your roster is full, please select a player to drop
+              {roster.length >= 27 ? "Your roster is full, please select a player to drop" : `${27 - roster.length} open roster spot${27 - roster.length === 1 ? "" : "s"} available`}
             </div>
 
             <div className="px-3 pb-3">
+              {roster.length < 27 && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left text-xs font-bold text-emerald-300">+ Do not drop any player ({27 - roster.length} open roster spots)</button>}
               <p className="mt-4 px-1 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">
                 Select Player to Drop
               </p>
@@ -200,7 +200,7 @@ export function WaiverClaimDialog({
             <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] p-4">
               <button
                 type="button"
-                disabled={!dropped}
+                disabled={roster.length >= 27 && !dropped}
                 onClick={() => setStep(2)}
                 className="h-11 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black uppercase tracking-wider text-[#080c14] transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(25,255,255,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -239,10 +239,8 @@ export function WaiverClaimDialog({
 
                   <div>
                     <span className="text-[10px] font-black text-[#ff2a85]">- DROP</span>
-                    <p className="mt-1 text-xs font-bold text-white">{dropped?.name}</p>
-                    <p className="text-[10px] text-[#5e7090]">
-                      {dropped?.position} · {dropped?.team}
-                    </p>
+                    <p className="mt-1 text-xs font-bold text-white">{dropped?.name ?? "None (Keep open roster spot)"}</p>
+                    {dropped && <p className="text-[10px] text-[#5e7090]">{dropped.position} · {dropped.team}</p>}
                   </div>
 
                   <div className="text-right">

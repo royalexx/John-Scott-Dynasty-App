@@ -13,6 +13,7 @@ export interface DashboardInitialData {
   leagueId?: string
   teamId?: string
   managerHandle?: string
+  isCommissioner?: boolean
   teamName: string
   teamLogo?: string
   userFaab: number
@@ -21,6 +22,17 @@ export interface DashboardInitialData {
   draftPicks: string[]
   draftPickAssets?: Array<{ id: string; label: string; detail?: string }>
   activities: ActivityItem[]
+  league?: {
+    rosterPositions?: Record<string, number>
+    scoringSettings?: Record<string, unknown>
+    waiverSettings?: Record<string, unknown>
+    tradeSettings?: Record<string, unknown>
+    draftSettings?: Record<string, unknown>
+    taxiSlots: number
+    taxiMaxGames: number
+    irSlots: number
+    currentWeek: number
+  }
 }
 
 export const initialDashboardData: DashboardInitialData = {

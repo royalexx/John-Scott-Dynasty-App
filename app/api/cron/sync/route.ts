@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { prisma } from "@/lib/prisma"
+import { getManagerSession } from "@/lib/auth-session"
 import {
   enforceRosterLocks,
   syncActiveGameBoxscores,
@@ -15,11 +16,15 @@ async function runSync(request: NextRequest) {
   const startedAt = Date.now()
   const requestHeaders = await headers()
   const configuredSecret = process.env.CRON_SECRET
+  const session = await getManagerSession()
+  const commissioner = session
+    ? await prisma.user.findUnique({ where: { id: session.managerId }, select: { isCommissioner: true } })
+    : null
+  const commissionerAuthorized = commissioner?.isCommissioner === true
   const bearerAuthorized = requestHeaders.get("authorization") === `Bearer ${configuredSecret}`
   const queryAuthorized = request.nextUrl.searchParams.get("secret") === configuredSecret
-  const developmentBypass = process.env.NODE_ENV === "development"
-  if (!bearerAuthorized && !queryAuthorized && !developmentBypass) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  if (!bearerAuthorized && !queryAuthorized && !commissionerAuthorized) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
