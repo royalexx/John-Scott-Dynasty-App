@@ -796,18 +796,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 3,
+      "gamesPlayed": 4,
       "goals": 1,
       "assists": 0,
       "points": 1,
-      "shots": 3,
+      "shots": 4,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 2,
-      "plusMinus": -1
+      "plusMinus": -2
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "VAN",
+        "opponentAbbrev": "NYR",
+        "homeRoadFlag": "R",
+        "goals": 0,
+        "assists": 0,
+        "shots": 1,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": -1,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "12:37",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020061,
         "gameDate": "2026-10-08",
@@ -955,13 +981,13 @@
       {
         "season": 20262027,
         "team": "Vancouver Canucks",
-        "gamesPlayed": 3,
+        "gamesPlayed": 4,
         "goals": 1,
         "assists": 0,
         "points": 1,
-        "shots": 3,
+        "shots": 4,
         "pim": 2,
-        "plusMinus": -1,
+        "plusMinus": -2,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -969,7 +995,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 117
+    "nhlGamesPlayed": 118
   },
   {
     "id": "nhl-8486019",
@@ -1164,7 +1190,7 @@
       "height": "6'7\"",
       "weightInPounds": 232,
       "birthDate": "2000-10-12",
-      "age": 25,
+      "age": 26,
       "birthplace": "Karlstad, SWE",
       "shoots": "L",
       "experience": 7,
@@ -1544,7 +1570,7 @@
       "height": "6'2\"",
       "weightInPounds": 205,
       "birthDate": "2004-10-12",
-      "age": 21,
+      "age": 22,
       "birthplace": "Nobleton, Ontario, CAN",
       "shoots": "L",
       "experience": 3,
@@ -1776,11 +1802,11 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 0,
-      "assists": 5,
-      "points": 5,
-      "shots": 3,
+      "assists": 6,
+      "points": 6,
+      "shots": 5,
       "powerPlayPoints": 1,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
@@ -1788,6 +1814,32 @@
       "plusMinus": 3
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "NYR",
+        "opponentAbbrev": "VAN",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 1,
+        "shots": 2,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 1,
+        "plusMinus": 0,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "21:13",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -2061,11 +2113,11 @@
       {
         "season": 20262027,
         "team": "New York Rangers",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 0,
-        "assists": 5,
-        "points": 5,
-        "shots": 3,
+        "assists": 6,
+        "points": 6,
+        "shots": 5,
         "pim": 4,
         "plusMinus": 3,
         "wins": 0,
@@ -2075,7 +2127,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 492
+    "nhlGamesPlayed": 493
   },
   {
     "id": "nhl-8484171",
@@ -2983,18 +3035,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 5,
+      "gamesPlayed": 6,
       "goals": 0,
-      "assists": 0,
-      "points": 0,
+      "assists": 1,
+      "points": 1,
       "shots": 6,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 0,
-      "plusMinus": 2
+      "plusMinus": 6
     },
     "gameLog": [
+      {
+        "gameId": 2026020084,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "SEA",
+        "opponentAbbrev": "WSH",
+        "homeRoadFlag": "R",
+        "goals": 0,
+        "assists": 1,
+        "shots": 0,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 1,
+        "plusMinus": 4,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "24:43",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020066,
         "gameDate": "2026-10-09",
@@ -3370,13 +3448,13 @@
       {
         "season": 20262027,
         "team": "Seattle Kraken",
-        "gamesPlayed": 5,
+        "gamesPlayed": 6,
         "goals": 0,
-        "assists": 0,
-        "points": 0,
+        "assists": 1,
+        "points": 1,
         "shots": 6,
         "pim": 0,
-        "plusMinus": 2,
+        "plusMinus": 6,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -3384,7 +3462,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 1017
+    "nhlGamesPlayed": 1018
   },
   {
     "id": "nhl-8486251",
@@ -6135,7 +6213,7 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 0,
       "assists": 0,
       "points": 0,
@@ -6144,9 +6222,35 @@
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 4,
-      "plusMinus": 1
+      "plusMinus": 2
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "NYR",
+        "opponentAbbrev": "VAN",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 0,
+        "shots": 0,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": 1,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "17:32",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -6308,13 +6412,13 @@
       {
         "season": 20262027,
         "team": "New York Rangers",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 0,
         "assists": 0,
         "points": 0,
         "shots": 2,
         "pim": 4,
-        "plusMinus": 1,
+        "plusMinus": 2,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -6322,7 +6426,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 6
+    "nhlGamesPlayed": 7
   },
   {
     "id": "nhl-8480831",
@@ -10055,11 +10159,11 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 4,
-      "goals": 0,
+      "gamesPlayed": 5,
+      "goals": 1,
       "assists": 1,
-      "points": 1,
-      "shots": 5,
+      "points": 2,
+      "shots": 8,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
@@ -10067,6 +10171,32 @@
       "plusMinus": 1
     },
     "gameLog": [
+      {
+        "gameId": 2026020084,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "WSH",
+        "opponentAbbrev": "SEA",
+        "homeRoadFlag": "H",
+        "goals": 1,
+        "assists": 0,
+        "shots": 3,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 1,
+        "plusMinus": 0,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "16:56",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -10512,11 +10642,11 @@
       {
         "season": 20262027,
         "team": "Washington Capitals",
-        "gamesPlayed": 4,
-        "goals": 0,
+        "gamesPlayed": 5,
+        "goals": 1,
         "assists": 1,
-        "points": 1,
-        "shots": 5,
+        "points": 2,
+        "shots": 8,
         "pim": 0,
         "plusMinus": 1,
         "wins": 0,
@@ -10526,7 +10656,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 1577
+    "nhlGamesPlayed": 1578
   },
   {
     "id": "nhl-8474565",
@@ -11009,18 +11139,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 4,
+      "gamesPlayed": 5,
       "goals": 3,
       "assists": 0,
       "points": 3,
-      "shots": 13,
+      "shots": 15,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 2,
       "pim": 0,
-      "plusMinus": 5
+      "plusMinus": 4
     },
     "gameLog": [
+      {
+        "gameId": 2026020084,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "WSH",
+        "opponentAbbrev": "SEA",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 0,
+        "shots": 2,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": -1,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "20:52",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -11290,13 +11446,13 @@
       {
         "season": 20262027,
         "team": "Washington Capitals",
-        "gamesPlayed": 4,
+        "gamesPlayed": 5,
         "goals": 3,
         "assists": 0,
         "points": 3,
-        "shots": 13,
+        "shots": 15,
         "pim": 0,
-        "plusMinus": 5,
+        "plusMinus": 4,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -11304,7 +11460,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 619
+    "nhlGamesPlayed": 620
   },
   {
     "id": "nhl-8481532",
@@ -14535,18 +14691,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
-      "goals": 4,
-      "assists": 2,
-      "points": 6,
-      "shots": 12,
-      "powerPlayPoints": 1,
+      "gamesPlayed": 7,
+      "goals": 5,
+      "assists": 3,
+      "points": 8,
+      "shots": 14,
+      "powerPlayPoints": 2,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 2,
       "plusMinus": 4
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "NYR",
+        "opponentAbbrev": "VAN",
+        "homeRoadFlag": "H",
+        "goals": 1,
+        "assists": 1,
+        "shots": 2,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 2,
+        "plusMinus": 0,
+        "powerPlayPoints": 1,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "19:19",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -14804,11 +14986,11 @@
       {
         "season": 20262027,
         "team": "New York Rangers",
-        "gamesPlayed": 6,
-        "goals": 4,
-        "assists": 2,
-        "points": 6,
-        "shots": 12,
+        "gamesPlayed": 7,
+        "goals": 5,
+        "assists": 3,
+        "points": 8,
+        "shots": 14,
         "pim": 2,
         "plusMinus": 4,
         "wins": 0,
@@ -14818,7 +15000,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 468
+    "nhlGamesPlayed": 469
   },
   {
     "id": "nhl-8485606",
@@ -14928,11 +15110,11 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 4,
+      "gamesPlayed": 5,
       "goals": 0,
-      "assists": 1,
-      "points": 1,
-      "shots": 4,
+      "assists": 2,
+      "points": 2,
+      "shots": 5,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
@@ -14940,6 +15122,32 @@
       "plusMinus": -3
     },
     "gameLog": [
+      {
+        "gameId": 2026020084,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "WSH",
+        "opponentAbbrev": "SEA",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 1,
+        "shots": 1,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 1,
+        "plusMinus": 0,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "14:49",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020067,
         "gameDate": "2026-10-09",
@@ -15129,11 +15337,11 @@
       {
         "season": 20262027,
         "team": "Washington Capitals",
-        "gamesPlayed": 4,
+        "gamesPlayed": 5,
         "goals": 0,
-        "assists": 1,
-        "points": 1,
-        "shots": 4,
+        "assists": 2,
+        "points": 2,
+        "shots": 5,
         "pim": 2,
         "plusMinus": -3,
         "wins": 0,
@@ -15143,7 +15351,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 325
+    "nhlGamesPlayed": 326
   },
   {
     "id": "nhl-8486326",
@@ -23146,7 +23354,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8477015.png",
-    "injuryStatus": "O",
+    "injuryStatus": "IR",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -26952,18 +27160,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 2,
       "assists": 6,
       "points": 8,
-      "shots": 11,
+      "shots": 12,
       "powerPlayPoints": 3,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 0,
-      "plusMinus": 3
+      "plusMinus": 2
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "VAN",
+        "opponentAbbrev": "NYR",
+        "homeRoadFlag": "R",
+        "goals": 0,
+        "assists": 0,
+        "shots": 1,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": -1,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "17:04",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020071,
         "gameDate": "2026-10-10",
@@ -27253,13 +27487,13 @@
       {
         "season": 20262027,
         "team": "Vancouver Canucks",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 2,
         "assists": 6,
         "points": 8,
-        "shots": 11,
+        "shots": 12,
         "pim": 0,
-        "plusMinus": 3,
+        "plusMinus": 2,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -27267,7 +27501,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 551
+    "nhlGamesPlayed": 552
   },
   {
     "id": "nhl-8483678",
@@ -27303,18 +27537,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
-      "goals": 1,
+      "gamesPlayed": 7,
+      "goals": 2,
       "assists": 0,
-      "points": 1,
-      "shots": 6,
+      "points": 2,
+      "shots": 8,
       "powerPlayPoints": 0,
-      "shorthandedGoals": 0,
+      "shorthandedGoals": 1,
       "gameWinningGoals": 1,
       "pim": 2,
-      "plusMinus": 4
+      "plusMinus": 6
     },
     "gameLog": [
+      {
+        "gameId": 2026020085,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "VAN",
+        "opponentAbbrev": "NYR",
+        "homeRoadFlag": "R",
+        "goals": 1,
+        "assists": 0,
+        "shots": 2,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 1,
+        "plusMinus": 2,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 1,
+        "gameWinningGoals": 0,
+        "toi": "21:30",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020071,
         "gameDate": "2026-10-10",
@@ -27508,13 +27768,13 @@
       {
         "season": 20262027,
         "team": "Vancouver Canucks",
-        "gamesPlayed": 6,
-        "goals": 1,
+        "gamesPlayed": 7,
+        "goals": 2,
         "assists": 0,
-        "points": 1,
-        "shots": 6,
+        "points": 2,
+        "shots": 8,
         "pim": 2,
-        "plusMinus": 4,
+        "plusMinus": 6,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -27522,7 +27782,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 104
+    "nhlGamesPlayed": 105
   },
   {
     "id": "nhl-8483510",
@@ -32513,7 +32773,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8482105.png",
-    "injuryStatus": "DTD",
+    "injuryStatus": "O",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -34192,7 +34452,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8481641.png",
-    "injuryStatus": "O",
+    "injuryStatus": "DTD",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -34922,9 +35182,11 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8473533.png",
-    "injuryStatus": null,
-    "injuryVerification": null,
-    "injurySources": []
+    "injuryStatus": "DTD",
+    "injuryVerification": "single-source",
+    "injurySources": [
+      "ESPN"
+    ]
   },
   {
     "id": "nhl-8479579",
@@ -38260,18 +38522,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 4,
       "assists": 1,
       "points": 5,
-      "shots": 16,
+      "shots": 19,
       "powerPlayPoints": 1,
       "shorthandedGoals": 1,
       "gameWinningGoals": 0,
       "pim": 2,
-      "plusMinus": 5
+      "plusMinus": 6
     },
     "gameLog": [
+      {
+        "gameId": 2026020086,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "CAR",
+        "opponentAbbrev": "PHI",
+        "homeRoadFlag": "R",
+        "goals": 0,
+        "assists": 0,
+        "shots": 3,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": 1,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "17:44",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020078,
         "gameDate": "2026-10-10",
@@ -38497,13 +38785,13 @@
       {
         "season": 20262027,
         "team": "Carolina Hurricanes",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 4,
         "assists": 1,
         "points": 5,
-        "shots": 16,
+        "shots": 19,
         "pim": 2,
-        "plusMinus": 5,
+        "plusMinus": 6,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -38511,7 +38799,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 189
+    "nhlGamesPlayed": 190
   },
   {
     "id": "nhl-8479378",
@@ -39023,9 +39311,11 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8482146.png",
-    "injuryStatus": null,
-    "injuryVerification": null,
-    "injurySources": []
+    "injuryStatus": "DTD",
+    "injuryVerification": "single-source",
+    "injurySources": [
+      "ESPN"
+    ]
   },
   {
     "id": "nhl-8482684",
@@ -39798,7 +40088,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8475220.png",
-    "injuryStatus": "DTD",
+    "injuryStatus": "O",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -40640,7 +40930,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8478911.png",
-    "injuryStatus": "O",
+    "injuryStatus": "IR",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -41116,7 +41406,7 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 2,
       "assists": 0,
       "points": 2,
@@ -41125,9 +41415,35 @@
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 6,
-      "plusMinus": -5
+      "plusMinus": -7
     },
     "gameLog": [
+      {
+        "gameId": 2026020086,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "PHI",
+        "opponentAbbrev": "CAR",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 0,
+        "shots": 0,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": -2,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "12:54",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020070,
         "gameDate": "2026-10-10",
@@ -41321,13 +41637,13 @@
       {
         "season": 20262027,
         "team": "Philadelphia Flyers",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 2,
         "assists": 0,
         "points": 2,
         "shots": 8,
         "pim": 6,
-        "plusMinus": -5,
+        "plusMinus": -7,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -41335,7 +41651,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 167
+    "nhlGamesPlayed": 168
   },
   {
     "id": "nhl-8486292",
@@ -50167,7 +50483,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8484180.png",
-    "injuryStatus": "DTD",
+    "injuryStatus": "O",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -51059,11 +51375,11 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 5,
+      "gamesPlayed": 6,
       "goals": 2,
       "assists": 1,
       "points": 3,
-      "shots": 7,
+      "shots": 10,
       "powerPlayPoints": 0,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
@@ -51071,6 +51387,32 @@
       "plusMinus": 3
     },
     "gameLog": [
+      {
+        "gameId": 2026020084,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "SEA",
+        "opponentAbbrev": "WSH",
+        "homeRoadFlag": "R",
+        "goals": 0,
+        "assists": 0,
+        "shots": 3,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": 0,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "12:25",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020066,
         "gameDate": "2026-10-09",
@@ -51270,11 +51612,11 @@
       {
         "season": 20262027,
         "team": "Seattle Kraken",
-        "gamesPlayed": 5,
+        "gamesPlayed": 6,
         "goals": 2,
         "assists": 1,
         "points": 3,
-        "shots": 7,
+        "shots": 10,
         "pim": 0,
         "plusMinus": 3,
         "wins": 0,
@@ -51284,7 +51626,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 174
+    "nhlGamesPlayed": 175
   },
   {
     "id": "nhl-8486323",
@@ -53534,7 +53876,7 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8477845.png",
-    "injuryStatus": "DTD",
+    "injuryStatus": "O",
     "injuryVerification": "single-source",
     "injurySources": [
       "ESPN"
@@ -53574,18 +53916,44 @@
     },
     "currentSeasonStats": {
       "season": 20262027,
-      "gamesPlayed": 6,
+      "gamesPlayed": 7,
       "goals": 0,
       "assists": 2,
       "points": 2,
-      "shots": 5,
+      "shots": 6,
       "powerPlayPoints": 1,
       "shorthandedGoals": 0,
       "gameWinningGoals": 0,
       "pim": 4,
-      "plusMinus": -4
+      "plusMinus": -7
     },
     "gameLog": [
+      {
+        "gameId": 2026020086,
+        "gameDate": "2026-10-11",
+        "teamAbbrev": "PHI",
+        "opponentAbbrev": "CAR",
+        "homeRoadFlag": "H",
+        "goals": 0,
+        "assists": 0,
+        "shots": 1,
+        "hits": 0,
+        "blocks": 0,
+        "pim": 0,
+        "points": 0,
+        "plusMinus": -3,
+        "powerPlayPoints": 0,
+        "shorthandedGoals": 0,
+        "gameWinningGoals": 0,
+        "toi": "16:05",
+        "decision": null,
+        "shotsAgainst": 0,
+        "goalsAgainst": 0,
+        "savePctg": null,
+        "shutouts": 0,
+        "powerPlayToi": "—",
+        "penaltyKillToi": "—"
+      },
       {
         "gameId": 2026020070,
         "gameDate": "2026-10-10",
@@ -53843,13 +54211,13 @@
       {
         "season": 20262027,
         "team": "Philadelphia Flyers",
-        "gamesPlayed": 6,
+        "gamesPlayed": 7,
         "goals": 0,
         "assists": 2,
         "points": 2,
-        "shots": 5,
+        "shots": 6,
         "pim": 4,
-        "plusMinus": -4,
+        "plusMinus": -7,
         "wins": 0,
         "saves": 0,
         "goalsAgainst": 0,
@@ -53857,7 +54225,7 @@
         "savePctg": null
       }
     ],
-    "nhlGamesPlayed": 355
+    "nhlGamesPlayed": 356
   },
   {
     "id": "nhl-8484141",
@@ -55432,6 +55800,22 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8482759.png",
+    "injuryStatus": null,
+    "injuryVerification": null,
+    "injurySources": []
+  },
+  {
+    "id": "nhl-8481572",
+    "nhlId": 8481572,
+    "name": "Ville Heinola",
+    "team": "VGK",
+    "position": "D",
+    "slot": "D",
+    "projPts": 9.8,
+    "todayPts": null,
+    "waiver": "FA",
+    "opponent": "—",
+    "headshot": "https://assets.nhle.com/mugs/nhl/latest/8481572.png",
     "injuryStatus": null,
     "injuryVerification": null,
     "injurySources": []
@@ -57141,11 +57525,9 @@
     "waiver": "FA",
     "opponent": "—",
     "headshot": "https://assets.nhle.com/mugs/nhl/latest/8474567.png",
-    "injuryStatus": "DTD",
-    "injuryVerification": "single-source",
-    "injurySources": [
-      "ESPN"
-    ]
+    "injuryStatus": null,
+    "injuryVerification": null,
+    "injurySources": []
   },
   {
     "id": "nhl-8482784",

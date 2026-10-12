@@ -1,0 +1,23 @@
+# John Scott Dynasty Hockey - Cursor Rules
+
+## Architecture & Stack
+- Framework: Next.js (App Router, Node.js runtime)
+- Database & ORM: PostgreSQL (Neon) via Prisma
+- Package Manager: npm (Never install or reference pnpm or yarn)
+- UI: Tailwind CSS, Radix/Base UI, Lucide icons, Dark Sleeper theme
+- Mobile Constraint: All dashboard views are restricted to max-w-[430px] with h-dvh layout.
+
+## Code Conventions
+- React Components: Functional components with TypeScript. Use "use client" only when client state/effects are required.
+- Prisma Usage: Always import `{ prisma } from "@/lib/prisma"`. Never instantiate `new PrismaClient()` in routes.
+- Authentication: Handled via HTTP-only cookie `dynasty_manager` containing `{ managerId, teamId, handle, teamName, isCommissioner }`.
+- API Routes: Always return typed `NextResponse.json(...)` with explicit HTTP status codes.
+
+## Dynasty Hockey Domain Rules
+- Matchup Weeks: Weekly schedules run Monday to Sunday. Unplayed games must show actual score `0.0`, never falling back to weekly projected totals.
+- Roster Integrity: Active starting slots are C, W, F, D, G. Taxi squad threshold is < 50 GP. IR is pure IR (DTD/IR+ ineligible).
+- Waivers: FAAB bids deduct from team faabBalance. Drops are optional only if team has open bench spots (< 27 roster capacity).
+
+## Testing & Verification
+- Test Suite: Playwright E2E in `e2e/`. Tests run against authenticated manager storage state in `e2e/.auth/manager.json`.
+- Before suggesting completed tasks, verify code compiles with `npx tsc --noEmit`.

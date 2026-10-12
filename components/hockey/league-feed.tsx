@@ -5,10 +5,12 @@ import { ChevronDown, ChevronLeft, ChevronRight, Filter, SlidersHorizontal, Trop
 import {
   activities as defaultActivities,
   getTeamRoster,
+  getWeekActualPoints,
   getWeekMatchups,
+  getWeekProjectedPoints,
+  isStarterSlot,
   roster as defaultRoster,
   standings as defaultStandings,
-  weekMatchups as defaultMatchups,
   type ActivityItem,
   type LiveMatchupSummary,
   type MatchupSummary,
@@ -16,6 +18,7 @@ import {
   type Player,
   type StandingRow,
 } from "@/lib/hockey-data"
+import type { MatchupResult } from "@/lib/dashboard-data"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
@@ -23,11 +26,11 @@ import { PlayerPortrait } from "@/components/hockey/player-portrait"
 type ActivityFilter = "ALL" | "TRADE" | "ADD" | "DROP"
 type DisplayMatchup = MatchupSummary & Partial<Pick<LiveMatchupSummary, "projectedHome" | "projectedAway">>
 type FeedProps = {
+  matchupResults?: MatchupResult[]
   week?: number
   teamName?: string
   teamLogo?: string
   standings?: StandingRow[]
-  matchups?: MatchupSummary[]
   liveMatchups?: Record<string, LiveMatchupSummary>
   activities?: ActivityItem[]
   roster?: Player[]
@@ -41,30 +44,27 @@ type FeedProps = {
 
 const starterSlots = ["C", "C", "C", "W", "W", "W", "W", "W", "W", "F", "F", "F", "D", "D", "D", "D", "D", "D", "G", "G"] as const
 const badgeColors: Record<string, string> = { C: "bg-blue-500", W: "bg-teal-500", F: "bg-violet-500", D: "bg-amber-500", G: "bg-sky-300 text-slate-900" }
-const starterSlotSet = new Set<string>(starterSlots)
 
-function calculateRosterSummary(team: string, roster: Player[], players: MarketPlayer[]) {
+function calculateRosterSummary(team: string, roster: Player[], players: MarketPlayer[], week: number) {
   return getTeamRoster(team, roster, players)
-    .filter((player) => starterSlotSet.has(player.slot))
+    .filter((player) => isStarterSlot(player.slot))
     .reduce(
       (summary, player) => ({
-        score: summary.score + (player.schedule?.weekFantasyPoints ?? player.todayPts ?? 0),
-        projected: summary.projected + (player.schedule?.weekProjectedFantasyPoints ?? player.projPts),
+        score: summary.score + getWeekActualPoints(player, week),
+        projected: summary.projected + (getWeekProjectedPoints(player, week) ?? 0),
       }),
       { score: 0, projected: 0 },
     )
 }
 
-function getWeeklyRecords(week: number) {
+function getWeeklyRecords(week: number, results: MatchupResult[]) {
     const records = new Map<string, { wins: number; losses: number }>()
     const ensure = (team: string) => {
       if (!records.has(team)) records.set(team, { wins: 0, losses: 0 })
       return records.get(team)!
     }
-
-    if (week <= 1) return records
-    for (const matchup of defaultMatchups) {
-      if (matchup.status !== "Final") continue
+    for (const matchup of results) {
+      if (!matchup.isFinal || matchup.week >= week) continue
       const home = ensure(matchup.homeTeam)
       const away = ensure(matchup.awayTeam)
       if (matchup.homeScore > matchup.awayScore) {
@@ -84,11 +84,11 @@ function recordFor(team: string, records: Map<string, { wins: number; losses: nu
 }
 
 export function LeagueFeed({
+  matchupResults = [],
   week = 1,
   teamName = "Montreal Monarchs",
   teamLogo = "",
   standings = defaultStandings,
-  matchups = defaultMatchups,
   liveMatchups = {},
   activities = defaultActivities,
   roster = defaultRoster,
@@ -106,8 +106,12 @@ export function LeagueFeed({
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("ALL")
   const filteredActivities = activities.filter((item) => activityFilter === "ALL" || item.action === activityFilter)
   const weekSchedule = getWeekMatchups(week)
-  const weeklyRecords = getWeeklyRecords(week)
+  const weeklyRecords = getWeeklyRecords(week, matchupResults)
   const displayMatchups = weekSchedule.map((matchup) => {
+    const final = matchupResults.find((result) => result.week === week && result.isFinal && result.homeTeam === matchup.homeTeam && result.awayTeam === matchup.awayTeam)
+    if (final) {
+      return { ...matchup, homeRecord: recordFor(matchup.homeTeam, weeklyRecords), awayRecord: recordFor(matchup.awayTeam, weeklyRecords), homeScore: final.homeScore, awayScore: final.awayScore, projectedHome: final.homeScore, projectedAway: final.awayScore, status: "Final" }
+    }
     const live = liveMatchups[matchup.id]
     const isUserHome = matchup.homeTeam === teamName
     const isUserAway = matchup.awayTeam === teamName
@@ -125,8 +129,8 @@ export function LeagueFeed({
         awayRecord: recordFor(matchup.awayTeam, weeklyRecords),
       }
     }
-    const home = calculateRosterSummary(matchup.homeTeam, roster, players)
-    const away = calculateRosterSummary(matchup.awayTeam, roster, players)
+    const home = calculateRosterSummary(matchup.homeTeam, roster, players, week)
+    const away = calculateRosterSummary(matchup.awayTeam, roster, players, week)
     return {
       ...displayMatchup,
       homeRecord: recordFor(matchup.homeTeam, weeklyRecords),
@@ -137,12 +141,7 @@ export function LeagueFeed({
       projectedAway: away.projected,
     }
   })
-  const liveStandings = standings.map((row) => {
-    const live = displayMatchups.find((matchup) => matchup.homeTeam === row.team || matchup.awayTeam === row.team)
-    if (!live) return row
-    const isHome = live.homeTeam === row.team
-    return { ...row, pointsFor: isHome ? live.homeScore : live.awayScore, pointsAgainst: isHome ? live.awayScore : live.homeScore }
-  })
+  const liveStandings = standings
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[#070a12] text-white">
@@ -188,10 +187,20 @@ export function LeagueFeed({
   )
 }
 
+/** Home win % from projected totals (which already include points banked so far); 50% when no projection exists. */
+function winProbability(matchup: DisplayMatchup) {
+  const home = matchup.projectedHome ?? matchup.homeScore
+  const away = matchup.projectedAway ?? matchup.awayScore
+  if (matchup.status === "Final") return matchup.homeScore === matchup.awayScore ? 50 : matchup.homeScore > matchup.awayScore ? 100 : 0
+  if (home + away <= 0) return 50
+  const spread = Math.max(10, 0.12 * (home + away))
+  return Math.min(95, Math.max(5, Math.round(100 / (1 + Math.exp(-(home - away) / spread)))))
+}
+
 function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatchup[] }) {
   const teams = matchups.flatMap((matchup) => [
-    { team: matchup.homeTeam, owner: matchup.homeOwner, points: matchup.homeScore },
-    { team: matchup.awayTeam, owner: matchup.awayOwner, points: matchup.awayScore },
+    { team: matchup.homeTeam, owner: matchup.homeOwner, points: matchup.homeScore > 0 ? matchup.homeScore : matchup.projectedHome ?? 0, projected: !(matchup.homeScore > 0) },
+    { team: matchup.awayTeam, owner: matchup.awayOwner, points: matchup.awayScore > 0 ? matchup.awayScore : matchup.projectedAway ?? 0, projected: !(matchup.awayScore > 0) },
   ]).sort((a, b) => b.points - a.points).slice(0, 3).map((team, index) => ({
     ...team,
     place: index + 1,
@@ -207,6 +216,7 @@ function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatch
         <p className="mt-2 w-full truncate text-xs font-black">{team.team}</p>
         <p className="truncate text-[10px] text-[#6d86ab]">{team.owner}</p>
         <p className={cn("mt-1 text-sm font-black tabular-nums", team.color)}>{team.points.toFixed(2)}</p>
+        {team.projected && <p className="text-[8px] font-black uppercase tracking-wider text-[#5e7090]">projected</p>}
       </div>)}
     </div>
   </section>
@@ -216,8 +226,7 @@ function MatchupsSection({ week, matchups, teamName, teamLogo, onSelect, onWeekC
   return <section>
     <div className="mb-2 flex items-center justify-between"><h2 className="text-lg font-black">Matchups</h2><div className="flex items-center gap-2 text-xs font-bold text-[#19ffff]"><button type="button" onClick={() => onWeekChange?.(Math.max(1, week - 1))} aria-label="Previous league week" className="rounded p-1 hover:bg-[#172338]"><ChevronLeft className="size-4" /></button><span>Week {week}</span><button type="button" onClick={() => onWeekChange?.(week + 1)} aria-label="Next league week" className="rounded p-1 hover:bg-[#172338]"><ChevronRight className="size-4" /></button></div></div>
     <div className="space-y-2">{matchups.map((matchup) => {
-      const total = Math.max(matchup.homeScore + matchup.awayScore, 1)
-      const homeWin = matchup.status === "Scheduled" ? 50 : Math.round((matchup.homeScore / total) * 100)
+      const homeWin = winProbability(matchup)
       const homeResult = matchup.status === "Scheduled" ? undefined : matchup.homeScore === matchup.awayScore ? "TIE" : matchup.homeScore > matchup.awayScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
       const awayResult = matchup.status === "Scheduled" ? undefined : matchup.awayScore === matchup.homeScore ? "TIE" : matchup.awayScore > matchup.homeScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
       return <button key={matchup.id} type="button" onClick={() => onSelect(matchup)} className="w-full rounded-2xl border border-[#16233b] bg-[#0d1424] p-3 text-left transition-colors hover:bg-[#111c2e]">
@@ -236,7 +245,7 @@ function TeamMatchup({ team, logo, owner, record, result, score, projected, win,
 }
 
 function StandingsSection({ standings, teamName, playoffMode, onToggle, onDetails, onTrade }: { standings: StandingRow[]; teamName: string; playoffMode: boolean; onToggle: () => void; onDetails: () => void; onTrade?: (team: StandingRow) => void }) {
-  return <section><div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onDetails} className="text-[10px] font-bold text-[#19ffff]">Details &gt;</button></div><button type="button" onClick={onToggle} className="rounded-full border border-[#294463] bg-[#102642] px-2.5 py-1.5 text-[9px] font-black text-[#19ffff]">☲ {playoffMode ? "STAND." : "PLAYOFF"}</button></div>{playoffMode ? <PlayoffBracket standings={standings} /> : <div className="overflow-hidden rounded-xl border border-[#16233b] bg-[#0d1424]"><div className="grid grid-cols-[32px_1fr_58px_50px_50px] gap-1 border-b border-[#16233b] px-2 py-2 text-[8px] font-black uppercase tracking-wider text-[#5e7090]"><span>Rank</span><span>Name</span><span>Waiver</span><span className="text-right">PF</span><span className="text-right">PA</span></div>{standings.map((row) => <div key={row.team} className={cn("grid grid-cols-[32px_1fr_58px_50px_50px] items-center gap-1 border-b border-[#111929] px-2 py-2 last:border-0", row.team === teamName && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}><div><b className="text-xs">{row.rank}</b><span className={cn("block text-[8px] font-bold", row.delta?.startsWith("+") ? "text-emerald-300" : "text-rose-300")}>{row.delta ? `${row.delta.startsWith("+") ? "▲" : "▼"} ${row.delta.replace("-", "")}` : "—"}</span></div><button type="button" onClick={() => onTrade?.(row)} className="min-w-0 text-left"><p className="truncate text-[10px] font-black">{row.team}</p><p className="truncate text-[8px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses}{row.streak && <> · <span className={row.streak.endsWith("W") ? "text-emerald-300" : "text-rose-300"}>{row.streak}</span></>}</p></button><span className="text-[9px] font-bold text-amber-300">${row.faabRemaining} <span className="text-[#6d86ab]">(6)</span></span><span className="text-right text-[9px] tabular-nums">{row.pointsFor.toFixed(1)}</span><span className="text-right text-[9px] tabular-nums">{row.pointsAgainst.toFixed(1)}</span></div>)}</div>}</section>
+  return <section><div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onDetails} className="text-[10px] font-bold text-[#19ffff]">Details &gt;</button></div><button type="button" onClick={onToggle} className="rounded-full border border-[#294463] bg-[#102642] px-2.5 py-1.5 text-[9px] font-black text-[#19ffff]">☲ {playoffMode ? "STAND." : "PLAYOFF"}</button></div>{playoffMode ? <PlayoffBracket standings={standings} /> : <div className="overflow-hidden rounded-xl border border-[#16233b] bg-[#0d1424]"><div className="grid grid-cols-[32px_1fr_58px_50px_50px] gap-1 border-b border-[#16233b] px-2 py-2 text-[8px] font-black uppercase tracking-wider text-[#5e7090]"><span>Rank</span><span>Name</span><span>Waiver</span><span className="text-right">PF</span><span className="text-right">PA</span></div>{standings.map((row) => <div key={`${row.team}-${row.owner}`} className={cn("grid grid-cols-[32px_1fr_58px_50px_50px] items-center gap-1 border-b border-[#111929] px-2 py-2 last:border-0", row.team === teamName && "border-l-2 border-l-[#19ffff] bg-[#0c2231]")}><div><b className="text-xs">{row.rank}</b><span className={cn("block text-[8px] font-bold", row.delta?.startsWith("+") ? "text-emerald-300" : "text-rose-300")}>{row.delta ? `${row.delta.startsWith("+") ? "▲" : "▼"} ${row.delta.replace("-", "")}` : "—"}</span></div><button type="button" onClick={() => onTrade?.(row)} className="min-w-0 text-left"><p className="truncate text-[10px] font-black">{row.team}</p><p className="truncate text-[8px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses}{row.streak && <> · <span className={row.streak.endsWith("W") ? "text-emerald-300" : "text-rose-300"}>{row.streak}</span></>}</p></button><span className="text-[9px] font-bold text-amber-300">${row.faabRemaining} <span className="text-[#6d86ab]">(6)</span></span><span className="text-right text-[9px] tabular-nums">{row.pointsFor.toFixed(1)}</span><span className="text-right text-[9px] tabular-nums">{row.pointsAgainst.toFixed(1)}</span></div>)}</div>}</section>
 }
 
 function PlayoffBracket({ standings }: { standings: StandingRow[] }) {
@@ -262,12 +271,12 @@ function MatchupSheet({ week, matchup, roster, players = [], onClose, onSelectPl
   if (!open) return null
   const home = matchup ? getTeamRoster(matchup.homeTeam, roster, players) : []
   const away = matchup ? getTeamRoster(matchup.awayTeam, roster, players) : []
-  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[92vh] max-h-[92vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Week {week} Matchup</h2><button type="button" onClick={onClose} className="rounded-full bg-[#172338] p-2"><X className="size-4" /></button></div>{matchup && <div className="mt-3 grid grid-cols-3 items-center text-center"><div><p className="truncate text-xs font-black">{matchup.homeTeam}</p><b className="text-xl">{matchup.homeScore.toFixed(2)}</b><p className="text-[9px] text-emerald-300">52% WIN</p></div><span className="text-[10px] font-black text-[#5e7090]">VS</span><div><p className="truncate text-xs font-black">{matchup.awayTeam}</p><b className="text-xl">{matchup.awayScore.toFixed(2)}</b><p className="text-[9px] text-emerald-300">48% WIN</p></div></div>}</div>{matchup && <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Starter comparison · 20 slots</p>{starterSlots.map((slot, index) => { const left = home.filter((player) => player.slot === slot)[index % Math.max(home.filter((player) => player.slot === slot).length, 1)]; const right = away.filter((player) => player.slot === slot)[index % Math.max(away.filter((player) => player.slot === slot).length, 1)]; return <div key={`${slot}-${index}`} className="grid grid-cols-[1fr_32px_1fr] items-center gap-2 border-b border-[#111929] py-2"><button type="button" disabled={!left} onClick={() => left && onSelectPlayer?.(left)} className="min-w-0 text-left disabled:opacity-50"><b className="block truncate text-[10px]">{left?.name ?? "Empty slot"}</b><span className="text-[9px] text-[#6d86ab]">{left ? `${slot} · ${(left.todayPts ?? left.projPts).toFixed(1)} FPTS` : slot}</span></button><span className={cn("mx-auto flex size-5 items-center justify-center rounded text-[8px] font-black text-white", badgeColors[slot])}>{slot}</span><button type="button" disabled={!right} onClick={() => right && onSelectPlayer?.(right)} className="min-w-0 text-right disabled:opacity-50"><b className="block truncate text-[10px]">{right?.name ?? "Empty slot"}</b><span className="text-[9px] text-[#6d86ab]">{right ? `${slot} · ${(right.todayPts ?? right.projPts).toFixed(1)} FPTS` : slot}</span></button></div> })}</div>}</SheetContent></Sheet>
+  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[92vh] max-h-[92vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Week {week} Matchup</h2><button type="button" onClick={onClose} className="rounded-full bg-[#172338] p-2"><X className="size-4" /></button></div>{matchup && <div className="mt-3 grid grid-cols-3 items-center text-center"><div><p className="truncate text-xs font-black">{matchup.homeTeam}</p><b className="text-xl">{matchup.homeScore.toFixed(2)}</b><p className="text-[9px] text-emerald-300">{winProbability(matchup as DisplayMatchup)}% WIN</p></div><span className="text-[10px] font-black text-[#5e7090]">VS</span><div><p className="truncate text-xs font-black">{matchup.awayTeam}</p><b className="text-xl">{matchup.awayScore.toFixed(2)}</b><p className="text-[9px] text-emerald-300">{100 - winProbability(matchup as DisplayMatchup)}% WIN</p></div></div>}</div>{matchup && <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Starter comparison · 20 slots</p>{starterSlots.map((slot, index) => { const left = home.filter((player) => player.slot === slot)[index % Math.max(home.filter((player) => player.slot === slot).length, 1)]; const right = away.filter((player) => player.slot === slot)[index % Math.max(away.filter((player) => player.slot === slot).length, 1)]; return <div key={`${slot}-${index}`} className="grid grid-cols-[1fr_32px_1fr] items-center gap-2 border-b border-[#111929] py-2"><button type="button" disabled={!left} onClick={() => left && onSelectPlayer?.(left)} className="min-w-0 text-left disabled:opacity-50"><b className="block truncate text-[10px]">{left?.name ?? "Empty slot"}</b><span className="text-[9px] text-[#6d86ab]">{left ? `${slot} · ${(left.todayPts ?? left.projPts).toFixed(1)} FPTS` : slot}</span></button><span className={cn("mx-auto flex size-5 items-center justify-center rounded text-[8px] font-black text-white", badgeColors[slot])}>{slot}</span><button type="button" disabled={!right} onClick={() => right && onSelectPlayer?.(right)} className="min-w-0 text-right disabled:opacity-50"><b className="block truncate text-[10px]">{right?.name ?? "Empty slot"}</b><span className="text-[9px] text-[#6d86ab]">{right ? `${slot} · ${(right.todayPts ?? right.projPts).toFixed(1)} FPTS` : slot}</span></button></div> })}</div>}</SheetContent></Sheet>
 }
 
 function StandingsSheet({ open, standings, onClose }: { open: boolean; standings: StandingRow[]; onClose: () => void }) {
   if (!open) return null
-  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[88vh] max-h-[88vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onClose}><X className="size-5" /></button></div><p className="mt-1 text-xs text-[#6d86ab]">Extended league details</p></div><div className="min-h-0 flex-1 overflow-y-auto p-3">{standings.map((row) => <div key={row.team} className="grid grid-cols-[28px_1fr_60px_60px] gap-2 border-b border-[#111929] py-3"><b>{row.rank}</b><div><p className="text-xs font-black">{row.team}</p><p className="text-[9px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses}</p></div><span className="text-right text-[10px] tabular-nums">PF<br />{row.pointsFor.toFixed(1)}<br /><span className="text-[#6d86ab]">MAX {Math.ceil(row.pointsFor * 1.08)}</span></span><span className="text-right text-[10px] tabular-nums">PA<br />{row.pointsAgainst.toFixed(1)}<br /><span className="text-amber-300">${row.faabRemaining}</span></span></div>)}</div></SheetContent></Sheet>
+  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[88vh] max-h-[88vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Standings</h2><button type="button" onClick={onClose}><X className="size-5" /></button></div><p className="mt-1 text-xs text-[#6d86ab]">Extended league details</p></div><div className="min-h-0 flex-1 overflow-y-auto p-3">{standings.map((row) => <div key={`${row.team}-${row.owner}`} className="grid grid-cols-[28px_1fr_60px_60px] gap-2 border-b border-[#111929] py-3"><b>{row.rank}</b><div><p className="text-xs font-black">{row.team}</p><p className="text-[9px] text-[#6d86ab]">{row.owner} · {row.wins}-{row.losses}</p></div><span className="text-right text-[10px] tabular-nums">PF<br />{row.pointsFor.toFixed(1)}<br /><span className="text-[#6d86ab]">MAX {Math.ceil(row.pointsFor * 1.08)}</span></span><span className="text-right text-[10px] tabular-nums">PA<br />{row.pointsAgainst.toFixed(1)}<br /><span className="text-amber-300">${row.faabRemaining}</span></span></div>)}</div></SheetContent></Sheet>
 }
 
 function TransactionsSheet({ open, activities, filter, onFilter, onClose, roster, onSelectPlayer }: { open: boolean; activities: ActivityItem[]; filter: ActivityFilter; onFilter: () => void; onClose: () => void; roster: Player[]; onSelectPlayer?: (player: Player) => void }) {
@@ -277,5 +286,5 @@ function TransactionsSheet({ open, activities, filter, onFilter, onClose, roster
 
 function FilterSheet({ open, filter, onChange, managers, onClose }: { open: boolean; filter: ActivityFilter; onChange: (filter: ActivityFilter) => void; managers: StandingRow[]; onClose: () => void }) {
   if (!open) return null
-  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto max-h-[88vh] w-full max-w-[430px] gap-0 rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="flex items-center justify-between border-b border-[#1a263d] p-4"><h2 className="text-lg font-black">Filter transactions</h2><button type="button" onClick={onClose}><X className="size-5" /></button></div><div className="space-y-4 p-4"><div><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Transaction type</p><div className="grid grid-cols-2 gap-2">{(["ALL", "TRADE", "ADD", "DROP"] as ActivityFilter[]).map((option) => <button key={option} type="button" onClick={() => { onChange(option); onClose() }} className={cn("rounded-lg border px-3 py-2 text-xs font-bold", filter === option ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7]")}>{option === "ALL" ? "All Types" : option === "ADD" ? "Free Agents" : option === "DROP" ? "Waivers" : "Trades"}</button>)}</div></div><div><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Managers</p><div className="grid grid-cols-2 gap-2">{managers.map((manager) => <label key={manager.team} className="flex items-center gap-2 rounded-lg border border-[#16233b] bg-[#0d1424] p-2 text-[10px]"><input type="checkbox" defaultChecked className="accent-cyan-400" />{manager.owner}</label>)}</div></div></div></SheetContent></Sheet>
+  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto max-h-[88vh] w-full max-w-[430px] gap-0 rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="flex items-center justify-between border-b border-[#1a263d] p-4"><h2 className="text-lg font-black">Filter transactions</h2><button type="button" onClick={onClose}><X className="size-5" /></button></div><div className="space-y-4 p-4"><div><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Transaction type</p><div className="grid grid-cols-2 gap-2">{(["ALL", "TRADE", "ADD", "DROP"] as ActivityFilter[]).map((option) => <button key={option} type="button" onClick={() => { onChange(option); onClose() }} className={cn("rounded-lg border px-3 py-2 text-xs font-bold", filter === option ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7]")}>{option === "ALL" ? "All Types" : option === "ADD" ? "Free Agents" : option === "DROP" ? "Waivers" : "Trades"}</button>)}</div></div><div><p className="mb-2 text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Managers</p><div className="grid grid-cols-2 gap-2">{managers.map((manager) => <label key={`${manager.team}-${manager.owner}`} className="flex items-center gap-2 rounded-lg border border-[#16233b] bg-[#0d1424] p-2 text-[10px]"><input type="checkbox" defaultChecked className="accent-cyan-400" />{manager.owner}</label>)}</div></div></div></SheetContent></Sheet>
 }

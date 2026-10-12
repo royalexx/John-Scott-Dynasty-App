@@ -2,7 +2,13 @@ import { Calendar, ArrowLeftRight, Receipt, Newspaper, Pencil } from "lucide-rea
 
 type TeamAction = "schedule" | "team-settings" | "settings" | "transactions" | "news" | "trade"
 export type { TeamAction }
-export function TeamHeader({ teamName, pendingClaims, faabBalance, onAction }: { teamName: string; pendingClaims: number; faabBalance?: number; onAction: (action: TeamAction) => void }) {
+function ordinal(n: number) {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`
+}
+
+export function TeamHeader({ teamName, logoUrl, standing, rank, pendingClaims, faabBalance, onAction }: { teamName: string; logoUrl?: string; standing?: { wins: number; losses: number; pointsFor: number; pointsAgainst: number; streak?: string | null }; rank: number; pendingClaims: number; faabBalance?: number; onAction: (action: TeamAction) => void }) {
   const actions = [
     { label: "sched.", icon: Calendar, action: "schedule" as const },
     { label: "trade", icon: ArrowLeftRight, action: "trade" as const },
@@ -12,11 +18,11 @@ export function TeamHeader({ teamName, pendingClaims, faabBalance, onAction }: {
   return (
     <section className="border-b border-[#111929] bg-[#0d1424] px-3.5 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center rounded-full border border-[#24375b] bg-[#1b2842] text-lg">🏒</div>
+        <div className="flex size-11 items-center justify-center overflow-hidden rounded-full border border-[#24375b] bg-[#1b2842] text-lg">{logoUrl ? <img src={logoUrl} alt="" className="size-full object-cover" /> : "🏒"}</div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-black text-white">{teamName}</p>
-          <p className="text-[10px] font-bold text-[#8ba0c7]">1-1 • 4th</p>
-          <p className="text-[10px] text-[#5e7090]">FAAB ${faabBalance ?? 100} • PF 356.06 • PA 318.40</p>
+          <p className="text-[10px] font-bold text-[#8ba0c7]">{standing ? `${standing.wins}-${standing.losses}` : "0-0"}{rank > 0 ? ` • ${ordinal(rank)}` : ""}{standing?.streak ? ` • ${standing.streak}` : ""}</p>
+          <p className="text-[10px] text-[#5e7090]">FAAB ${faabBalance ?? 100} • PF {(standing?.pointsFor ?? 0).toFixed(1)} • PA {(standing?.pointsAgainst ?? 0).toFixed(1)}</p>
         </div>
         <button type="button" onClick={() => onAction("team-settings")} aria-label="Edit team customization" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><Pencil className="size-5" /></button>
       </div>

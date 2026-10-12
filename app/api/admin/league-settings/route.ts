@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
+import { rescoreAllStats, recomputeMatchupsThroughWeek } from "@/lib/services/nhl-sync"
+import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import type { LeagueScoring } from "@/lib/scoring"
 
 const leagueId = "00000000-0000-0000-0000-000000000001"
 const jsonFields = ["rosterPositions", "scoringSettings", "waiverSettings", "tradeSettings", "draftSettings"] as const
@@ -9,7 +12,7 @@ async function getLeague() {
   return prisma.league.findUnique({
     where: { id: leagueId },
     select: {
-      id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true,
+      id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
       scoringSettings: true, rosterPositions: true, waiverSettings: true, tradeSettings: true, draftSettings: true,
     },
   })
@@ -42,22 +45,37 @@ export async function PATCH(request: Request) {
       data[field] = body[field]
     }
   }
-  for (const field of ["taxiSlots", "taxiMaxGames", "irSlots", "currentWeek"]) {
+  for (const field of ["taxiSlots", "taxiMaxGames", "irSlots"]) {
     if (field in body) {
       if (typeof body[field] !== "number" || !Number.isInteger(body[field]) || body[field] < 0) {
         return NextResponse.json({ error: `${field} must be a non-negative integer.` }, { status: 400 })
       }
-      if (data.rosterPositions) {
-        data.rosterSize = Object.values(data.rosterPositions as Record<string, unknown>)
-          .filter((value): value is number => typeof value === "number")
-          .reduce((total, value) => total + value, 0)
-      }
       data[field] = body[field]
     }
   }
+  // currentWeek follows the NHL calendar and cannot be set by hand.
+  if ("lineupLockMode" in body) {
+    if (body.lineupLockMode !== "WEEKLY" && body.lineupLockMode !== "DAILY") {
+      return NextResponse.json({ error: "lineupLockMode must be WEEKLY or DAILY." }, { status: 400 })
+    }
+    data.lineupLockMode = body.lineupLockMode
+  }
+  // Roster capacity always follows the configured slots, independent of which other fields were sent.
+  if (data.rosterPositions) {
+    const positions = Object.values(data.rosterPositions as Record<string, unknown>)
+    if (positions.some((value) => typeof value !== "number" || !Number.isInteger(value) || value < 0)) {
+      return NextResponse.json({ error: "rosterPositions values must be non-negative integers." }, { status: 400 })
+    }
+    data.rosterSize = (positions as number[]).reduce((total, value) => total + value, 0)
+  }
   const league = await prisma.league.update({ where: { id: leagueId }, data, select: {
-    id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true,
+    id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
     scoringSettings: true, rosterPositions: true, waiverSettings: true, tradeSettings: true, draftSettings: true,
   } })
+  if (data.scoringSettings) {
+    // Scoring changed: re-price every stat line and rebuild all matchup totals and standings from history.
+    await rescoreAllStats(data.scoringSettings as LeagueScoring)
+    await recomputeMatchupsThroughWeek(leagueId, getCurrentFantasyWeek())
+  }
   return NextResponse.json(league)
 }

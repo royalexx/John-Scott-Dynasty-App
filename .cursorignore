@@ -1,0 +1,10 @@
+# Huge static dataset (keep out of AI context)
+public/data/nhl-players.json
+
+# Build & test artifacts (in case .gitignore is bypassed)
+playwright-report/
+test-results/
+.next/
+node_modules/
+dist/
+*.tsbuildinfo

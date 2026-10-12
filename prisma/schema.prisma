@@ -86,7 +86,8 @@ model League {
   rosterSize      Int
   taxiSlots       Int
   irSlots         Int
-  taxiMaxGames    Int           @default(160)
+  taxiMaxGames    Int           @default(50)
+  lineupLockMode  String        @default("WEEKLY")
   scoringSettings Json
   rosterPositions Json?
   waiverSettings  Json?

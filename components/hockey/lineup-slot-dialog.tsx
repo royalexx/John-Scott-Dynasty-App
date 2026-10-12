@@ -3,10 +3,10 @@
 import { Shield, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import { TAXI_MAX_NHL_GAMES, type Player } from "@/lib/hockey-data"
+import { DEFAULT_SLOT_CAPACITIES, TAXI_MAX_NHL_GAMES, type Player, type StarterSlot } from "@/lib/hockey-data"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
-type StartingSlot = Extract<Player["slot"], "C" | "W" | "F" | "D" | "G">
+type StartingSlot = StarterSlot
 
 const slotColors: Record<StartingSlot | "BN" | "TAXI" | "IR", string> = {
   C: "bg-[#3b4cca] text-white",
@@ -18,8 +18,6 @@ const slotColors: Record<StartingSlot | "BN" | "TAXI" | "IR", string> = {
   TAXI: "bg-[#1a253b] text-[#8ba0c7]",
   IR: "bg-[#3b1824] text-[#ff2a85]",
 }
-
-const capacities: Record<StartingSlot, number> = { C: 3, W: 6, F: 3, D: 6, G: 2 }
 
 function eligibleStartingSlots(player: Player): StartingSlot[] {
   if (player.position === "C") return ["C", "F"]
@@ -35,7 +33,7 @@ function isTaxiEligible(player: Player): boolean {
   return !isInjured(player) && player.nhlGamesPlayed != null && player.nhlGamesPlayed < TAXI_MAX_NHL_GAMES
 }
 
-function eligibleTargets(player: Player | null, roster: Player[], emptySlot?: StartingSlot) {
+function eligibleTargets(player: Player | null, roster: Player[], capacities: Record<StartingSlot, number>, emptySlot?: StartingSlot, irSlots = 1) {
   const slots: Array<{ slot: Player["slot"]; label: string; target?: Player }> = []
   if (emptySlot) {
     return roster
@@ -43,7 +41,12 @@ function eligibleTargets(player: Player | null, roster: Player[], emptySlot?: St
       .map((candidate) => ({ slot: emptySlot, label: "Empty starting slot", target: candidate }))
   }
   if (player && isInjured(player)) {
-    if (player.slot !== "IR") slots.push({ slot: "IR", label: "Injured Reserve" })
+    // Pure IR: only players whose status is IR may take an IR slot (DTD / O are not eligible).
+    if (player.status === "IR" && player.slot !== "IR") {
+      const irOccupants = roster.filter((candidate) => candidate.slot === "IR" && candidate.id !== player.id)
+      if (irOccupants.length < irSlots) slots.push({ slot: "IR", label: "Injured Reserve" })
+      else irOccupants.forEach((target) => slots.push({ slot: "IR", label: "Swap IR player", target }))
+    }
     if (player.slot !== "BN") slots.push({ slot: "BN", label: "Bench player" })
   } else if (player?.slot === "BN" || player?.slot === "TAXI" || player?.slot === "IR") {
     eligibleStartingSlots(player).forEach((slot) => {
@@ -85,6 +88,8 @@ export function LineupSlotDialog({
   onOpenChange,
   onMove,
   teamId,
+  capacities = DEFAULT_SLOT_CAPACITIES,
+  irSlots = 1,
 }: {
   player: Player | null
   emptySlot?: StartingSlot | null
@@ -93,9 +98,11 @@ export function LineupSlotDialog({
   onOpenChange: (open: boolean) => void
   onMove: (playerId: string, destSlot: Player["slot"], targetPlayerId?: string) => void
   teamId?: string
+  capacities?: Record<StartingSlot, number>
+  irSlots?: number
 }) {
   if (!open || (!player && !emptySlot)) return null
-  const targets = eligibleTargets(player, roster, emptySlot ?? undefined)
+  const targets = eligibleTargets(player, roster, capacities, emptySlot ?? undefined, irSlots)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="mx-auto max-w-[430px] rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">

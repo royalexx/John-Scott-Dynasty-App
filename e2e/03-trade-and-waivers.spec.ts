@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test"
 
 test("waiver claim dialog submits a bid and shows the claim", async ({ page }) => {
+  // Never write a real claim to the shared database.
+  await page.route("**/api/waivers", async (route) => {
+    if (route.request().method() !== "POST") return route.continue()
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ claim: { id: "e2e-mock-claim" } }) })
+  })
   await page.goto("/")
   await page.getByRole("button", { name: "PLAYERS", exact: true }).click()
   const claimButton = page.locator("button[aria-label^='Add or claim']").first()

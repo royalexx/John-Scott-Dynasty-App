@@ -121,7 +121,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         name: player.name,
         position: player.position,
         team: player.team,
-        opponent: "vs BOS",
+        opponent: ("schedule" in player ? player.schedule?.opponent : undefined) ?? "—",
         status: null,
         todayPts: player.fpts,
         projPts: player.projection,
@@ -147,7 +147,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         return <button type="button" key={player.id} onClick={() => onSelect(toTarget(player))} className="flex w-full items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
           <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-[10px] font-black", positionClass(player.position))}>{player.position}</span>
           <PlayerPortrait player={player} name={player.name} className="size-8" />
-          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block truncate text-[10px] text-[#5e7090]">{player.team} · {"opponent" in player ? player.opponent : "vs BOS"}</span></span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block truncate text-[10px] text-[#5e7090]">{player.team} · {"opponent" in player ? player.opponent : (player.schedule?.opponent ?? "—")}</span></span>
           <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black", available ? player.owner.startsWith("W") ? "bg-amber-400/15 text-amber-300" : "bg-emerald-400/15 text-emerald-300" : "text-[#8ba0c7]")}>{available ? player.owner : player.owner}</span>
           <span className="w-10 text-right text-xs font-black tabular-nums text-[#19ffff]">{points.toFixed(1)}</span>
         </button>
@@ -157,7 +157,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
   if (tab === "leaders") {
     const toTarget = (player: SearchPlayer): PlayerDialogTarget => {
       if ("slot" in player) return player
-      return { name: player.name, position: player.position, team: player.team, opponent: "vs BOS", status: null, todayPts: player.fpts, projPts: player.projection, marketPlayer: player }
+      return { name: player.name, position: player.position, team: player.team, opponent: ("schedule" in player ? player.schedule?.opponent : undefined) ?? "—", status: null, todayPts: player.fpts, projPts: player.projection, marketPlayer: player }
     }
     const positionClass = (positionValue: string) =>
       positionValue === "G" ? "bg-sky-500 text-white" : positionValue === "D" ? "bg-amber-600 text-white" : positionValue === "C" ? "bg-blue-600 text-white" : "bg-teal-600 text-white"

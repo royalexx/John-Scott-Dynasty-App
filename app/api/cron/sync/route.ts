@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
+import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
 import {
   enforceRosterLocks,
   syncActiveGameBoxscores,
-  syncScheduleForDate,
-  updateWeeklyMatchupScores,
+  recomputeMatchupsThroughWeek,
+  syncLeagueWeek,
+  syncScheduleForWeeks,
 } from "@/lib/services/nhl-sync"
 
 export const runtime = "nodejs"
@@ -27,16 +29,23 @@ async function runSync(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
-  const scheduledGames = await syncScheduleForDate(date)
-  const processedGames = await syncActiveGameBoxscores()
+  // ?backfill=1 pulls the whole season so far; otherwise just last, this and next week.
+  const backfill = request.nextUrl.searchParams.get("backfill") === "1"
+  const leagues = await prisma.league.findMany({ select: { id: true, currentSeason: true } })
+  let scheduledGames = 0
+  for (const league of leagues) {
+    const week = getCurrentFantasyWeek(league.currentSeason)
+    const weeks = backfill
+      ? Array.from({ length: week + 1 }, (_, index) => index + 1)
+      : [Math.max(1, week - 1), week, week + 1]
+    scheduledGames += await syncScheduleForWeeks(league.currentSeason, weeks)
+  }
+  const processedGames = await syncActiveGameBoxscores(backfill ? 400 : 40)
   await enforceRosterLocks()
 
-  const leagues = await prisma.league.findMany({
-    select: { id: true, currentWeek: true },
-  })
   for (const league of leagues) {
-    await updateWeeklyMatchupScores(league.id, league.currentWeek)
+    const week = (await syncLeagueWeek(league.id)) ?? 1
+    await recomputeMatchupsThroughWeek(league.id, week)
   }
 
   return NextResponse.json({

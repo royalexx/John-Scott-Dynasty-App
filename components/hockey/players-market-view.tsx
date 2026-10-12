@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { ArrowLeftRight, Award, Check, Grid2X2, List, Plus, Search, X } from "lucide-react"
-import { weekMatchups, getTeamRoster, calculatePlayerFPTS, calculateSkaterFPTS, calculateGoalieFPTS, createPlayerSeasonStats, type GoalieStats, type MarketPlayer, type Player, type PlayerStatus, type SkaterStats, type TradeBlockEntry, type LeagueTradeOffer } from "@/lib/hockey-data"
+import { type GoalieStats, type MarketPlayer, type Player, type PlayerStatus, type SkaterStats, type TradeBlockEntry, type LeagueTradeOffer } from "@/lib/hockey-data"
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
 import type { PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
 import { getLeaderStat, getProjectedFPTS, getSyncedPlayerFPTS, getSyncedPlayerStats, normalizeSearchText, type LeaderCategory, type LeaderMode } from "@/lib/hockey-calculators"
@@ -50,7 +50,7 @@ function AvailableStats({ player, viewType, horizon }: { player: MarketPlayer; v
   if (player.position === "G") {
     const gamesPlayed = marketStat(player, "gp")
     const gaa = gamesPlayed > 0 ? marketStat(player, "goalsAgainst") / gamesPlayed : 0
-    return <div className="mt-3 grid grid-cols-4 gap-1 text-[9px] text-[#5e7090] sm:grid-cols-8">
+    return <div className="mt-3 grid grid-cols-4 gap-x-1 gap-y-2 text-center text-[9px] text-[#5e7090] sm:grid-cols-8">
       {[
         ["GP", gamesPlayed],
         ["W", marketStat(player, "wins")],
@@ -60,10 +60,10 @@ function AvailableStats({ player, viewType, horizon }: { player: MarketPlayer; v
         ["GAA", gaa.toFixed(2)],
         ["SO", marketStat(player, "shutouts")],
         ["FPTS", fantasyPoints],
-      ].map(([label, value]) => <span key={label}>{label}<b className={cn("block text-xs", label === "FPTS" ? "text-emerald-300" : "text-white")}>{value}</b></span>)}
+      ].map(([label, value]) => <span key={label}>{label}<b className={cn("block text-xs tabular-nums", label === "FPTS" ? "text-emerald-300" : "text-white")}>{value}</b></span>)}
     </div>
   }
-  return <div className="mt-3 grid grid-cols-5 gap-1 text-[9px] text-[#5e7090] sm:grid-cols-10">
+  return <div className="mt-3 grid grid-cols-5 gap-x-1 gap-y-2 text-center text-[9px] text-[#5e7090] sm:grid-cols-10">
     {[
       ["GP", marketStat(player, "gp")],
       ["G", marketStat(player, "goals")],
@@ -75,7 +75,7 @@ function AvailableStats({ player, viewType, horizon }: { player: MarketPlayer; v
       ["PPP", marketStat(player, "ppp")],
       ["+/-", marketStat(player, "plusMinus")],
       ["FPTS", fantasyPoints],
-    ].map(([label, value]) => <span key={label}>{label}<b className={cn("block text-xs", label === "FPTS" ? "text-emerald-300" : "text-white")}>{value}</b></span>)}
+    ].map(([label, value]) => <span key={label}>{label}<b className={cn("block text-xs tabular-nums", label === "FPTS" ? "text-emerald-300" : "text-white")}>{value}</b></span>)}
   </div>
 }
 
@@ -102,7 +102,7 @@ function MarketListHeader({ position }: { position: "skater" | "goalie" }) {
   const labels = position === "goalie" ? ["GP", "W", "SV", "SV%", "GA", "GAA", "SO", "FPTS"] : ["GP", "G", "A", "PTS", "SOG", "HIT", "BLK", "PPP", "+/-", "FPTS"]
   return <div className="grid grid-cols-[repeat(8,minmax(44px,1fr))] gap-2 text-center text-[8px] font-black text-[#5e7090] sm:grid-cols-[repeat(10,minmax(48px,1fr))]">{labels.map((label) => <span key={label}>{label}</span>)}</div>
 }
-export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, allLeagueRosterIds, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeMode = false }: { teamName: string; roster: Player[]; players: MarketPlayer[]; allLeagueRosterIds?: Set<number | string>; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeMode?: boolean }) {
+export const PlayersMarketView = React.memo(function PlayersMarketView({ teamName, roster, players: dynastyPlayers, allLeagueRosterIds, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeMode = false }: { teamName: string; roster: Player[]; players: MarketPlayer[]; allLeagueRosterIds?: Set<number | string>; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeMode?: boolean }) {
   const [subTab, setSubTab] = useState<"search" | "available" | "leaders" | "trade">(tradeMode ? "trade" : "available")
   const [filter, setFilter] = useState<PositionFilter>("ALL")
   const [availability, setAvailability] = useState<"ALL" | "FA" | "W">("ALL")
@@ -111,6 +111,7 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, a
   const [horizon, setHorizon] = useState<HockeyHorizon>("This Week")
   const [gridView, setGridView] = useState<"grid" | "list">("grid")
   const [availableSort, setAvailableSort] = useState<MarketSort>("FPTS")
+  const [visibleCount, setVisibleCount] = useState(50)
   const isGoalieFilter = filter === "G"
   const currentSortOptions = isGoalieFilter ? goalieSortOptions : skaterSortOptions
   const handlePositionChange = (pos: PositionFilter) => {
@@ -120,14 +121,16 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, a
   }
   const players = useMemo(() => [...dynastyPlayers]
     .filter((p) => {
+      // Rostered players (any of the 12 teams) are never Free Agents.
       const playerId = p.nhlId ? Number(p.nhlId) : p.name
-      if (allLeagueRosterIds?.has(playerId) || allLeagueRosterIds?.has(p.name)) return false
+      if (allLeagueRosterIds?.has(playerId) || allLeagueRosterIds?.has(p.name) || allLeagueRosterIds?.has(normalizeSearchText(p.name))) return false
       const availabilityMatch = availability === "ALL" ? true : availability === "FA" ? p.waiver === "FA" : p.waiver !== "FA"
       return matchesPosition(p.position, filter) && availabilityMatch
     })
-    .sort((a, b) => {
+    // Decorate-sort-undecorate: compute the sort stat once per player instead of on every comparison.
+    .map((player) => {
       const getStat = (player: MarketPlayer, sort: MarketSort) => {
-        if (sort === "FPTS") return getSyncedPlayerFPTS(player)
+        if (sort === "FPTS") return settings.viewType === "Stats" ? getSyncedPlayerFPTS(player) : (horizon === "This Week" && player.schedule ? player.schedule.weekProjectedFantasyPoints : getProjectedFPTS(player, horizon === "Next 14 Days" ? 7 : 28))
         if (sort === "G") return marketStat(player, "goals")
         if (sort === "A") return marketStat(player, "assists")
         if (sort === "PTS") return marketStat(player, "goals") + marketStat(player, "assists")
@@ -144,9 +147,11 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, a
         }
         return 0
       }
-      return getStat(b, availableSort) - getStat(a, availableSort)
-    }), [allLeagueRosterIds, availability, availableSort, dynastyPlayers, filter])
-  const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: "vs BOS", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
+      return { player, value: getStat(player, availableSort) }
+    })
+    .sort((a, b) => b.value - a.value)
+    .map((entry) => entry.player), [allLeagueRosterIds, availability, availableSort, dynastyPlayers, filter, horizon, settings.viewType])
+  const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: p.schedule?.opponent ?? "—", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
   return (
     <div className="flex flex-col">
       <div className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
@@ -168,20 +173,20 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, a
         <div className="flex items-center gap-2"><h2 className="text-sm font-black text-white">{tradeMode ? "Trade Center" : "Available"}</h2><button type="button" onClick={() => setGridView(gridView === "grid" ? "list" : "grid")} className="cursor-pointer text-[#5e7090] transition-all duration-150 hover:text-white active:scale-95">{gridView === "grid" ? <List className="size-4" /> : <Grid2X2 className="size-4" />}</button><div className="flex gap-1.5">{(["ALL", "FA", "W"] as const).map((value) => <button key={value} type="button" onClick={() => setAvailability(value)} className={cn("rounded-full border px-2 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", availability === value ? "border-[#19ffff] bg-[#19ffff] text-[#080c14]" : "border-[#17233c] bg-[#101829] text-[#5e7090] cursor-pointer hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{value}</button>)}</div></div>
         <div className="mt-2 flex gap-1 overflow-x-auto"><span className="py-1 text-[9px] font-black text-[#5e7090]">SORT</span>{currentSortOptions.map((value) => <button key={value} type="button" onClick={() => setAvailableSort(value)} className={cn("rounded-full px-2 py-1 text-[9px] font-black", availableSort === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
       </div>
-      <div className="flex gap-1.5 overflow-x-auto border-b border-[#111929] px-3 py-1.5">{(["ALL", "C", "W", "F", "D", "G"] as PositionFilter[]).map((pos) => <button key={pos} type="button" onClick={() => handlePositionChange(pos)} className={cn("rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", filter === pos ? "border-[#19ffff] bg-[#19ffff] text-black hover:brightness-110" : "cursor-pointer border-[#17233c] bg-[#101829] text-[#5e7090] hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{pos}</button>)}</div>
+      <div className="flex gap-1.5 overflow-x-auto border-b border-[#111929] px-3 py-1.5">{(["ALL", "C", "W", "F", "D", "G"] as PositionFilter[]).map((pos) => <button key={pos} type="button" data-testid={`position-filter-${pos}`} onClick={() => handlePositionChange(pos)} className={cn("rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", filter === pos ? "border-[#19ffff] bg-[#19ffff] text-black hover:brightness-110" : "cursor-pointer border-[#17233c] bg-[#101829] text-[#5e7090] hover:bg-[#16233b] hover:border-[#2a3f66] hover:text-white")}>{pos}</button>)}</div>
       {gridView === "list" ? (
         <div className="overflow-x-auto border-y border-[#111929]">
           <div className="min-w-[760px]">
             <div className="grid grid-cols-[220px_minmax(0,1fr)] gap-3 border-b border-[#111929] bg-[#0b1220] px-3 py-2">
               <span className="sticky left-0 z-10 bg-[#0b1220] text-[9px] font-black text-[#5e7090]">PLAYER</span>
-              <MarketListHeader position={players.some((player) => player.position === "G") ? "goalie" : "skater"} />
+              <MarketListHeader position={isGoalieFilter ? "goalie" : "skater"} />
             </div>
-            {players.slice(0, 50).map((p) => {
+            {players.slice(0, visibleCount).map((p) => {
               const position = p.position === "G" ? "goalie" : "skater"
               return <div key={p.nhlId ? `nhl-${p.nhlId}` : p.name} onClick={() => selectPlayer(p)} className="grid cursor-pointer grid-cols-[220px_minmax(0,1fr)] gap-3 border-b border-[#111929] bg-[#0d1424] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
                 <div className="sticky left-0 z-10 flex min-w-0 items-center gap-2 bg-[#0d1424]">
                   <PlayerPortrait player={p} name={p.name} className="size-8 shrink-0" />
-                  <div className="min-w-0"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="truncate text-[10px] text-[#5e7090]">{p.position} · {p.team}{p.injuryStatus && <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span>}</p></div>
+                  <div className="min-w-0"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="truncate text-[10px] text-[#5e7090]">{p.position} · {p.team}{p.injuryStatus ? <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span> : null}</p></div>
                   <button type="button" aria-label={`Claim ${p.name}`} onClick={(event) => { event.stopPropagation(); onClaim(p) }} className="ml-auto flex size-6 shrink-0 items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] hover:bg-[#19ffff] hover:text-[#080c14]"><Plus className="size-3.5" /></button>
                 </div>
                 <MarketListStats player={p} viewType={settings.viewType === "Stats" ? "Stats" : "Projections"} horizon={horizon} />
@@ -191,22 +196,24 @@ export function PlayersMarketView({ teamName, roster, players: dynastyPlayers, a
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-px border-y border-[#111929] bg-[#111929]">
-          {players.slice(0, 50).map((p) => <div key={p.nhlId ? `nhl-${p.nhlId}` : p.name} onClick={() => selectPlayer(p)} className="cursor-pointer border-b border-[#111929] bg-[#0d1424] p-3 transition-colors duration-150 hover:bg-[#0f1828]/80">
-            <div className="flex items-start gap-2"><PlayerPortrait player={p} name={p.name} className="size-8" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="text-[10px] text-[#5e7090]">{p.position} · {p.team} · vs BOS {p.injuryStatus && <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span>}</p><button type="button" onClick={(event) => { event.stopPropagation(); onClaim(p) }} className={cn("mt-1 cursor-pointer rounded px-1 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", p.waiver === "FA" ? "bg-emerald-400/15 text-emerald-300 hover:brightness-110" : "bg-amber-400/15 text-amber-300 hover:brightness-110")}>{p.waiver}</button></div><button type="button" aria-label={`Add or claim ${p.name}`} onClick={(event) => { event.stopPropagation(); onClaim(p) }} className="flex size-6 cursor-pointer items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] transition-all duration-150 hover:scale-110 hover:bg-[#19ffff] hover:text-[#080c14] hover:border-[#19ffff] hover:shadow-[0_0_10px_rgba(25,255,255,0.4)] active:scale-90"><Plus className="size-3.5" /></button></div>
+          {players.slice(0, visibleCount).map((p) => <div key={p.nhlId ? `nhl-${p.nhlId}` : p.name} onClick={() => selectPlayer(p)} className="cursor-pointer border-b border-[#111929] bg-[#0d1424] p-3 transition-colors duration-150 hover:bg-[#0f1828]/80">
+            <div className="flex items-start gap-2"><PlayerPortrait player={p} name={p.name} className="size-8" /><div className="min-w-0 flex-1"><p className="truncate text-xs font-black text-white">{p.name}</p><p className="text-[10px] text-[#5e7090]">{p.position} · {p.team} · {p.schedule?.opponent ?? "—"} {p.injuryStatus ? <span className="ml-1 font-black text-rose-300">{p.injuryStatus}</span> : null}</p><button type="button" onClick={(event) => { event.stopPropagation(); onClaim(p) }} className={cn("mt-1 cursor-pointer rounded px-1 py-0.5 text-[9px] font-black transition-all duration-150 active:scale-95", p.waiver === "FA" ? "bg-emerald-400/15 text-emerald-300 hover:brightness-110" : "bg-amber-400/15 text-amber-300 hover:brightness-110")}>{p.waiver}</button></div><button type="button" aria-label={`Add or claim ${p.name}`} onClick={(event) => { event.stopPropagation(); onClaim(p) }} className="flex size-6 cursor-pointer items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] transition-all duration-150 hover:scale-110 hover:bg-[#19ffff] hover:text-[#080c14] hover:border-[#19ffff] hover:shadow-[0_0_10px_rgba(25,255,255,0.4)] active:scale-90"><Plus className="size-3.5" /></button></div>
             {settings.viewType === "Projections" && <AvailableStats player={p} viewType="Projections" horizon={horizon} />}
             {settings.viewType === "Stats" && <AvailableStats player={p} viewType="Stats" horizon={horizon} />}
             {settings.viewType === "ADP" && <div className="mt-3 flex justify-between text-[10px] font-black text-[#8ba0c7]"><span>ADP {p.adp}</span><span>{p.rostered} ROST</span></div>}
           </div>)}
         </div>
       )}
+      <p className="px-3 pt-3 text-center text-[10px] text-[#5e7090]">Showing {Math.min(visibleCount, players.length)} of {players.length} players</p>
+      {players.length > visibleCount && <button type="button" onClick={() => setVisibleCount((count) => count + 50)} className="mx-auto my-3 block rounded-full border border-[#19ffff]/50 px-5 py-2 text-[11px] font-black text-[#19ffff] transition hover:bg-[#19ffff] hover:text-[#080c14] active:scale-95">Show 50 more</button>}
       </>}
     </div>
   )
-}
+})
 
 function MarketPlayerRow({ player, onSelect, onClaim, meta }: { player: MarketPlayer; onSelect: (player: PlayerDialogTarget) => void; onClaim?: (player: MarketPlayer) => void; meta?: React.ReactNode }) {
-  const target = { name: player.name, position: player.position, team: player.team, opponent: "vs BOS", status: null as PlayerStatus, todayPts: player.fpts, projPts: player.projection, marketPlayer: player }
-  return <button type="button" onClick={() => onSelect(target)} className="flex w-full items-center gap-2 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80"><PlayerPortrait player={player} name={player.name} className="size-8" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block text-[10px] text-[#5e7090]"><b className={cn("mr-1 rounded px-1", player.position === "G" ? "bg-sky-400/20 text-sky-300" : player.position === "D" ? "bg-amber-400/20 text-amber-300" : player.position === "C" ? "bg-blue-400/20 text-blue-300" : "bg-teal-400/20 text-teal-300")}>{player.position}</b>{player.team} · {player.waiver === "FA" ? "FA" : player.waiver}{player.injuryStatus && <b className="ml-1 text-rose-300">{player.injuryStatus}</b>}</span></span>{meta}<span className="text-xs font-black tabular-nums text-[#19ffff]">{player.projection.toFixed(1)}</span>{onClaim && <span role="button" tabIndex={0} aria-label={`Claim ${player.name}`} onClick={(event) => { event.stopPropagation(); onClaim(player) }} className="flex size-6 items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] hover:bg-[#19ffff] hover:text-[#080c14]">+</span>}</button>
+  const target = { name: player.name, position: player.position, team: player.team, opponent: player.schedule?.opponent ?? "—", status: null as PlayerStatus, todayPts: player.fpts, projPts: player.projection, marketPlayer: player }
+  return <button type="button" onClick={() => onSelect(target)} className="flex w-full items-center gap-2 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80"><PlayerPortrait player={player} name={player.name} className="size-8" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block text-[10px] text-[#5e7090]"><b className={cn("mr-1 rounded px-1", player.position === "G" ? "bg-sky-400/20 text-sky-300" : player.position === "D" ? "bg-amber-400/20 text-amber-300" : player.position === "C" ? "bg-blue-400/20 text-blue-300" : "bg-teal-400/20 text-teal-300")}>{player.position}</b>{player.team} · {player.waiver === "FA" ? "FA" : player.waiver}{player.injuryStatus ? <b className="ml-1 text-rose-300">{player.injuryStatus}</b> : null}</span></span>{meta}<span className="text-xs font-black tabular-nums text-[#19ffff]">{player.projection.toFixed(1)}</span>{onClaim && <span role="button" tabIndex={0} aria-label={`Claim ${player.name}`} onClick={(event) => { event.stopPropagation(); onClaim(player) }} className="flex size-6 items-center justify-center rounded-full border border-[#19ffff]/50 text-[#19ffff] hover:bg-[#19ffff] hover:text-[#080c14]">+</span>}</button>
 }
 
 type SearchPlayer = (Player | MarketPlayer) & { id: string; owner: string }

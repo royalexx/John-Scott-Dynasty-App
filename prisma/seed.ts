@@ -10,6 +10,7 @@ type RegistryPlayer = {
   position?: string
   headshot?: string
   injuryStatus?: string | null
+  nhlGamesPlayed?: number
   currentSeasonStats?: { gamesPlayed?: number } | null
 }
 
@@ -37,7 +38,7 @@ async function main() {
         name: player.name,
         teamAbbrev: player.team ?? "FA",
         position: enumPosition(player.position),
-        nhlGamesPlayed: player.currentSeasonStats?.gamesPlayed ?? 0,
+        nhlGamesPlayed: player.nhlGamesPlayed ?? player.currentSeasonStats?.gamesPlayed ?? 0,
         injuryStatus: playerStatus(player.injuryStatus),
         headshotUrl: player.headshot ?? null,
       },
@@ -46,7 +47,7 @@ async function main() {
         name: player.name,
         teamAbbrev: player.team ?? "FA",
         position: enumPosition(player.position),
-        nhlGamesPlayed: player.currentSeasonStats?.gamesPlayed ?? 0,
+        nhlGamesPlayed: player.nhlGamesPlayed ?? player.currentSeasonStats?.gamesPlayed ?? 0,
         injuryStatus: playerStatus(player.injuryStatus),
         headshotUrl: player.headshot ?? null,
       },
@@ -58,6 +59,10 @@ async function main() {
     update: {
       currentSeason: 2026,
       currentWeek: 1,
+      rosterSize: 27,
+      taxiSlots: 2,
+      irSlots: 1,
+      taxiMaxGames: 50,
       rosterPositions: { C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7 },
       waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
       tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },
@@ -71,7 +76,7 @@ async function main() {
       rosterSize: 27,
       taxiSlots: 2,
       irSlots: 1,
-      taxiMaxGames: 160,
+      taxiMaxGames: 50,
       scoringSettings: {
         format: "head-to-head-points",
         points: { goal: 3, assist: 2, shot: 0.2, hit: 0.2, block: 0.2, win: 4, save: 0.2 },
@@ -85,9 +90,10 @@ async function main() {
 
   const teams = []
   for (const [index, standing] of standings.entries()) {
-    const isCommish = standing.owner === "You" || standing.owner === "@commissioner" || standing.team === "Montreal Monarchs"
-    const handle = standing.owner === "You" ? "commissioner" : standing.owner.replace(/^@/, "")
-    const name = standing.owner === "You" ? "Commissioner" : handle
+    // The Montreal Monarchs / @commissioner manager is always seeded as the league commissioner.
+    const handle = standing.owner === "You" || standing.team === "Montreal Monarchs" ? "commissioner" : standing.owner.replace(/^@/, "")
+    const isCommish = handle === "commissioner"
+    const name = isCommish ? "Commissioner" : handle
     const user = await prisma.user.upsert({
       where: { handle },
       update: { name, pin: "1234", isCommissioner: isCommish },

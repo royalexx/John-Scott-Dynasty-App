@@ -1,4 +1,4 @@
-import { cookies } from "next/headers"
+﻿import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
 export type ManagerSession = {
@@ -20,7 +20,14 @@ export async function getManagerSession(): Promise<ManagerSession | null> {
       select: { isCommissioner: true },
     })
     if (!user) return null
-    return { ...session, isCommissioner: user.isCommissioner } as ManagerSession
+    // The database is the source of truth for the commissioner role; never trust the cookie flag.
+    return {
+      managerId: session.managerId,
+      teamId: session.teamId,
+      handle: session.handle,
+      teamName: session.teamName,
+      isCommissioner: user.isCommissioner === true,
+    }
   } catch {
     return null
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { TradeStatus } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { getManagerSession } from "@/lib/auth-session"
 import { createTradeOffer, executeTrade, type TradeAssetInput } from "@/lib/services/transactions"
 
 export const runtime = "nodejs"
@@ -26,8 +27,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await getManagerSession()
+  if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
   try {
     const body = await request.json() as { leagueId?: string; proposingTeamId?: string; receivingTeamId?: string; assets?: TradeAssetInput[]; expiresAt?: string }
+    if (body.proposingTeamId !== session.teamId) return NextResponse.json({ error: "You can only propose trades from your own team" }, { status: 403 })
     if (!body.leagueId || !body.proposingTeamId || !body.receivingTeamId || !Array.isArray(body.assets)) return NextResponse.json({ error: "leagueId, team IDs, and assets are required" }, { status: 400 })
     const offer = await createTradeOffer({
       leagueId: body.leagueId,
@@ -44,9 +48,17 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const session = await getManagerSession()
+  if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
   try {
     const body = await request.json() as { tradeOfferId?: string; action?: "ACCEPT" | "REJECT" | "CANCEL" }
     if (!body.tradeOfferId || !body.action) return NextResponse.json({ error: "tradeOfferId and action are required" }, { status: 400 })
+    if (!["ACCEPT", "REJECT", "CANCEL"].includes(body.action)) return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+    const offer = await prisma.tradeOffer.findUnique({ where: { id: body.tradeOfferId }, select: { proposingTeamId: true, receivingTeamId: true } })
+    if (!offer) return NextResponse.json({ error: "Trade offer not found" }, { status: 404 })
+    // Only the receiving team may accept/reject; only the proposer may cancel. Commissioners can act on any offer.
+    const allowedTeam = body.action === "CANCEL" ? offer.proposingTeamId : offer.receivingTeamId
+    if (session.teamId !== allowedTeam && !session.isCommissioner) return NextResponse.json({ error: "You are not allowed to do that with this trade" }, { status: 403 })
     if (body.action === "ACCEPT") return NextResponse.json({ offer: await executeTrade(body.tradeOfferId) })
     const status = body.action === "REJECT" ? TradeStatus.REJECTED : TradeStatus.CANCELLED
     const result = await prisma.tradeOffer.updateMany({ where: { id: body.tradeOfferId, status: TradeStatus.PENDING }, data: { status } })

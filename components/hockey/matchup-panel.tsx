@@ -1,27 +1,32 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { ChevronDown, ChevronLeft, ChevronRight, Shield } from "lucide-react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
+  DEFAULT_SLOT_CAPACITIES,
+  STARTER_SLOTS,
   getTeamRoster,
+  getWeekActualPoints,
   getWeekMatchups,
-  weekMatchups,
-  type MatchupSummary,
+  getWeekProjectedPoints,
+  isStarterSlot,
   type LiveMatchupSummary,
   type MatchupPlayer,
-  type Player,
   type MarketPlayer,
+  type Player,
+  type StarterSlot,
 } from "@/lib/hockey-data"
+import type { MatchupResult } from "@/lib/dashboard-data"
 import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
 import { MatchupBanner } from "@/components/hockey/matchup-banner"
 import { PlayerRow } from "@/components/hockey/player-row"
 
-type StartingSlot = Extract<Player["slot"], "C" | "W" | "F" | "D" | "G">
 type ReserveSlot = "BN" | "TAXI" | "IR"
-const slotCapacities: Record<StartingSlot, number> = { C: 3, W: 6, F: 3, D: 6, G: 2 }
-const slotGroups: StartingSlot[] = ["C", "W", "F", "D", "G"]
-const slotColors: Record<StartingSlot, string> = {
+/** A selected lineup player; `ownerName` is set when the player belongs to the opposing team. */
+export type LineupPlayerSelection = Player & { ownerName?: string }
+
+const slotColors: Record<StarterSlot, string> = {
   C: "bg-[#3b4cca]",
   W: "bg-[#0d9488]",
   F: "bg-[#7c3aed]",
@@ -35,35 +40,19 @@ const statusStyles: Record<string, string> = {
   DTD: "bg-amber-400/15 text-amber-300",
 }
 
-const opponentReserves: Record<string, Record<ReserveSlot, MatchupPlayer[]>> = {
-  m1: {
-    BN: [
-      { name: "John Tavares", position: "C", team: "TOR", opponent: "@ OTT", status: null, todayPts: null, projPts: 13.4 },
-      { name: "William Nylander", position: "RW", team: "TOR", opponent: "@ OTT", status: null, todayPts: null, projPts: 17.3 },
-    ],
-    TAXI: [{ name: "Easton Cowan", position: "RW", team: "TOR", opponent: "@ OTT", status: "TAXI", todayPts: null, projPts: 9.8 }],
-    IR: [],
-  },
-  m2: { BN: [], TAXI: [], IR: [] },
-  m3: { BN: [], TAXI: [], IR: [] },
+export function getYetToPlayText(teamRoster: Player[]): string {
+  const counts: Record<StarterSlot, number> = { C: 0, W: 0, F: 0, D: 0, G: 0 }
+  teamRoster
+    .filter((player) => isStarterSlot(player.slot))
+    .filter((player) => player.gameState !== "Final" && player.status !== "O" && player.status !== "IR")
+    .forEach((player) => {
+      counts[player.slot as StarterSlot] += 1
+    })
+  const parts = STARTER_SLOTS.filter((slot) => counts[slot] > 0).map((slot) => `${counts[slot]} ${slot}`)
+  return `yet to play: ${parts.length ? parts.join(", ") : "none"}`
 }
 
-export function getYetToPlayText(teamRoster: Player[]): string {
-    const counts: Record<"C" | "W" | "F" | "D" | "G", number> = { C: 0, W: 0, F: 0, D: 0, G: 0 }
-    teamRoster
-      .filter((player) => ["C", "W", "F", "D", "G"].includes(player.slot))
-      .filter((player) => player.gameState !== "Final" && player.status !== "O" && player.status !== "IR")
-      .forEach((player) => {
-        const group = player.slot
-        if (group in counts) counts[group as keyof typeof counts] += 1
-      })
-    const parts = (Object.keys(counts) as Array<keyof typeof counts>)
-      .filter((slot) => counts[slot] > 0)
-      .map((slot) => `${counts[slot]} ${slot}`)
-    return `yet to play: ${parts.length ? parts.join(", ") : "none"}`
-  }
-
-function emptyPlayer(slot: StartingSlot): MatchupPlayer {
+function emptyPlayer(slot: StarterSlot): MatchupPlayer {
   return {
     name: "",
     position: slot === "W" || slot === "F" ? "C" : slot,
@@ -76,7 +65,7 @@ function emptyPlayer(slot: StartingSlot): MatchupPlayer {
   }
 }
 
-function PlayerSide({
+const PlayerSide = React.memo(function PlayerSide({
   player,
   align,
   onSelect,
@@ -93,6 +82,7 @@ function PlayerSide({
   return (
     <button
       type="button"
+      data-testid={align === "right" ? "away-player" : "home-player"}
       onClick={() => onSelect(player)}
       className={cn("w-full min-w-0 rounded-md px-1 py-1 hover:bg-[#101a2e]", align === "left" ? "text-right" : "text-left")}
     >
@@ -111,32 +101,34 @@ function PlayerSide({
       </p>
     </button>
   )
+})
+
+/** Points actually scored this week. Unplayed games, missing schedules and other-week schedules are always 0.0. */
+export function getActualPoints(player: MatchupPlayer | Player | null, week?: number): string {
+  if (!player) return "—"
+  return getWeekActualPoints(player, week).toFixed(1)
 }
 
-export function getActualPoints(player: Player | MatchupPlayer | null): string {
-  if (!player || !player.schedule) return "—"
-  if (player.schedule.weekGamesPlayed === 0) return "0.0"
-  return (player.schedule.weekFantasyPoints ?? 0).toFixed(1)
+/** Weekly projection, shown separately from actual points. */
+export function getProjectedPoints(player: MatchupPlayer | Player | null, week?: number): string {
+  if (!player) return "—"
+  const projected = getWeekProjectedPoints(player, week)
+  return projected === null ? "—" : projected.toFixed(1)
 }
 
-export function getProjectedPoints(player: Player | MatchupPlayer | null): string {
-  if (!player || !player.schedule) return "—"
-  return (player.schedule.weekProjectedFantasyPoints ?? player.projPts ?? 0).toFixed(1)
-}
-
-function Score({ player, align }: { player: MatchupPlayer; align: "left" | "right" }) {
+const Score = React.memo(function Score({ player, align, week }: { player: MatchupPlayer; align: "left" | "right"; week: number }) {
   return (
     <div className={cn("w-full shrink-0", align === "left" ? "pr-2 text-right" : "pl-2 text-left")}>
-      <p className="text-sm font-bold tabular-nums text-white">{getActualPoints(player)}</p>
+      <p className="text-sm font-bold tabular-nums text-white">{player.empty ? "—" : getActualPoints(player, week)}</p>
       <p className="text-[10px] leading-tight text-[#5e7090]">
         <span className="block">proj</span>
-        <span className="block tabular-nums">{getProjectedPoints(player)}</span>
+        <span className="block tabular-nums">{player.empty ? "—" : getProjectedPoints(player, week)}</span>
       </p>
     </div>
   )
-}
+})
 
-function PlayerStats({ player, align }: { player: MatchupPlayer; align: "left" | "right" }) {
+const PlayerStats = React.memo(function PlayerStats({ player, align }: { player: MatchupPlayer; align: "left" | "right" }) {
   const game = player.gameLog?.find((entry) => entry.gameDate === player.schedule?.date) ?? player.gameLog?.[0]
   const current = player.currentSeasonStats
   const stats = player.position === "G"
@@ -154,74 +146,29 @@ function PlayerStats({ player, align }: { player: MatchupPlayer; align: "left" |
         game ? game.blocks > 0 ? `${game.blocks} BLK` : null : (current?.blocks ?? 0) > 0 ? `${current?.blocks} BLK` : null,
         game ? game.gameWinningGoals > 0 ? `${game.gameWinningGoals} GWG` : null : (current?.gameWinningGoals ?? 0) > 0 ? `${current?.gameWinningGoals} GWG` : null,
       ].filter(Boolean).join(", ")
-  const displayStats = stats || "No game stats"
   return (
     <p className={cn("truncate text-[9px] text-[#5e7090]", align === "left" ? "text-right" : "text-left")}>
-      {displayStats}
+      {stats || "No game stats"}
     </p>
   )
-}
+})
 
-function WinBar({ homePct }: { homePct: number }) {
-  const awayPct = 100 - homePct
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-[10px] font-black tabular-nums">
-        <span className="text-[#19ffff]">{homePct}% WIN</span>
-        <span className="text-[#ff2a85]">{awayPct}% WIN</span>
-      </div>
-      <div className="flex h-1.5 overflow-hidden rounded-full bg-[#172338]">
-        <div className="bg-[#19ffff]" style={{ width: `${homePct}%` }} />
-        <div className="bg-[#ff2a85]" style={{ width: `${awayPct}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function TeamAvatar({ team, magenta = false }: { team: string; magenta?: boolean }) {
-  return <div className={cn("flex size-9 items-center justify-center rounded-full border text-[10px] font-black", magenta ? "border-[#ff2a85]/40 bg-[#ff2a85]/10 text-[#ff2a85]" : "border-[#19ffff]/40 bg-[#19ffff]/10 text-[#19ffff]")}><Shield className="mr-0.5 size-3.5" />{team.slice(0, 3).toUpperCase()}</div>
-}
-
-function MatchupCard({ summary, onClick }: { summary: (typeof weekMatchups)[number]; onClick: () => void }) {
-  const projectedHome = summary.homeScore + 12
-  const projectedAway = summary.awayScore + 8
-  const homePct = Math.round((projectedHome / (projectedHome + projectedAway)) * 100)
-  return (
-    <button type="button" onClick={onClick} className="w-full rounded-xl border border-[#172338] bg-[#0d1424] p-3.5 text-left transition-colors hover:bg-[#101a2e]">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2"><TeamAvatar team={summary.homeTeam} /><span className="truncate text-xs font-bold text-white">{summary.homeTeam}</span></div>
-          <p className="mt-1 pl-11 text-[10px] text-[#5e7090]">{summary.homeOwner} · {summary.homeRecord}</p>
-        </div>
-        <span className="rounded bg-[#172338] px-2 py-1 text-[10px] font-black text-[#5e7090]">VS</span>
-        <div className="min-w-0 flex-1 text-right">
-          <div className="flex items-center justify-end gap-2"><span className="truncate text-xs font-bold text-white">{summary.awayTeam}</span><TeamAvatar team={summary.awayTeam} magenta /></div>
-          <p className="mt-1 pr-11 text-[10px] text-[#5e7090]">{summary.awayRecord} · {summary.awayOwner}</p>
-        </div>
-      </div>
-      <div className="mt-3 flex items-end justify-between">
-        <div><p className="text-2xl font-black tabular-nums text-white">{summary.homeScore.toFixed(2)}</p><p className="text-[10px] leading-tight text-[#5e7090]"><span className="block">proj</span><span className="block tabular-nums">{projectedHome.toFixed(2)}</span></p></div>
-        <div className="text-right"><p className="text-2xl font-black tabular-nums text-white">{summary.awayScore.toFixed(2)}</p><p className="text-[10px] leading-tight text-[#5e7090]"><span className="block">proj</span><span className="block tabular-nums">{projectedAway.toFixed(2)}</span></p></div>
-      </div>
-      <div className="mt-3"><WinBar homePct={homePct} /></div>
-    </button>
-  )
-}
-
-function Reserves({
-  roster,
-  players,
-  opponent,
+const Reserves = React.memo(function Reserves({
+  homeRoster,
+  awayRoster,
   teamName,
   opponentName,
   onEdit,
+  onSelectHome,
+  onSelectAway,
 }: {
-  roster: Player[]
-  players?: MarketPlayer[]
-  opponent: Record<ReserveSlot, MatchupPlayer[]>
+  homeRoster: Player[]
+  awayRoster: Player[]
   teamName: string
   opponentName: string
   onEdit: (player: Player) => void
+  onSelectHome: (player: Player) => void
+  onSelectAway: (player: Player) => void
 }) {
   const [open, setOpen] = useState(true)
   const groups: Array<{ slot: ReserveSlot; label: string }> = [
@@ -239,17 +186,17 @@ function Reserves({
         <>
           <div className="grid grid-cols-2 border-b border-[#111929] px-3 py-2 text-[10px] font-bold text-[#5e7090]"><span>{teamName}</span><span className="text-right">{opponentName}</span></div>
           {groups.map(({ slot, label }) => {
-            const home = roster.filter((player) => player.slot === slot)
-            const away = opponent[slot] ?? []
+            const home = homeRoster.filter((player) => player.slot === slot)
+            const away = awayRoster.filter((player) => player.slot === slot)
             return (
               <div key={slot} className="grid grid-cols-2 border-b border-[#111929] last:border-0">
                 <div className="border-r border-[#111929]">
                   <p className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
-                  {home.length ? home.map((player) => <PlayerRow key={player.id} player={player} onEditSlot={() => onEdit(player)} />) : <p className="px-3 pb-3 text-xs text-[#5e7090]">Empty</p>}
+                  {home.length ? home.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectHome} onEditSlot={() => onEdit(player)} />) : <p className="px-3 pb-3 text-xs text-[#5e7090]">Empty</p>}
                 </div>
                 <div>
                   <p className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
-                  {away.length ? away.map((player) => <PlayerRow key={`${slot}-${player.name}`} player={{ ...player, id: `${slot}-${player.name}`, slot, gameTime: "Tonight" }} />) : <p className="px-3 pb-3 text-right text-xs text-[#5e7090]">Empty</p>}
+                  {away.length ? away.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectAway} />) : <p className="px-3 pb-3 text-right text-xs text-[#5e7090]">Empty</p>}
                 </div>
               </div>
             )
@@ -258,13 +205,14 @@ function Reserves({
       )}
     </section>
   )
-}
+})
 
-export function MatchupPanel({
+export const MatchupPanel = React.memo(function MatchupPanel({
   roster,
   players,
   teamName,
   playerNicknames,
+  slotCapacities = DEFAULT_SLOT_CAPACITIES,
   onMove,
   onSelectPlayer,
   onEditSlot,
@@ -273,97 +221,117 @@ export function MatchupPanel({
   selectedMatchupId: controlledMatchupId,
   onMatchupChange,
   onLiveSummary,
+  matchupResults = [],
 }: {
   roster: Player[]
   players?: MarketPlayer[]
   teamName: string
   playerNicknames: Record<string, string>
+  slotCapacities?: Record<StarterSlot, number>
   onMove: (playerId: string, destSlot: Player["slot"]) => void
-  onSelectPlayer?: (player: Player) => void
+  onSelectPlayer?: (player: LineupPlayerSelection) => void
   onEditSlot?: (player: Player) => void
   week: number
   onWeekChange: (week: number) => void
   selectedMatchupId?: string
   onMatchupChange?: (matchupId: string) => void
   onLiveSummary?: (summary: LiveMatchupSummary) => void
+  matchupResults?: MatchupResult[]
 }) {
-  const weekSchedule = getWeekMatchups(week)
-  const userMatchup = weekSchedule.find((matchup) => matchup.homeTeam === teamName || matchup.awayTeam === teamName) ?? weekSchedule[0]
+  const weekSchedule = useMemo(() => getWeekMatchups(week), [week])
+  const userMatchup = useMemo(
+    () => weekSchedule.find((matchup) => matchup.homeTeam === teamName || matchup.awayTeam === teamName) ?? weekSchedule[0],
+    [weekSchedule, teamName],
+  )
   const [localMatchupId, setLocalMatchupId] = useState(userMatchup.id)
-  const selectedMatchupId = controlledMatchupId ?? localMatchupId
+  // A controlled id from a different week must never be rendered: fall back to the user's matchup.
+  const selectedMatchupId = controlledMatchupId && weekSchedule.some((matchup) => matchup.id === controlledMatchupId)
+    ? controlledMatchupId
+    : controlledMatchupId === undefined && weekSchedule.some((matchup) => matchup.id === localMatchupId)
+      ? localMatchupId
+      : userMatchup.id
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
-  const [liveRosters, setLiveRosters] = useState<{ home: Player[]; away: Player[] }>({ home: [], away: [] })
-  const setSelectedMatchupId = (id: string) => {
+
+  const setSelectedMatchupId = useCallback((id: string) => {
     if (controlledMatchupId === undefined) setLocalMatchupId(id)
     onMatchupChange?.(id)
-  }
+  }, [controlledMatchupId, onMatchupChange])
+
+  // Snap back to the user's own matchup when the week changes (but not on first mount,
+  // so a matchup chosen from the league feed is preserved).
+  const previousWeek = useRef(week)
   useEffect(() => {
-    const matchupForWeek = userMatchup
-    if (matchupForWeek && matchupForWeek.id !== selectedMatchupId) {
-      setSelectedMatchupId(matchupForWeek.id)
-    }
-  }, [week])
-  useEffect(() => {
-    if (controlledMatchupId && !weekSchedule.some((matchup) => matchup.id === controlledMatchupId)) {
-      setLocalMatchupId(userMatchup.id)
-      onMatchupChange?.(userMatchup.id)
-    }
-  }, [controlledMatchupId])
+    if (previousWeek.current === week) return
+    previousWeek.current = week
+    setSelectedMatchupId(userMatchup.id)
+  }, [week, userMatchup.id, setSelectedMatchupId])
+
   const matchupIndex = Math.max(0, weekSchedule.findIndex((matchup) => matchup.id === selectedMatchupId))
   const summary = weekSchedule[matchupIndex] ?? userMatchup
-  const isUserMatchup = summary.homeTeam === teamName
-  const displaySummary = summary
-  const sourceHomeRoster = getTeamRoster(summary.homeTeam, roster, players)
-  const sourceAwayRoster = getTeamRoster(summary.awayTeam, roster, players)
-  useEffect(() => {
-    setLiveRosters({
-      home: sourceHomeRoster.map((player) => ({ ...player, gameState: player.gameState ?? "In Progress", timeRemaining: player.timeRemaining ?? 40 })),
-      away: sourceAwayRoster.map((player) => ({ ...player, gameState: player.gameState ?? "In Progress", timeRemaining: player.timeRemaining ?? 40 })),
-    })
-  }, [selectedMatchupId, roster, players])
-  const homeRoster = liveRosters.home.length ? liveRosters.home : sourceHomeRoster
-  const awayRoster = liveRosters.away.length ? liveRosters.away : sourceAwayRoster
-  const rows = slotGroups.flatMap((slot) => {
+  const isUserMatchup = summary.homeTeam === teamName || summary.awayTeam === teamName
+  // The user's own team is always shown on the left, even when scheduled as the away team.
+  const flip = summary.awayTeam === teamName
+  const trueHomeRoster = useMemo(() => getTeamRoster(summary.homeTeam, roster, players), [summary.homeTeam, roster, players])
+  const trueAwayRoster = useMemo(() => getTeamRoster(summary.awayTeam, roster, players), [summary.awayTeam, roster, players])
+  const homeRoster = flip ? trueAwayRoster : trueHomeRoster
+  const awayRoster = flip ? trueHomeRoster : trueAwayRoster
+  const display = useMemo(() => flip
+    ? { ...summary, homeTeam: summary.awayTeam, homeOwner: summary.awayOwner, homeRecord: summary.awayRecord, homeScore: summary.awayScore, awayTeam: summary.homeTeam, awayOwner: summary.homeOwner, awayRecord: summary.homeRecord, awayScore: summary.homeScore }
+    : summary, [flip, summary])
+
+  const rows = useMemo(() => STARTER_SLOTS.flatMap((slot) => {
     const homePlayers = homeRoster.filter((player) => player.slot === slot)
     const awayPlayers = awayRoster.filter((player) => player.slot === slot)
-    return Array.from({ length: slotCapacities[slot] }, (_, index) => {
-      return {
-        slot,
-        home: homePlayers[index] ? { ...homePlayers[index] } satisfies MatchupPlayer : emptyPlayer(slot),
-        away: awayPlayers[index] ? { ...awayPlayers[index] } satisfies MatchupPlayer : emptyPlayer(slot),
-      }
-    })
-  })
-  const expectedTotal = (players: Player[]) => players
-    .filter((player) => ["C", "W", "F", "D", "G"].includes(player.slot))
-    .reduce((sum, player) => sum + (player.schedule?.weekProjectedFantasyPoints ?? player.projPts), 0)
-  const actualTotal = (players: Player[]) => players
-    .filter((player) => ["C", "W", "F", "D", "G"].includes(player.slot))
-    .reduce((sum, player) => {
-      if (!player.schedule || player.schedule.weekGamesPlayed === 0) return sum
-      return sum + (player.schedule.weekFantasyPoints ?? 0)
-    }, 0)
-  const projectedHome = expectedTotal(homeRoster)
-  const projectedAway = expectedTotal(awayRoster)
-  const isStarter = (player: Player) => ["C", "W", "F", "D", "G"].includes(player.slot)
-  const homeGamesLeft = homeRoster.filter((player) => isStarter(player) && player.gameState !== "Final").length
-  const awayGamesLeft = awayRoster.filter((player) => isStarter(player) && player.gameState !== "Final").length
-  const liveSummary = {
-    ...summary,
-    homeTeam: displaySummary.homeTeam,
-    homeScore: actualTotal(homeRoster),
-    awayScore: actualTotal(awayRoster),
-  }
+    return Array.from({ length: slotCapacities[slot] ?? 0 }, (_, index) => ({
+      slot,
+      home: (homePlayers[index] ?? emptyPlayer(slot)) as MatchupPlayer,
+      away: (awayPlayers[index] ?? emptyPlayer(slot)) as MatchupPlayer,
+      homeSource: homePlayers[index] as Player | undefined,
+      awaySource: awayPlayers[index] as Player | undefined,
+    }))
+  }), [homeRoster, awayRoster, slotCapacities])
+
+  const finalResult = matchupResults.find((result) => result.week === week && result.isFinal && result.homeTeam === summary.homeTeam && result.awayTeam === summary.awayTeam)
+  const totals = useMemo(() => {
+    const starters = (list: Player[]) => list.filter((player) => isStarterSlot(player.slot))
+    const expected = (list: Player[]) => starters(list).reduce((sum, player) => sum + (getWeekProjectedPoints(player, week) ?? 0), 0)
+    const actual = (list: Player[]) => starters(list).reduce((sum, player) => sum + getWeekActualPoints(player, week), 0)
+    const gamesLeft = (list: Player[]) => starters(list).filter((player) => player.gameState !== "Final").length
+    return {
+      projectedHome: expected(trueHomeRoster),
+      projectedAway: expected(trueAwayRoster),
+      homeScore: finalResult ? finalResult.homeScore : actual(trueHomeRoster),
+      awayScore: finalResult ? finalResult.awayScore : actual(trueAwayRoster),
+      homeGamesLeft: gamesLeft(trueHomeRoster),
+      awayGamesLeft: gamesLeft(trueAwayRoster),
+    }
+  }, [trueHomeRoster, trueAwayRoster, week, finalResult])
+
+  // True home/away orientation, consumed by the league feed.
+  const liveSummary = useMemo(() => ({ ...summary, homeScore: totals.homeScore, awayScore: totals.awayScore, ...(finalResult ? { status: "Final" } : {}) }), [summary, totals.homeScore, totals.awayScore, finalResult])
+  // Left/right orientation (user's team on the left), consumed by the banner.
+  const bannerSummary = useMemo(() => ({ ...display, homeScore: flip ? totals.awayScore : totals.homeScore, awayScore: flip ? totals.homeScore : totals.awayScore, ...(finalResult ? { status: "Final" } : {}) }), [display, flip, totals.homeScore, totals.awayScore, finalResult])
+
   useEffect(() => {
-    onLiveSummary?.({ ...liveSummary, projectedHome, projectedAway })
-  }, [liveSummary.id, liveSummary.homeScore, liveSummary.awayScore, projectedHome, projectedAway, onLiveSummary])
+    onLiveSummary?.({ ...liveSummary, projectedHome: totals.projectedHome, projectedAway: totals.projectedAway })
+  }, [liveSummary, totals.projectedHome, totals.projectedAway, onLiveSummary])
+
   const selectMatchup = (index: number) => setSelectedMatchupId(weekSchedule[index].id)
   const previousMatchup = () => selectMatchup((matchupIndex === 0 ? weekSchedule.length : matchupIndex) - 1)
   const nextMatchup = () => selectMatchup((matchupIndex + 1) % weekSchedule.length)
 
+  const selectHome = useCallback((player: Player) => onSelectPlayer?.(player), [onSelectPlayer])
+  const selectAway = useCallback((player: Player) => onSelectPlayer?.({ ...player, ownerName: display.awayTeam }), [onSelectPlayer, display.awayTeam])
+  const startEdit = useCallback((player: Player) => {
+    if (!isUserMatchup) return
+    if (onEditSlot) onEditSlot(player)
+    else setEditingPlayer(player)
+  }, [isUserMatchup, onEditSlot])
+  const noopEdit = useCallback(() => undefined, [])
+
   return (
-    <div className="flex flex-col gap-3 pb-4">
-      <MatchupBanner summary={{ ...liveSummary, homeTeam: displaySummary.homeTeam }} projectedHome={projectedHome} projectedAway={projectedAway} week={week} homeGamesLeft={homeGamesLeft} awayGamesLeft={awayGamesLeft} />
+    <div className="flex flex-col gap-3 pb-16">
+      <MatchupBanner summary={bannerSummary} projectedHome={flip ? totals.projectedAway : totals.projectedHome} projectedAway={flip ? totals.projectedHome : totals.projectedAway} week={week} homeGamesLeft={flip ? totals.awayGamesLeft : totals.homeGamesLeft} awayGamesLeft={flip ? totals.homeGamesLeft : totals.awayGamesLeft} />
       <div className="flex items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
         <button type="button" onClick={previousMatchup} aria-label="Previous matchup" className="shrink-0 text-[#5e7090]"><ChevronLeft className="size-4" /></button>
         {weekSchedule.map((matchup, index) => (
@@ -376,51 +344,52 @@ export function MatchupPanel({
         <button type="button" onClick={nextMatchup} aria-label="Next matchup" className="shrink-0 text-[#5e7090]"><ChevronRight className="size-4" /></button>
       </div>
       <section className="overflow-hidden border-y border-[#111929] bg-[#080c14]">
-            <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
-              <h2 className="text-sm font-black text-white">Starters ({rows.filter((row) => !row.home.empty).length}) <ChevronDown className="inline size-3.5 text-[#5e7090]" /></h2>
-              <div className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
-                <button type="button" onClick={() => onWeekChange(Math.max(1, week - 1))} aria-label="Previous scoring week" className="rounded p-1 hover:bg-[#172338]">
-                  <ChevronLeft className="size-3.5" />
-                </button>
-                <span>Week {week}</span>
-                <button type="button" onClick={() => onWeekChange(week + 1)} aria-label="Next scoring week" className="rounded p-1 hover:bg-[#172338]">
-                  <ChevronRight className="size-3.5" />
-                </button>
-              </div>
+        <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
+          <h2 className="text-sm font-black text-white">Starters ({rows.filter((row) => !row.home.empty).length}) <ChevronDown className="inline size-3.5 text-[#5e7090]" /></h2>
+          <div className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
+            <button type="button" onClick={() => onWeekChange(Math.max(1, week - 1))} aria-label="Previous scoring week" className="rounded p-1 hover:bg-[#172338]">
+              <ChevronLeft className="size-3.5" />
+            </button>
+            <span>Week {week}</span>
+            <button type="button" onClick={() => onWeekChange(week + 1)} aria-label="Next scoring week" className="rounded p-1 hover:bg-[#172338]">
+              <ChevronRight className="size-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-[10px] font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{display.homeTeam}</span><span className="min-w-0 truncate text-right">{display.awayTeam}</span></div>
+        {rows.map((row, index) => (
+          <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_34px_44px_minmax(0,1fr)] items-center border-b border-[#111929] bg-[#0d1424] px-2 py-2 last:border-0 hover:bg-[#101a2e]">
+            <div className="min-w-0 text-right">
+              <PlayerSide
+                player={row.home}
+                align="left"
+                onSelect={() => row.homeSource && selectHome(row.homeSource)}
+                nickname={row.homeSource ? playerNicknames[row.homeSource.id] : undefined}
+              />
+              {!row.home.empty && <PlayerStats player={row.home} align="left" />}
             </div>
-            <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-[10px] font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{displaySummary.homeTeam}</span><span className="min-w-0 truncate text-right">{displaySummary.awayTeam}</span></div>
-            {rows.map((row, index) => (
-              <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_34px_44px_minmax(0,1fr)] items-center border-b border-[#111929] bg-[#0d1424] px-2 py-2 last:border-0 hover:bg-[#101a2e]">
-                <div className="min-w-0 text-right">
-                  <PlayerSide player={row.home} align="left" onSelect={(player) => {
-                    const selected = homeRoster.find((candidate) => candidate.name === player.name)
-                    if (selected && onSelectPlayer) onSelectPlayer(selected)
-                    else onSelectPlayer?.(player as Player)
-                  }} nickname={homeRoster.find((candidate) => candidate.name === row.home.name)?.id ? playerNicknames[homeRoster.find((candidate) => candidate.name === row.home.name)?.id ?? ""] : undefined} />
-                  {!row.home.empty && <PlayerStats player={row.home} align="left" />}
-                </div>
-                <Score player={row.home} align="left" />
-                <button type="button" disabled={row.home.empty || !isUserMatchup} onClick={() => {
-                  const player = homeRoster.find((candidate) => candidate.name === row.home.name)
-                  if (!player) return
-                  if (!isUserMatchup) return
-                  if (onEditSlot) onEditSlot(player)
-                  else setEditingPlayer(player)
-                }} className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}>{row.slot}</button>
-                <Score player={row.away} align="right" />
-                <div className="min-w-0 text-left">
-                  <PlayerSide player={row.away} align="right" onSelect={(player) => {
-                    const selected = awayRoster.find((candidate) => candidate.name === player.name)
-                    onSelectPlayer?.(selected ?? player as Player)
-                  }} />
-                  {!row.away.empty && <PlayerStats player={row.away} align="right" />}
-                </div>
-              </div>
-            ))}
-          </section>
-          <Reserves roster={homeRoster} opponent={opponentReserves[summary.id] ?? { BN: [], TAXI: [], IR: [] }} teamName={displaySummary.homeTeam} opponentName={displaySummary.awayTeam} onEdit={isUserMatchup ? setEditingPlayer : () => undefined} />
+            <Score player={row.home} align="left" week={week} />
+            <button
+              type="button"
+              disabled={row.home.empty || !isUserMatchup}
+              onClick={() => row.homeSource && startEdit(row.homeSource)}
+              className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}
+            >{row.slot}</button>
+            <Score player={row.away} align="right" week={week} />
+            <div className="min-w-0 text-left">
+              <PlayerSide
+                player={row.away}
+                align="right"
+                onSelect={() => row.awaySource && selectAway(row.awaySource)}
+              />
+              {!row.away.empty && <PlayerStats player={row.away} align="right" />}
+            </div>
+          </div>
+        ))}
+      </section>
+      <Reserves homeRoster={homeRoster} awayRoster={awayRoster} teamName={display.homeTeam} opponentName={display.awayTeam} onEdit={isUserMatchup ? startEdit : noopEdit} onSelectHome={selectHome} onSelectAway={selectAway} />
 
-      <LineupSlotDialog player={editingPlayer} roster={roster} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot) => { onMove(playerId, destSlot); setEditingPlayer(null) }} />
+      <LineupSlotDialog player={editingPlayer} roster={roster} capacities={slotCapacities} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot) => { onMove(playerId, destSlot); setEditingPlayer(null) }} />
     </div>
   )
-}
+})

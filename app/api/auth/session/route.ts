@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server"
+﻿import { NextResponse } from "next/server"
 import { getManagerSession } from "@/lib/auth-session"
 
 export async function GET() {
   const session = await getManagerSession()
-  return NextResponse.json({ authenticated: Boolean(session), user: session })
+  return NextResponse.json({ authenticated: Boolean(session), isCommissioner: session?.isCommissioner ?? false, user: session }, { status: 200 })
 }
 
 export async function DELETE() {

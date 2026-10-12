@@ -1,8 +1,9 @@
 import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Prisma, SlotType, TradeStatus } from "@prisma/client"
+import { getLockSummary } from "@/lib/services/lineup-locks"
+import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 
 type TransactionClient = Prisma.TransactionClient
-const nonActiveSlots = new Set<SlotType>([SlotType.TAXI, SlotType.IR, SlotType.IR_PLUS])
 const injuredStatuses = new Set<PlayerStatus>([PlayerStatus.IR, PlayerStatus.O, PlayerStatus.DTD])
 
 export interface SubmitWaiverClaimParams {
@@ -19,6 +20,7 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
     const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true } } } })
     if (!team) throw new Error("Team not found")
     if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
+    // A drop is optional while the team has an open roster spot; it is only required when the roster is full.
     if (params.playerToDropId == null) {
       const rosterCount = await tx.rosterSlot.count({ where: { teamId: params.teamId } })
       if (rosterCount >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
@@ -31,9 +33,7 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
         where: { teamId_playerId: { teamId: params.teamId, playerId: params.playerToDropId } },
         select: { slot: true },
       })
-      if (!dropSlot || nonActiveSlots.has(dropSlot.slot)) {
-        throw new Error("Dropped player must be on the active roster")
-      }
+      if (!dropSlot) throw new Error("Dropped player must be on your roster")
     }
     return tx.waiverClaim.create({
       data: {
@@ -71,7 +71,7 @@ export async function processWaiversForLeague(leagueId: string) {
       }
       if (claim.playerToDropId != null) {
         const dropSlot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: claim.teamId, playerId: claim.playerToDropId } } })
-        if (!dropSlot || nonActiveSlots.has(dropSlot.slot)) {
+        if (!dropSlot) {
           await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
           return
         }
@@ -174,19 +174,57 @@ export async function executeTrade(tradeOfferId: string) {
   })
 }
 
-export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType) {
+const STARTER_ELIGIBILITY: Partial<Record<SlotType, string[]>> = {
+  C: ["C"], W: ["LW", "RW"], F: ["C", "LW", "RW"], D: ["D"], G: ["G"],
+}
+
+type SlotPlayer = { injuryStatus: PlayerStatus; nhlGamesPlayed: number; position: string }
+
+/** Throws if `player` may not occupy `slot` under the league rules (pure IR, taxi GP cap, position eligibility). */
+function assertSlotEligible(player: SlotPlayer, slot: SlotType, taxiMaxGames: number, name: string) {
+  if (slot === SlotType.IR && player.injuryStatus !== PlayerStatus.IR) throw new Error(`${name} is not eligible for injured reserve (pure IR only)`)
+  if (slot === SlotType.IR_PLUS) throw new Error("IR+ is not enabled in this league")
+  if (slot === SlotType.TAXI && player.nhlGamesPlayed >= taxiMaxGames) throw new Error(`${name} is not eligible for the taxi squad`)
+  const allowed = STARTER_ELIGIBILITY[slot]
+  if (allowed && !allowed.includes(player.position)) throw new Error(`${name} (${player.position}) cannot play ${slot}`)
+}
+
+function slotCapacity(league: { rosterPositions: Prisma.JsonValue; taxiSlots: number; irSlots: number }, slot: SlotType) {
+  if (slot === SlotType.TAXI) return league.taxiSlots
+  if (slot === SlotType.IR) return league.irSlots
+  const positions = (league.rosterPositions ?? {}) as Record<string, number>
+  return positions[slot] ?? 0
+}
+
+/**
+ * Moves a player to `targetSlot`. If `targetPlayerId` is given (or the slot is full) the two players trade
+ * places, so the mover really ends up in `targetSlot`. Every placement is validated for both players.
+ */
+export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType, targetPlayerId?: number) {
   return prisma.$transaction(async (tx) => {
     const slot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId } }, include: { player: true, team: { include: { league: true } } } })
     if (!slot) throw new Error("Player is not on this roster")
-    if (slot.lockedAt) throw new Error("Player's roster slot is locked")
-    if (targetSlot === SlotType.TAXI && slot.player.nhlGamesPlayed > slot.team.league.taxiMaxGames) throw new Error("Player is not eligible for the taxi squad")
-    if ((targetSlot === SlotType.IR || targetSlot === SlotType.IR_PLUS) && !injuredStatuses.has(slot.player.injuryStatus)) throw new Error("Player is not eligible for injured reserve")
+    const league = slot.team.league
+    const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
+    // An injured (IR-status) starter may always be moved onto IR, even while starters are locked.
+    const injuredToIr = slot.player.injuryStatus === "IR" && (targetSlot === SlotType.IR || targetSlot === SlotType.IR_PLUS)
+    if (!injuredToIr && (isSlotLocked(lock, slot.slot, slot.player.teamAbbrev) || (lock.mode === "WEEKLY" && isSlotLocked(lock, targetSlot, slot.player.teamAbbrev)))) {
+      throw new Error(lock.mode === "WEEKLY" ? "Starting lineups are locked until next week (first game has started)" : "Player's roster slot is locked (their game has started)")
+    }
+    if (slot.slot === targetSlot) return tx.rosterSlot.findMany({ where: { teamId }, include: { player: true }, orderBy: { slot: "asc" } })
+    assertSlotEligible(slot.player, targetSlot, league.taxiMaxGames, slot.player.name)
 
-    const target = await tx.rosterSlot.findFirst({ where: { teamId, slot: targetSlot, id: { not: slot.id } }, orderBy: { id: "asc" } })
-    if (target && target.lockedAt) throw new Error("The target roster slot is locked")
-    if (target) {
-      await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: SlotType.BN } })
-      await tx.rosterSlot.update({ where: { id: target.id }, data: { slot: slot.slot } })
+    const occupants = await tx.rosterSlot.findMany({ where: { teamId, slot: targetSlot, id: { not: slot.id } }, include: { player: true }, orderBy: { id: "asc" } })
+    let swapWith = targetPlayerId !== undefined ? await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId: targetPlayerId } }, include: { player: true } }) : null
+    if (targetPlayerId !== undefined && (!swapWith || swapWith.slot !== targetSlot)) throw new Error("The player you are swapping with has moved; refresh and try again")
+    if (!swapWith && targetSlot !== SlotType.BN && occupants.length >= slotCapacity(league, targetSlot)) swapWith = occupants[0] ?? null
+
+    if (swapWith) {
+      if (isSlotLocked(lock, swapWith.slot, swapWith.player.teamAbbrev)) throw new Error("The target roster slot is locked")
+      // The displaced player takes the mover's old slot, which must also be legal for them.
+      assertSlotEligible(swapWith.player, slot.slot, league.taxiMaxGames, swapWith.player.name)
+      await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })
+      await tx.rosterSlot.update({ where: { id: swapWith.id }, data: { slot: slot.slot } })
     } else {
       await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })
     }

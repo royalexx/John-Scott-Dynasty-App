@@ -1,4 +1,4 @@
-import { PlayerStatus, SlotType } from "@prisma/client"
+﻿import { PlayerStatus, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 
 export async function getTeamRoster(teamId: string) {
@@ -21,7 +21,7 @@ export async function validateTaxiSquad(teamId: string) {
     include: { player: { select: { id: true, name: true, nhlGamesPlayed: true } } },
   })
   return taxiSlots
-    .filter(({ player }) => player.nhlGamesPlayed > team.league.taxiMaxGames)
+    .filter(({ player }) => player.nhlGamesPlayed >= team.league.taxiMaxGames)
     .map(({ player }) => ({
       playerId: player.id,
       playerName: player.name,

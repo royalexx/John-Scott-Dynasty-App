@@ -1,9 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Check, Minus, Plus, RotateCcw, Save } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { TAXI_MAX_NHL_GAMES } from "@/lib/hockey-data"
+import { cn } from "@/lib/utils"
 
-type Settings = {
+export type LeagueSettings = {
   rosterPositions: Record<string, number>
   scoringSettings: Record<string, unknown>
   waiverSettings: Record<string, unknown>
@@ -13,66 +16,243 @@ type Settings = {
   taxiMaxGames: number
   irSlots: number
   currentWeek: number
+  lineupLockMode: "WEEKLY" | "DAILY"
 }
 
-const defaults: Settings = {
+export const defaultLeagueSettings: LeagueSettings = {
   rosterPositions: { C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7 },
   scoringSettings: { goal: 3, assist: 2, shot: 0.2, hit: 0.2, block: 0.2, ppp: 0, shg: 0, gwg: 0, plusMinus: 0, win: 4, save: 0.2, goalsAgainst: -1, shutout: 3, overtimeLoss: 0 },
   waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
   tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },
   draftSettings: { type: "LINEAR", rounds: 5, timerSeconds: 120, scheduledDate: "2027-08-15T18:00:00Z", orderType: "REVERSE_STANDINGS" },
-  taxiSlots: 2, taxiMaxGames: 160, irSlots: 1, currentWeek: 1,
+  taxiSlots: 2, taxiMaxGames: TAXI_MAX_NHL_GAMES, irSlots: 1, currentWeek: 1, lineupLockMode: "WEEKLY",
 }
 
-const tabs = ["Roster", "Scoring", "Waivers & Trades", "Draft", "Manual"] as const
-type Tab = typeof tabs[number]
+export function mergeLeagueSettings(base: LeagueSettings, data: Partial<LeagueSettings>): LeagueSettings {
+  return {
+    ...base,
+    ...data,
+    rosterPositions: { ...base.rosterPositions, ...data.rosterPositions },
+    scoringSettings: { ...base.scoringSettings, ...data.scoringSettings },
+    waiverSettings: { ...base.waiverSettings, ...data.waiverSettings },
+    tradeSettings: { ...base.tradeSettings, ...data.tradeSettings },
+    draftSettings: { ...base.draftSettings, ...data.draftSettings },
+  }
+}
 
-function numberField(label: string, value: number, onChange: (value: number) => void) {
-  return <label className="flex items-center justify-between gap-3 rounded-lg border border-[#263858] bg-[#0d1424] px-3 py-2 text-xs text-[#8ba0c7]"><span>{label}</span><input type="number" step="0.1" value={value} onChange={(event) => onChange(Number(event.target.value))} className="w-20 rounded bg-[#172338] px-2 py-1 text-right text-white outline-none focus:ring-1 focus:ring-[#19ffff]" /></label>
+const tabs = ["Roster", "Scoring", "Waivers", "Trades", "Draft", "Tools"] as const
+type Tab = typeof tabs[number]
+type RecordField = "rosterPositions" | "scoringSettings" | "waiverSettings" | "tradeSettings" | "draftSettings"
+
+const SLOT_LABELS: Record<string, string> = { C: "Center", W: "Winger", F: "Flex forward (C/W)", D: "Defense", G: "Goalie", BN: "Bench" }
+const SKATER_SCORING: Array<[string, string]> = [["Goals", "goal"], ["Assists", "assist"], ["Shots on goal", "shot"], ["Hits", "hit"], ["Blocked shots", "block"], ["Power play points", "ppp"], ["Shorthanded goals", "shg"], ["Game-winning goals", "gwg"], ["Plus / minus", "plusMinus"]]
+const GOALIE_SCORING: Array<[string, string]> = [["Wins", "win"], ["Saves", "save"], ["Goals against", "goalsAgainst"], ["Shutouts", "shutout"], ["OT losses", "overtimeLoss"]]
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return <section className="space-y-2"><div><h3 className="text-[10px] font-black uppercase tracking-wider text-amber-300">{title}</h3>{hint && <p className="text-[10px] text-[#5e7090]">{hint}</p>}</div>{children}</section>
+}
+
+function Stepper({ label, hint, value, onChange, min = 0, max = 999, step = 1 }: { label: string; hint?: string; value: number; onChange: (value: number) => void; min?: number; max?: number; step?: number }) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, Math.round(next * 100) / 100))
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#1c2c48] bg-[#0a1120] px-3 py-2">
+      <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{label}</p>{hint && <p className="truncate text-[10px] text-[#5e7090]">{hint}</p>}</div>
+      <div className="flex shrink-0 items-center gap-1">
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => onChange(clamp(value - step))} disabled={value <= min} className="flex size-7 items-center justify-center rounded-full bg-[#172338] text-[#8ba0c7] transition active:scale-90 disabled:opacity-30"><Minus className="size-3.5" /></button>
+        <input aria-label={label} type="number" inputMode="decimal" step={step} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(clamp(Number(event.target.value)))} className="w-14 rounded-md bg-transparent py-1 text-center text-sm font-black tabular-nums text-[#19ffff] outline-none focus:bg-[#172338] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+        <button type="button" aria-label={`Increase ${label}`} onClick={() => onChange(clamp(value + step))} disabled={value >= max} className="flex size-7 items-center justify-center rounded-full bg-[#172338] text-[#8ba0c7] transition active:scale-90 disabled:opacity-30"><Plus className="size-3.5" /></button>
+      </div>
+    </div>
+  )
+}
+
+function Segmented<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: Array<{ value: T; label: string }>; onChange: (value: T) => void }) {
+  return (
+    <div className="rounded-xl border border-[#1c2c48] bg-[#0a1120] p-2">
+      <p className="px-1 pb-1.5 text-xs font-bold text-white">{label}</p>
+      <div className="flex gap-1" role="radiogroup" aria-label={label}>
+        {options.map((option) => <button key={option.value} type="button" role="radio" aria-checked={value === option.value} onClick={() => onChange(option.value)} className={cn("flex-1 rounded-lg px-2 py-2 text-[10px] font-black transition", value === option.value ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{option.label}</button>)}
+      </div>
+    </div>
+  )
+}
+
+function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#1c2c48] bg-[#0a1120] px-3 py-2.5 text-left">
+      <span><span className="block text-xs font-bold text-white">{label}</span>{hint && <span className="block text-[10px] text-[#5e7090]">{hint}</span>}</span>
+      <span className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-amber-400" : "bg-[#263858]")}><span className={cn("absolute top-0.5 size-4 rounded-full bg-white transition-all", checked ? "left-[18px]" : "left-0.5")} /></span>
+    </button>
+  )
+}
+
+function toLocalInput(value: unknown) {
+  const date = new Date(String(value ?? ""))
+  if (Number.isNaN(date.getTime())) return ""
+  const offset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16)
 }
 
 export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [tab, setTab] = useState<Tab>("Roster")
-  const [settings, setSettings] = useState<Settings>(defaults)
-  const [status, setStatus] = useState<string | null>(null)
-  const update = (patch: Partial<Settings>) => setSettings((current) => ({ ...current, ...patch }))
-  const updateRecord = (field: keyof Pick<Settings, "rosterPositions" | "scoringSettings" | "waiverSettings" | "tradeSettings" | "draftSettings">, key: string, value: unknown) =>
+  const [settings, setSettings] = useState<LeagueSettings>(defaultLeagueSettings)
+  const [saved, setSaved] = useState<LeagueSettings>(defaultLeagueSettings)
+  const [status, setStatus] = useState<{ tone: "info" | "ok" | "error"; text: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const update = (patch: Partial<LeagueSettings>) => setSettings((current) => ({ ...current, ...patch }))
+  const updateRecord = (field: RecordField, key: string, value: unknown) =>
     setSettings((current) => ({ ...current, [field]: { ...current[field], [key]: value } }))
 
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/admin/league-settings", { cache: "no-store" })
+      if (!response.ok) throw new Error(`Load failed (${response.status})`)
+      const merged = mergeLeagueSettings(defaultLeagueSettings, await response.json() as Partial<LeagueSettings>)
+      setSettings(merged)
+      setSaved(merged)
+      setStatus(null)
+    } catch (error: unknown) {
+      console.error("Failed to load commissioner settings", error)
+      setStatus({ tone: "error", text: "Unable to load settings. Showing defaults." })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
-    if (!open) return
-    fetch("/api/admin/league-settings", { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<Partial<Settings>> : Promise.reject(new Error(`Load failed (${response.status})`)))
-      .then((data) => setSettings((current) => ({ ...current, ...data, rosterPositions: { ...current.rosterPositions, ...data.rosterPositions }, scoringSettings: { ...current.scoringSettings, ...data.scoringSettings }, waiverSettings: { ...current.waiverSettings, ...data.waiverSettings }, tradeSettings: { ...current.tradeSettings, ...data.tradeSettings }, draftSettings: { ...current.draftSettings, ...data.draftSettings } })))
-      .catch((error: unknown) => { console.error("Failed to load commissioner settings", error); setStatus("Unable to load settings") })
-  }, [open])
+    if (open) void load()
+  }, [open, load])
+
+  const dirty = useMemo(() => JSON.stringify(settings) !== JSON.stringify(saved), [settings, saved])
+  const capacity = Object.values(settings.rosterPositions).reduce((sum, value) => sum + (Number(value) || 0), 0)
+  const starters = ["C", "W", "F", "D", "G"].reduce((sum, key) => sum + (settings.rosterPositions[key] ?? 0), 0)
+  const problems: string[] = []
+  if ((settings.rosterPositions.G ?? 0) < 1) problems.push("At least one goalie slot is required.")
+  if (starters < 1) problems.push("At least one starting slot is required.")
+  if (settings.draftSettings.scheduledDate && Number.isNaN(new Date(String(settings.draftSettings.scheduledDate)).getTime())) problems.push("Draft date is invalid.")
 
   const save = async () => {
-    setStatus("Saving...")
-    const response = await fetch("/api/admin/league-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settings) })
-    if (!response.ok) { setStatus(`Save failed (${response.status})`); return }
-    setStatus("Saved")
-    window.setTimeout(() => window.location.reload(), 700)
+    if (problems.length > 0) { setStatus({ tone: "error", text: problems[0] }); return }
+    setSaving(true)
+    setStatus({ tone: "info", text: "Saving..." })
+    try {
+      const { rosterPositions, scoringSettings, waiverSettings, tradeSettings, draftSettings, taxiSlots, taxiMaxGames, irSlots, lineupLockMode } = settings
+      const response = await fetch("/api/admin/league-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rosterPositions, scoringSettings, waiverSettings, tradeSettings, draftSettings, taxiSlots, taxiMaxGames, irSlots, lineupLockMode }) })
+      if (!response.ok) {
+        setStatus({ tone: "error", text: response.status === 403 ? "Only commissioners can save settings." : `Save failed (${response.status}).` })
+        setSaving(false)
+        return
+      }
+      setSaved(settings)
+      setStatus({ tone: "ok", text: "Saved. Applying the new rules..." })
+      // Server components hydrate slots/rules, so a reload applies them everywhere at once.
+      window.setTimeout(() => window.location.reload(), 600)
+    } catch (error: unknown) {
+      console.error("Failed to save commissioner settings", error)
+      setStatus({ tone: "error", text: "Save failed (network error)." })
+      setSaving(false)
+    }
   }
-  const action = async (endpoint: string, label: string) => {
-    setStatus(`${label}...`)
-    const response = await fetch(endpoint, { method: "POST" })
-    setStatus(response.ok ? `${label} complete` : `${label} failed (${response.status})`)
+
+  const runAction = async (endpoint: string, label: string) => {
+    setStatus({ tone: "info", text: `${label}...` })
+    try {
+      const response = await fetch(endpoint, { method: "POST" })
+      setStatus(response.ok ? { tone: "ok", text: `${label} complete.` } : { tone: "error", text: `${label} failed (${response.status}).` })
+    } catch {
+      setStatus({ tone: "error", text: `${label} failed (network error).` })
+    }
   }
 
   const scoring = settings.scoringSettings
-  return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent side="bottom" className="mx-auto max-h-[90vh] max-w-[430px] overflow-y-auto rounded-t-2xl border-t border-amber-500/30 bg-[#0d1424] p-0 text-white">
-    <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#5e7090]" />
-    <div className="border-b border-[#172338] px-4 py-3"><h2 className="text-lg font-black">Commissioner Rulebook</h2><p className="text-[10px] text-[#8ba0c7]">League-wide settings</p></div>
-    <div className="flex gap-1 overflow-x-auto border-b border-[#172338] p-2">{tabs.map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`shrink-0 rounded-full px-3 py-2 text-[10px] font-bold ${tab === item ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]"}`}>{item}</button>)}</div>
-    <div className="space-y-2 p-4">
-      {tab === "Roster" && <><p className="text-[10px] font-black uppercase text-amber-300">Starting slots</p>{["C", "W", "F", "D", "G", "BN"].map((key) => numberField(key, settings.rosterPositions[key] ?? 0, (value) => updateRecord("rosterPositions", key, value)))}{numberField("Taxi Squad slots", settings.taxiSlots, (value) => update({ taxiSlots: value }))}{numberField("Taxi max NHL games", settings.taxiMaxGames, (value) => update({ taxiMaxGames: value }))}<p className="text-[10px] text-[#8ba0c7]">IR slots: {settings.irSlots} (Pure IR only; DTD/IR+ ineligible)</p><p className="rounded-lg bg-[#172338] p-3 text-xs font-bold text-[#19ffff]">Total roster capacity: {Object.values(settings.rosterPositions).reduce((sum, value) => sum + value, 0) + settings.taxiSlots + settings.irSlots}</p></>}
-      {tab === "Scoring" && <>{[["Goals", "goal"], ["Assists", "assist"], ["Shots (SOG)", "shot"], ["Hits", "hit"], ["Blocks", "block"], ["Power Play Points", "ppp"], ["Shorthanded Goals", "shg"], ["Game Winning Goals", "gwg"], ["Plus / Minus", "plusMinus"], ["Goalie Wins", "win"], ["Saves", "save"], ["Goals Against", "goalsAgainst"], ["Shutouts", "shutout"], ["OT Losses", "overtimeLoss"]].map(([label, key]) => numberField(label, Number(scoring[key] ?? 0), (value) => updateRecord("scoringSettings", key, value)))}</>}
-      {tab === "Waivers & Trades" && <><select value={String(settings.waiverSettings.type)} onChange={(event) => updateRecord("waiverSettings", "type", event.target.value)} className="w-full rounded-lg bg-[#172338] p-2 text-xs text-white"><option value="FAAB">FAAB</option><option value="ROLLING">Rolling Priority</option></select>{numberField("FAAB budget", Number(settings.waiverSettings.faabBudget ?? 100), (value) => updateRecord("waiverSettings", "faabBudget", value))}{numberField("Minimum bid", Number(settings.waiverSettings.minBid ?? 0), (value) => updateRecord("waiverSettings", "minBid", value))}{numberField("Hold hours", Number(settings.waiverSettings.holdHours ?? 48), (value) => updateRecord("waiverSettings", "holdHours", value))}<select value={String(settings.tradeSettings.reviewType)} onChange={(event) => updateRecord("tradeSettings", "reviewType", event.target.value)} className="w-full rounded-lg bg-[#172338] p-2 text-xs text-white"><option value="COMMISSIONER">Commissioner Approval</option><option value="VOTE">League Vote</option></select>{numberField("Trade review hours", Number(settings.tradeSettings.reviewHours ?? 24), (value) => updateRecord("tradeSettings", "reviewHours", value))}{numberField("Trade deadline week", Number(settings.tradeSettings.deadlineWeek ?? 18), (value) => updateRecord("tradeSettings", "deadlineWeek", value))}</>}
-      {tab === "Draft" && <><select value={String(settings.draftSettings.type)} onChange={(event) => updateRecord("draftSettings", "type", event.target.value)} className="w-full rounded-lg bg-[#172338] p-2 text-xs text-white"><option value="LINEAR">Rookie Draft (Linear)</option><option value="SNAKE">Startup Draft (Snake)</option><option value="AUCTION">Auction</option></select>{numberField("Rounds", Number(settings.draftSettings.rounds ?? 5), (value) => updateRecord("draftSettings", "rounds", value))}<select value={String(settings.draftSettings.timerSeconds)} onChange={(event) => updateRecord("draftSettings", "timerSeconds", Number(event.target.value))} className="w-full rounded-lg bg-[#172338] p-2 text-xs text-white"><option value="60">60 seconds</option><option value="90">90 seconds</option><option value="120">120 seconds</option><option value="28800">Slow draft (8h)</option><option value="86400">Slow draft (24h)</option></select><label className="text-xs text-[#8ba0c7]">Scheduled date<input type="datetime-local" value={String(settings.draftSettings.scheduledDate).replace("Z", "")} onChange={(event) => updateRecord("draftSettings", "scheduledDate", new Date(event.target.value).toISOString())} className="mt-1 w-full rounded bg-[#172338] p-2 text-white" /></label><select value={String(settings.draftSettings.orderType)} onChange={(event) => updateRecord("draftSettings", "orderType", event.target.value)} className="w-full rounded-lg bg-[#172338] p-2 text-xs text-white"><option value="REVERSE_STANDINGS">Reverse Regular Season Standings</option><option value="LOTTERY">Lottery</option></select></>}
-      {tab === "Manual" && <><button type="button" onClick={() => void action("/api/cron/sync", "Stats sync")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold">Force NHL Stats Sync</button><button type="button" onClick={() => void action("/api/cron/waivers", "Waivers")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold">Run Waiver Claims Now</button><button type="button" onClick={() => update({ currentWeek: Math.min(24, settings.currentWeek + 1) })} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold">Advance League Week (currently {settings.currentWeek})</button></>}
-      {status && <p role="status" className="text-xs text-[#8ba0c7]">{status}</p>}
-      <button type="button" onClick={() => void save()} className="w-full rounded-full bg-amber-400 py-2.5 text-xs font-black text-[#080c14]">Save Rulebook Settings</button>
-    </div>
-  </SheetContent></Sheet>
+  const waiverType = String(settings.waiverSettings.type ?? "FAAB")
+  const draft = settings.draftSettings
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="mx-auto flex data-[side=bottom]:h-[88dvh] max-w-[430px] flex-col gap-0 overflow-hidden rounded-t-2xl border-t border-amber-500/30 bg-[#0d1424] p-0 text-white">
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[#5e7090]" />
+        <div className="flex shrink-0 items-start justify-between border-b border-[#172338] px-4 py-3">
+          <div><h2 className="text-lg font-black">Commissioner Rulebook</h2><p className="text-[10px] text-[#8ba0c7]">League-wide rules. Changes apply to every team.</p></div>
+          {dirty && <span className="rounded-full bg-amber-400/15 px-2 py-1 text-[9px] font-black uppercase text-amber-300">Unsaved</span>}
+        </div>
+        <div role="tablist" className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#172338] p-2">
+          {tabs.map((item) => <button key={item} role="tab" aria-selected={tab === item} type="button" onClick={() => setTab(item)} className={cn("shrink-0 rounded-full px-3.5 py-2 text-[11px] font-bold transition", tab === item ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{item}</button>)}
+        </div>
+
+        <div className={cn("min-h-0 flex-1 space-y-5 overflow-y-auto p-4", loading && "pointer-events-none opacity-60")}>
+          {tab === "Roster" && <>
+            <Section title="Lineup slots" hint="Starters score every week; bench players do not.">
+              {["C", "W", "F", "D", "G", "BN"].map((key) => <Stepper key={key} label={key} hint={SLOT_LABELS[key]} value={settings.rosterPositions[key] ?? 0} max={20} onChange={(value) => updateRecord("rosterPositions", key, value)} />)}
+            </Section>
+            <Section title="Lineup lock" hint="Decides when starting slots (C/W/F/D/G) freeze. Bench, IR and taxi stay movable.">
+              <Segmented label="Lock starters" value={settings.lineupLockMode} options={[{ value: "WEEKLY", label: "Weekly (first game)" }, { value: "DAILY", label: "Daily (each game)" }]} onChange={(value) => update({ lineupLockMode: value })} />
+              <p className="px-1 text-[10px] text-[#5e7090]">{settings.lineupLockMode === "WEEKLY" ? "Starters lock when the first NHL game of the fantasy week begins and unlock Monday." : "A player locks only once their own team's game today has started."}</p>
+            </Section>
+            <Section title="Reserve spots" hint="IR is pure IR only (DTD / IR+ are not eligible).">
+              <Stepper label="Taxi squad slots" value={settings.taxiSlots} max={10} onChange={(value) => update({ taxiSlots: value })} />
+              <Stepper label="Taxi NHL games cap" hint="Eligible while career NHL GP is below this" value={settings.taxiMaxGames} max={400} step={5} onChange={(value) => update({ taxiMaxGames: value })} />
+              <Stepper label="IR slots" value={settings.irSlots} max={10} onChange={(value) => update({ irSlots: value })} />
+            </Section>
+            <div className="rounded-xl bg-[#172338] p-3 text-xs"><p className="font-black text-[#19ffff]">Roster capacity: {capacity}</p><p className="mt-0.5 text-[10px] text-[#8ba0c7]">{starters} starters + {settings.rosterPositions.BN ?? 0} bench. Waiver drops are optional while a team is below {capacity}.</p></div>
+          </>}
+
+          {tab === "Scoring" && <>
+            <Section title="Skaters">{SKATER_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
+            <Section title="Goalies">{GOALIE_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
+            <button type="button" onClick={() => update({ scoringSettings: { ...defaultLeagueSettings.scoringSettings } })} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#263858] py-2.5 text-[11px] font-bold text-[#8ba0c7] hover:text-white"><RotateCcw className="size-3.5" />Reset scoring to default</button>
+          </>}
+
+          {tab === "Waivers" && <>
+            <Segmented label="Waiver system" value={waiverType} options={[{ value: "FAAB", label: "FAAB bidding" }, { value: "ROLLING", label: "Rolling priority" }]} onChange={(value) => updateRecord("waiverSettings", "type", value)} />
+            {waiverType === "FAAB" && <><Stepper label="FAAB budget" hint="Per team, per season" value={Number(settings.waiverSettings.faabBudget ?? 100)} max={10000} step={5} onChange={(value) => updateRecord("waiverSettings", "faabBudget", value)} /><Stepper label="Minimum bid" value={Number(settings.waiverSettings.minBid ?? 0)} max={1000} onChange={(value) => updateRecord("waiverSettings", "minBid", value)} /></>}
+            <Stepper label="Waiver hold (hours)" hint="Dropped players stay on waivers this long" value={Number(settings.waiverSettings.holdHours ?? 48)} max={168} step={6} onChange={(value) => updateRecord("waiverSettings", "holdHours", value)} />
+          </>}
+
+          {tab === "Trades" && <>
+            <Segmented label="Trade review" value={String(settings.tradeSettings.reviewType ?? "COMMISSIONER")} options={[{ value: "COMMISSIONER", label: "Commissioner" }, { value: "VOTE", label: "League vote" }]} onChange={(value) => updateRecord("tradeSettings", "reviewType", value)} />
+            <Stepper label="Review window (hours)" value={Number(settings.tradeSettings.reviewHours ?? 24)} max={168} step={6} onChange={(value) => updateRecord("tradeSettings", "reviewHours", value)} />
+            <Stepper label="Trade deadline (week)" value={Number(settings.tradeSettings.deadlineWeek ?? 18)} max={30} onChange={(value) => updateRecord("tradeSettings", "deadlineWeek", value)} />
+            <Toggle label="Allow draft pick trading" hint="Future rookie picks can be included in offers" checked={settings.tradeSettings.allowPickTrading !== false} onChange={(value) => updateRecord("tradeSettings", "allowPickTrading", value)} />
+          </>}
+
+          {tab === "Draft" && <>
+            <Segmented label="Draft type" value={String(draft.type ?? "LINEAR")} options={[{ value: "LINEAR", label: "Rookie" }, { value: "SNAKE", label: "Snake" }, { value: "AUCTION", label: "Auction" }]} onChange={(value) => updateRecord("draftSettings", "type", value)} />
+            <Stepper label="Rounds" value={Number(draft.rounds ?? 5)} min={1} max={30} onChange={(value) => updateRecord("draftSettings", "rounds", value)} />
+            <label className="block rounded-xl border border-[#1c2c48] bg-[#0a1120] p-3 text-xs font-bold text-white">Pick timer
+              <select value={String(draft.timerSeconds ?? 120)} onChange={(event) => updateRecord("draftSettings", "timerSeconds", Number(event.target.value))} className="mt-1.5 w-full rounded-lg bg-[#172338] p-2 text-xs font-normal text-white outline-none">
+                <option value="60">60 seconds</option><option value="90">90 seconds</option><option value="120">120 seconds</option><option value="28800">Slow draft (8h)</option><option value="86400">Slow draft (24h)</option>
+              </select>
+            </label>
+            <label className="block rounded-xl border border-[#1c2c48] bg-[#0a1120] p-3 text-xs font-bold text-white">Draft date &amp; time
+              <input type="datetime-local" value={toLocalInput(draft.scheduledDate)} onChange={(event) => { const next = new Date(event.target.value); if (!Number.isNaN(next.getTime())) updateRecord("draftSettings", "scheduledDate", next.toISOString()) }} className="mt-1.5 w-full rounded-lg bg-[#172338] p-2 text-xs font-normal text-white outline-none [color-scheme:dark]" />
+            </label>
+            <Segmented label="Draft order" value={String(draft.orderType ?? "REVERSE_STANDINGS")} options={[{ value: "REVERSE_STANDINGS", label: "Reverse standings" }, { value: "LOTTERY", label: "Lottery" }]} onChange={(value) => updateRecord("draftSettings", "orderType", value)} />
+          </>}
+
+          {tab === "Tools" && <>
+            <Section title="Season calendar" hint={`Weeks run Monday to Sunday and follow the NHL schedule automatically (week ${settings.currentWeek} now).`}>
+              <div className="rounded-xl bg-[#172338] p-3 text-xs text-[#8ba0c7]">The league week advances every Monday. Scores for finished weeks are recalculated from NHL boxscores on every sync.</div>
+            </Section>
+            <Section title="Manual jobs">
+              <button type="button" onClick={() => void runAction("/api/cron/sync", "NHL stats sync")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold hover:border-amber-400/50">Force NHL stats sync<span className="block text-[10px] font-normal text-[#5e7090]">Pull the latest scores, boxscores and injuries</span></button>
+              <button type="button" onClick={() => void runAction("/api/cron/waivers", "Waiver run")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold hover:border-amber-400/50">Process waiver claims now<span className="block text-[10px] font-normal text-[#5e7090]">Runs every pending claim in priority / bid order</span></button>
+            </Section>
+          </>}
+        </div>
+
+        <div className="shrink-0 space-y-2 border-t border-[#172338] bg-[#0d1424] px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          {status && <p role="status" className={cn("text-[11px] font-bold", status.tone === "error" ? "text-rose-400" : status.tone === "ok" ? "text-emerald-400" : "text-[#8ba0c7]")}>{status.text}</p>}
+          {!status && problems.length > 0 && <p role="status" className="text-[11px] font-bold text-rose-400">{problems[0]}</p>}
+          <div className="flex gap-2">
+            <button type="button" disabled={!dirty || saving} onClick={() => { setSettings(saved); setStatus(null) }} className="flex items-center justify-center gap-1.5 rounded-full border border-[#263858] px-4 py-2.5 text-xs font-bold text-[#8ba0c7] transition enabled:hover:text-white disabled:opacity-30"><RotateCcw className="size-3.5" />Discard</button>
+            <button type="button" disabled={!dirty || saving || problems.length > 0} onClick={() => void save()} className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-amber-400 py-2.5 text-xs font-black text-[#080c14] transition active:scale-[0.98] disabled:opacity-40">{status?.tone === "ok" ? <Check className="size-4" /> : <Save className="size-4" />}Save Rulebook Settings</button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
 }

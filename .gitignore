@@ -16,3 +16,9 @@ e2e/.auth/
 node_modules
 .next/
 .DS_Store
+# Secrets, test artifacts and generated files
+.env
+*.tsbuildinfo
+repomix-output.xml
+test-results/
+playwright-report/

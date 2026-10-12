@@ -2,6 +2,7 @@ import { getLeague, getLeagueStandings } from "@/lib/db/leagues"
 import { getTeamDraftPickInventory } from "@/lib/db/picks"
 import { getTeamRoster } from "@/lib/db/rosters"
 import { initialDashboardData } from "@/lib/dashboard-data"
+import { getLockSummary } from "@/lib/services/lineup-locks"
 import { getCurrentFantasyWeek, getFantasyWeekDates } from "@/lib/season-calendar"
 import { getPlayerSchedule, type NhlScheduleGame, type Player, type PlayerGameLog } from "@/lib/hockey-data"
 import { prisma } from "@/lib/prisma"
@@ -38,7 +39,7 @@ export default async function Page() {
       : undefined
     if (!team) return <PinGate teams={gateTeams} />
 
-    const [rosterSlots, leagueStandings, pickInventory, activityRecords] = await Promise.all([
+    const [rosterSlots, leagueStandings, pickInventory, activityRecords, allRosterSlots, matchupRows, lockSummary] = await Promise.all([
       getTeamRoster(team.id),
       getLeagueStandings(league.id, league.currentSeason),
       getTeamDraftPickInventory(team.id),
@@ -48,7 +49,16 @@ export default async function Page() {
         orderBy: { createdAt: "desc" },
         take: 20,
       }),
+      prisma.rosterSlot.findMany({ where: { team: { leagueId: league.id } }, select: { playerId: true, slot: true, team: { select: { name: true } } } }),
+      prisma.matchup.findMany({
+        where: { leagueId: league.id, season: league.currentSeason, week: { lte: getCurrentFantasyWeek(league.currentSeason) } },
+        select: { week: true, homeScore: true, awayScore: true, isFinal: true, homeTeam: { select: { name: true } }, awayTeam: { select: { name: true } } },
+        orderBy: { week: "asc" },
+      }),
+      getLockSummary(league.currentSeason, league.lineupLockMode),
     ])
+    const leagueRosters: Record<string, Array<{ nhlId: number; slot: string }>> = {}
+    for (const entry of allRosterSlots) (leagueRosters[entry.team.name] ??= []).push({ nhlId: entry.playerId, slot: entry.slot })
     const { dates: fantasyWeekDates } = getFantasyWeekDates(getCurrentFantasyWeek(), league.currentSeason)
     const scheduleRecords = await prisma.nhlGame.findMany({
       where: { gameDate: { in: fantasyWeekDates } },
@@ -108,6 +118,7 @@ export default async function Page() {
       const playerLogs = logsByPlayer.get(slot.player.id) ?? []
       const calculatedSchedule = getPlayerSchedule(slot.player.teamAbbrev, scheduleGames, playerLogs, slot.player.position, undefined, 0, fantasyWeek)
       const schedule = calculatedSchedule ?? {
+        week: fantasyWeek,
         day: "—",
         date: fantasyWeekDates[0],
         time: "—",
@@ -152,12 +163,16 @@ export default async function Page() {
           teamName: team.name,
           teamLogo: team.logoUrl ?? undefined,
           userFaab: team.faabBalance,
+          waiverPriority: team.waiverPriority,
+          leagueRosters,
+          matchupResults: matchupRows.map((row) => ({ week: row.week, homeTeam: row.homeTeam.name, awayTeam: row.awayTeam.name, homeScore: Number(row.homeScore ?? 0), awayScore: Number(row.awayScore ?? 0), isFinal: row.isFinal })),
+          lineupLock: { mode: lockSummary.mode, locked: lockSummary.mode === "WEEKLY" ? lockSummary.weekStarted : lockSummary.startedTeams.size > 0, week: lockSummary.week, firstGameAt: lockSummary.firstGameAt, weekEndDate: lockSummary.weekEndDate },
           roster,
           standings: leagueStandings?.map((row, index) => ({
             rank: index + 1,
             delta: null,
             team: row.team.name,
-            owner: row.team.id === team.id ? "You" : `@${row.team.manager.handle}`,
+            owner: `@${row.team.manager.handle}`,
             wins: row.wins,
             losses: row.losses,
             pointsFor: row.pointsFor,
@@ -172,9 +187,11 @@ export default async function Page() {
             waiverSettings: (league.waiverSettings as Record<string, unknown> | null) ?? undefined,
             tradeSettings: (league.tradeSettings as Record<string, unknown> | null) ?? undefined,
             draftSettings: (league.draftSettings as Record<string, unknown> | null) ?? undefined,
+            rosterSize: league.rosterSize,
             taxiSlots: league.taxiSlots,
             taxiMaxGames: league.taxiMaxGames,
             irSlots: league.irSlots,
+            lineupLockMode: league.lineupLockMode === "DAILY" ? "DAILY" : "WEEKLY",
             currentWeek: league.currentWeek,
           },
           draftPicks: pickInventory.owned.map((pick) => `${pick.season} ${getOrdinal(pick.round)} Round`),

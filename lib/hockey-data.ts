@@ -2,7 +2,17 @@ import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
 export type RosterSlot = "C" | "W" | "F" | "D" | "G" | "BN" | "TAXI" | "IR"
+/** Taxi squad eligibility: a player must have played fewer than this many NHL games. */
 export const TAXI_MAX_NHL_GAMES = 50
+/** Total roster capacity used for waiver/drop rules (open bench spot while below this). */
+export const DEFAULT_ROSTER_SIZE = 27
+
+export type StarterSlot = "C" | "W" | "F" | "D" | "G"
+export const STARTER_SLOTS: readonly StarterSlot[] = ["C", "W", "F", "D", "G"]
+export const DEFAULT_SLOT_CAPACITIES: Record<StarterSlot, number> = { C: 3, W: 6, F: 3, D: 6, G: 2 }
+export function isStarterSlot(slot: string): slot is StarterSlot {
+  return (STARTER_SLOTS as readonly string[]).includes(slot)
+}
 
 export interface PlayerPortraitSource {
   name?: string
@@ -11,6 +21,8 @@ export interface PlayerPortraitSource {
 }
 
 export interface PlayerSchedule {
+  /** Fantasy week this schedule's weekly totals were computed for. */
+  week?: number
   day: string
   date: string
   time: string
@@ -96,11 +108,16 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
   const blendedAverageGamePoints = statisticalAverage > 0 ? statisticalAverage : fallbackProjection
   const completedWeekDates = new Set(weekGames.map((game) => game.gameDate))
   const remainingWeekGames = weekTeamGames.filter((game) => game.date > today || (game.date === today && !completedWeekDates.has(game.date))).length
-  const weekProjection = weekFantasyPoints + blendedAverageGamePoints * remainingWeekGames
+  // With no stats at all, `fallbackProjection` is a whole-week placeholder (not a per-game rate).
+  const hasStatistics = statisticalAverage > 0
+  const weekProjection = hasStatistics
+    ? weekFantasyPoints + blendedAverageGamePoints * remainingWeekGames
+    : weekFantasyPoints + fallbackProjection * (weekTeamGames.length > 0 ? remainingWeekGames / weekTeamGames.length : 0)
   const todayGame = gameLog.find((game) => game.gameDate === today)
   const teamScore = home ? teamGame.homeTeam.score : teamGame.awayTeam.score
   const opponentScore = home ? teamGame.awayTeam.score : teamGame.homeTeam.score
   return {
+    week: fantasyWeek,
     day,
     date: teamGame.date,
     time,
@@ -242,7 +259,20 @@ export function calculatePlayerFPTS(player: Pick<Player, "position" | "stats">):
   return player.position === "G" ? calculateGoalieFPTS(stats as GoalieStats) : calculateSkaterFPTS(stats as SkaterStats)
 }
 
-export interface Player {
+/** NHL-synced data shared by roster players and market (database) players. */
+export interface PlayerEnrichment {
+  nhlId?: number
+  headshot?: string
+  profile?: PlayerProfile
+  currentSeasonStats?: Record<string, number>
+  gameLog?: PlayerGameLog[]
+  historicalSeasons?: PlayerSeasonSummary[]
+  schedule?: PlayerSchedule
+  nhlGamesPlayed?: number
+  injuryStatus?: PlayerStatus
+}
+
+export interface Player extends PlayerEnrichment {
   id: string
   name: string
   position: "C" | "LW" | "RW" | "D" | "G"
@@ -257,18 +287,9 @@ export interface Player {
   gamesPlayed?: number
   gameState?: "Pre-game" | "In Progress" | "Final"
   timeRemaining?: number
-  nhlId?: number
-  headshot?: string
-  profile?: PlayerProfile
-  currentSeasonStats?: Record<string, number>
-  gameLog?: PlayerGameLog[]
-  historicalSeasons?: PlayerSeasonSummary[]
-  schedule?: PlayerSchedule
-  nhlGamesPlayed?: number
-  injuryStatus?: PlayerStatus
 }
 
-export interface MarketPlayer {
+export interface MarketPlayer extends PlayerEnrichment {
   rank: number
   name: string
   position: "C" | "LW" | "RW" | "D" | "G"
@@ -291,15 +312,6 @@ export interface MarketPlayer {
   shutouts?: number
   savePct?: number
   stats?: SkaterStats | GoalieStats
-  nhlId?: number
-  headshot?: string
-  profile?: PlayerProfile
-  currentSeasonStats?: Record<string, number>
-  gameLog?: PlayerGameLog[]
-  historicalSeasons?: PlayerSeasonSummary[]
-  schedule?: PlayerSchedule
-  nhlGamesPlayed?: number
-  injuryStatus?: PlayerStatus
   injuryVerification?: "verified" | "single-source" | "conflict"
   injurySources?: string[]
 }
@@ -400,13 +412,11 @@ const teamStarterNames: Record<string, string[]> = {
   "Vancouver Voyagers": ["Elias Pettersson", "J.T. Miller", "Brock Boeser", "Conor Garland", "Jake DeBrusk", "Dakota Joshua", "Pius Suter", "Nils Hoglander", "Kiefer Sherwood", "Danton Heinen", "Quinn Hughes", "Filip Hronek", "Carson Soucy", "Tyler Myers", "Derek Forbort", "Vincent Desharnais", "Thatcher Demko", "Kevin Lankinen", "Teddy Blueger", "Arturs Silovs"],
   "Calgary Comets": ["Nazem Kadri", "Jonathan Huberdeau", "Blake Coleman", "Andrei Kuzmenko", "Yegor Sharangovich", "Connor Zary", "Martin Pospisil", "Adam Klapka", "Kevin Rooney", "Ryan Lomberg", "Rasmus Andersson", "MacKenzie Weegar", "Kevin Bahl", "Daniil Miromanov", "Jake Bean", "Oliver Kylington", "Dustin Wolf", "Dan Vladar", "Parker Bell", "Connor Murphy"],
   "Ottawa Outlaws": ["Tim Stützle", "Josh Norris", "Claude Giroux", "Brady Tkachuk", "Drake Batherson", "Parker Kelly", "Shane Pinto", "Ridly Greig", "Michael Amadio", "David Perron", "Jake Sanderson", "Thomas Chabot", "Artem Zub", "Nick Jensen", "Tyler Kleven", "Jacob Bernard-Docker", "Linus Ullmark", "Anton Forsberg", "Leevi Merilainen", "Zack Ostapchuk"],
-  "Edmonton Ember": ["Connor McDavid", "Leon Draisaitl", "Ryan Nugent-Hopkins", "Zach Hyman", "Viktor Arvidsson", "Jeff Skinner", "Mattias Janmark", "Adam Henrique", "Corey Perry", "Connor Brown", "Evan Bouchard", "Mattias Ekholm", "Darnell Nurse", "Brett Kulak", "Ty Emberson", "John Klingberg", "Stuart Skinner", "Calvin Pickard", "Cody Ceci", "James Hamblin"],
   "Team WisconsinVVB": ["Connor McDavid", "Leon Draisaitl", "Ryan Nugent-Hopkins", "Zach Hyman", "Viktor Arvidsson", "Jeff Skinner", "Mattias Janmark", "Adam Henrique", "Corey Perry", "Connor Brown", "Evan Bouchard", "Mattias Ekholm", "Darnell Nurse", "Brett Kulak", "Ty Emberson", "John Klingberg", "Stuart Skinner", "Calvin Pickard", "Cody Ceci", "James Hamblin"],
   "Detroit Motors": ["Dylan Larkin", "Alex DeBrincat", "Lucas Raymond", "Patrick Kane", "J.T. Compher", "Andrew Copp", "Rasmussen", "Jonatan Berggren", "Vladimir Tarasenko", "Marco Kasper", "Moritz Seider", "Ben Chiarot", "Jeff Petry", "Simon Edvinsson", "Justin Holl", "Shayne Gostisbehere", "Alex Lyon", "Cam Talbot", "Kasperi Kapanen", "Christian Fischer"],
   "Boston Blades": ["David Pastrnak", "Brad Marchand", "Charlie Coyle", "Morgan Geekie", "Pavel Zacha", "Elias Lindholm", "Trent Frederic", "Pius Suter", "Justin Brazeau", "Max Jones", "Charlie McAvoy", "Hampus Lindholm", "Brandon Carlo", "Mason Lohrei", "Andrew Peeke", "Jordan Oesterle", "Jeremy Swayman", "Joonas Korpisalo", "Mark Kastelic", "John Beecher"],
   "Colorado Summit": ["Nathan MacKinnon", "Mikko Rantanen", "Valeri Nichushkin", "Casey Mittelstadt", "Ross Colton", "Artturi Lehkonen", "Miles Wood", "Logan O'Connor", "Joel Kiviranta", "Ivan Ivan", "Cale Makar", "Devon Toews", "Josh Manson", "Samuel Girard", "Jacob MacDonald", "Sam Malinski", "Alexandar Georgiev", "Mackenzie Blackwood", "Calvin Jones", "John Ludvig"],
   "Florida Waves": ["Aleksander Barkov", "Matthew Tkachuk", "Sam Reinhart", "Carter Verhaeghe", "Evan Rodrigues", "Sam Bennett", "Anton Lundell", "Eetu Luostarinen", "Jesper Boqvist", "Mackie Samoskevich", "Aaron Ekblad", "Gustav Forsling", "Brandon Montour", "Niko Mikkola", "Dmitry Kulikov", "Uvis Balinskis", "Sergei Bobrovsky", "Spencer Knight", "Adam Boqvist", "Jaycob Megna"],
-  "Minnesota Northstars": ["Kirill Kaprizov", "Joel Eriksson Ek", "Matt Boldy", "Marco Rossi", "Ryan Hartman", "Marcus Johansson", "Marcus Foligno", "Frederick Gaudreau", "Jakub Lauko", "Liam Ohgren", "Brock Faber", "Jonas Brodin", "Jacob Middleton", "Jared Spurgeon", "Declan Chisholm", "Zach Bogosian", "Filip Gustavsson", "Marc-Andre Fleury", "Daemon Hunt", "David Jiricek"],
   "Daejon Love's Team": ["Kirill Kaprizov", "Joel Eriksson Ek", "Matt Boldy", "Marco Rossi", "Ryan Hartman", "Marcus Johansson", "Marcus Foligno", "Frederick Gaudreau", "Jakub Lauko", "Liam Ohgren", "Brock Faber", "Jonas Brodin", "Jacob Middleton", "Jared Spurgeon", "Declan Chisholm", "Zach Bogosian", "Filip Gustavsson", "Marc-Andre Fleury", "Daemon Hunt", "David Jiricek"],
   "Tampa Bay Bolts": ["Brayden Point", "Nikita Kucherov", "Steven Stamkos", "Jake Guentzel", "Brandon Hagel", "Anthony Cirelli", "Nicholas Paul", "Conor Sheary", "Nick Perbix", "Gage Goncalves", "Victor Hedman", "Ryan McDonagh", "Darren Raddysh", "Erik Cernak", "Emil Lilleberg", "Max Crozier", "Andrei Vasilevskiy", "Jonas Johansson", "Mitchell Chaffee", "Luke Glendening"],
 }
@@ -417,12 +427,12 @@ function createTeamRoster(teamName: string, names: string[]): Player[] {
     "Vancouver Voyagers": "VAN",
     "Calgary Comets": "CGY",
     "Ottawa Outlaws": "OTT",
-    "Edmonton Ember": "EDM",
+    "Team WisconsinVVB": "EDM",
     "Detroit Motors": "DET",
     "Boston Blades": "BOS",
     "Colorado Summit": "COL",
     "Florida Waves": "FLA",
-    "Minnesota Northstars": "MIN",
+    "Daejon Love's Team": "MIN",
     "Tampa Bay Bolts": "TBL",
   }[teamName] ?? "NHL"
   return names.map((name, index) => {
@@ -448,14 +458,61 @@ const dedicatedTeamRosters: Record<string, Player[]> = Object.fromEntries(
   Object.entries(teamStarterNames).map(([teamName, names]) => [teamName, createTeamRoster(teamName, names)]),
 )
 
+export type LeagueRosterEntry = { nhlId: number; slot: string }
+const leagueContext: { userTeamName: string; rosters: Record<string, LeagueRosterEntry[]> } = { userTeamName: "Montreal Monarchs", rosters: {} }
+
+/**
+ * Registers the authoritative (database) rosters for every team so opponent lineups, free-agent
+ * filtering and trade partners all agree. Called once per render of the dashboard with server data.
+ */
+export function setLeagueContext(userTeamName: string, rosters: Record<string, LeagueRosterEntry[]> | undefined) {
+  leagueContext.userTeamName = userTeamName
+  leagueContext.rosters = rosters ?? {}
+}
+
+function playerFromMarket(entry: LeagueRosterEntry, market: MarketPlayer): Player {
+  const slot = (entry.slot === "IR_PLUS" ? "IR" : entry.slot) as RosterSlot
+  return {
+    id: `nhl-${entry.nhlId}`,
+    nhlId: entry.nhlId,
+    name: market.name,
+    position: market.position,
+    slot,
+    team: market.team,
+    opponent: market.schedule?.opponent ?? "—",
+    gameTime: market.schedule ? `${market.schedule.day} ${market.schedule.time}` : "—",
+    status: market.injuryStatus ?? null,
+    todayPts: market.schedule?.todayFantasyPoints ?? null,
+    projPts: market.projection,
+    headshot: market.headshot,
+    profile: market.profile,
+    currentSeasonStats: market.currentSeasonStats,
+    gameLog: market.gameLog,
+    historicalSeasons: market.historicalSeasons,
+    schedule: market.schedule,
+    injuryStatus: market.injuryStatus,
+  }
+}
+
 export function getTeamRoster(teamName: string, userRoster: Player[], databasePlayers: MarketPlayer[] = []): Player[] {
-  if (teamName === "Montreal Monarchs") return userRoster
+  if (teamName === leagueContext.userTeamName) return userRoster
+  const dbEntries = leagueContext.rosters[teamName]
+  if (dbEntries && databasePlayers.length > 0) {
+    const byId = new Map(databasePlayers.filter((player) => player.nhlId).map((player) => [Number(player.nhlId), player]))
+    return dbEntries.flatMap((entry) => {
+      const market = byId.get(entry.nhlId)
+      return market ? [playerFromMarket(entry, market)] : []
+    })
+  }
+  if (dbEntries && databasePlayers.length === 0) return []
   const ownedNames = new Set(userRoster.map((player) => player.name.toLowerCase()))
   return (dedicatedTeamRosters[teamName] ?? []).filter((player) => !ownedNames.has(player.name.toLowerCase())).map((player) => {
     const databasePlayer = databasePlayers.find((candidate) => candidate.name.toLowerCase() === player.name.toLowerCase())
     if (!databasePlayer) return player
     return {
       ...player,
+      // Use the canonical `nhl-<id>` identifier so trades/waivers hit real database players.
+      id: databasePlayer.nhlId ? `nhl-${databasePlayer.nhlId}` : player.id,
       team: databasePlayer.team,
       nhlId: databasePlayer.nhlId,
       headshot: databasePlayer.headshot,
@@ -520,7 +577,7 @@ export type LiveMatchupSummary = MatchupSummary & {
 
 const canonicalTeams = [
   { team: "Montreal Monarchs", owner: "@commissioner" },
-  { team: "Toronto Titans", owner: "@jordan" },
+  { team: "Toronto Titans", owner: "@danick504" },
   { team: "Vancouver Voyagers", owner: "@alexr" },
   { team: "Colorado Summit", owner: "@morgan" },
   { team: "Florida Waves", owner: "@jamie" },
@@ -529,8 +586,8 @@ const canonicalTeams = [
   { team: "Ottawa Outlaws", owner: "@priya" },
   { team: "Tampa Bay Bolts", owner: "@drew" },
   { team: "Calgary Comets", owner: "@casey" },
-  { team: "Team WisconsinVVB", owner: "@wisconsin" },
-  { team: "Daejon Love's Team", owner: "@melchior" },
+  { team: "Team WisconsinVVB", owner: "@WisconsinVVB" },
+  { team: "Daejon Love's Team", owner: "@Melchior1" },
 ] as const
 
 /** Returns the six canonical league matchups for a regular-season week. */
@@ -590,37 +647,31 @@ export function getScheduleForTeam(teamName: string): ScheduleRow[] {
 
 export const teamSchedule = getScheduleForTeam("Montreal Monarchs")
 
-export interface MatchupPlayer {
-  name: string
-  position: Player["position"]
-  team: string
-  opponent: string
-  status: PlayerStatus
-  todayPts: number | null
-  projPts: number
+/** Lightweight lineup-row player, derived from `Player` so the two shapes cannot drift apart. */
+export type MatchupPlayer = Pick<Player, "name" | "position" | "team" | "opponent" | "status" | "todayPts" | "projPts" | "schedule" | "gameLog" | "currentSeasonStats"> & {
   empty?: boolean
-  schedule?: PlayerSchedule
-  gameLog?: PlayerGameLog[]
-  currentSeasonStats?: Record<string, number>
 }
 
-export interface MatchupRow {
-  slot: "C" | "LW" | "RW" | "W" | "F" | "D" | "G"
-  home: MatchupPlayer
-  away: MatchupPlayer
+type WeeklyScoringSource = { schedule?: PlayerSchedule | null } | null | undefined
+
+/**
+ * Fantasy points actually scored in `week`. Never falls back to projections:
+ * unplayed games, missing schedules, or a schedule computed for another week all yield 0.
+ */
+export function getWeekActualPoints(player: WeeklyScoringSource, week?: number): number {
+  const schedule = player?.schedule
+  if (!schedule) return 0
+  if (week !== undefined && schedule.week !== undefined && schedule.week !== week) return 0
+  if (schedule.weekGamesPlayed === 0) return 0
+  return schedule.weekFantasyPoints ?? 0
 }
 
-export const matchupStartersByMatchup: Record<string, MatchupRow[]> = {
-  m1: [
-    { slot: "C", home: { name: "Nathan MacKinnon", position: "C", team: "COL", opponent: "vs BOS", status: null, todayPts: 16.3, projPts: 18.2 }, away: { name: "Auston Matthews", position: "C", team: "TOR", opponent: "@ OTT", status: null, todayPts: 16.5, projPts: 18.5 } },
-    { slot: "LW", home: { name: "Artemi Panarin", position: "LW", team: "NYR", opponent: "@ NJD", status: null, todayPts: 13.0, projPts: 14.6 }, away: { name: "Matthew Knies", position: "LW", team: "TOR", opponent: "@ OTT", status: null, todayPts: 8.6, projPts: 14.9 } },
-    { slot: "RW", home: { name: "David Pastrnak", position: "RW", team: "BOS", opponent: "@ COL", status: null, todayPts: 13.5, projPts: 15.1 }, away: { name: "Mitch Marner", position: "RW", team: "TOR", opponent: "@ OTT", status: null, todayPts: 13.2, projPts: 18.1 } },
-    { slot: "D", home: { name: "Cale Makar", position: "D", team: "COL", opponent: "vs BOS", status: null, todayPts: 15.2, projPts: 16.4 }, away: { name: "Morgan Rielly", position: "D", team: "TOR", opponent: "@ OTT", status: null, todayPts: 7.8, projPts: 12.6 } },
-    { slot: "D", home: { name: "Quinn Hughes", position: "D", team: "VAN", opponent: "vs SEA", status: null, todayPts: 12.8, projPts: 14.0 }, away: { name: "Cale Fleury", position: "D", team: "TOR", opponent: "@ OTT", status: null, todayPts: null, projPts: 9.4 } },
-    { slot: "G", home: { name: "Igor Shesterkin", position: "G", team: "NYR", opponent: "@ NJD", status: null, todayPts: 14.0, projPts: 15.2 }, away: { name: "Joseph Woll", position: "G", team: "TOR", opponent: "@ OTT", status: null, todayPts: 10.5, projPts: 13.7 } },
-  ],
-  m2: [],
-  m3: [],
+/** Projected fantasy points for `week`, or null when no projection exists for that week. */
+export function getWeekProjectedPoints(player: (WeeklyScoringSource & { projPts?: number }), week?: number): number | null {
+  const schedule = player?.schedule
+  if (!schedule) return player?.projPts ?? null
+  if (week !== undefined && schedule.week !== undefined && schedule.week !== week) return null
+  return schedule.weekProjectedFantasyPoints ?? player?.projPts ?? null
 }
 
 export const draftPicks = ["2027 1st Rd", "2027 2nd Rd", "2028 1st Rd", "2028 2nd Rd"]
@@ -640,9 +691,9 @@ export interface StandingRow {
 
 export const standings: StandingRow[] = [
   { rank: 1, delta: null, team: "Montreal Monarchs", owner: "@commissioner", wins: 2, losses: 0, pointsFor: 448.24, pointsAgainst: 314.96, faabRemaining: 100 },
-  { rank: 2, delta: "+3", team: "Team WisconsinVVB", owner: "@wisconsin", wins: 2, losses: 0, pointsFor: 368.06, pointsAgainst: 270.3, faabRemaining: 75 },
-  { rank: 3, delta: "-1", team: "Daejon Love's Team", owner: "@melchior", wins: 2, losses: 0, pointsFor: 360.16, pointsAgainst: 217.96, faabRemaining: 100 },
-  { rank: 4, delta: "+2", team: "Toronto Titans", owner: "@jordan", wins: 1, losses: 1, pointsFor: 356.06, pointsAgainst: 318.4, faabRemaining: 100 },
+  { rank: 2, delta: "+3", team: "Team WisconsinVVB", owner: "@WisconsinVVB", wins: 2, losses: 0, pointsFor: 368.06, pointsAgainst: 270.3, faabRemaining: 75 },
+  { rank: 3, delta: "-1", team: "Daejon Love's Team", owner: "@Melchior1", wins: 2, losses: 0, pointsFor: 360.16, pointsAgainst: 217.96, faabRemaining: 100 },
+  { rank: 4, delta: "+2", team: "Toronto Titans", owner: "@danick504", wins: 1, losses: 1, pointsFor: 356.06, pointsAgainst: 318.4, faabRemaining: 100 },
   { rank: 5, delta: "+1", team: "Vancouver Voyagers", owner: "@alexr", wins: 1, losses: 1, pointsFor: 344.82, pointsAgainst: 331.44, faabRemaining: 88 },
   { rank: 6, delta: "-2", team: "Colorado Summit", owner: "@morgan", wins: 1, losses: 1, pointsFor: 338.21, pointsAgainst: 329.18, faabRemaining: 62 },
   { rank: 7, delta: null, team: "Florida Waves", owner: "@jamie", wins: 1, losses: 1, pointsFor: 326.7, pointsAgainst: 342.11, faabRemaining: 91 },

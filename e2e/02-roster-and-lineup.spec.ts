@@ -22,6 +22,10 @@ test("roster names and player profiles render safely", async ({ page }) => {
 })
 
 test("lineup slot dialog can swap an eligible player", async ({ page }) => {
+  // Never persist lineup swaps to the shared database.
+  await page.route("**/api/roster/move", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) }),
+  )
   await page.goto("/")
   const slotButton = page.locator("button").filter({ hasText: /^C$|^W$|^F$|^D$|^G$/ }).first()
   await slotButton.click()

@@ -1,10 +1,10 @@
-"use client"
+﻿"use client"
 
 import { useMemo, useState } from "react"
 import { AlertTriangle, Check, ChevronLeft, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { type MarketPlayer, type Player, type RosterSlot, type WaiverClaim } from "@/lib/hockey-data"
+import { DEFAULT_ROSTER_SIZE, isStarterSlot, type MarketPlayer, type Player, type WaiverClaim } from "@/lib/hockey-data"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 const colors: Record<string, string> = {
@@ -67,6 +67,7 @@ export function WaiverClaimDialog({
   onOpenChange,
   onConfirm,
   teamId,
+  rosterSize = DEFAULT_ROSTER_SIZE,
 }: {
   player: MarketPlayer | null
   roster: Player[]
@@ -76,14 +77,18 @@ export function WaiverClaimDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: (claim: WaiverClaim) => void
   teamId?: string
+  /** League roster capacity; drops are optional only while the roster is below this. */
+  rosterSize?: number
 }) {
   const [step, setStep] = useState<1 | 2>(1)
   const [bid, setBid] = useState(0)
   const [dropId, setDropId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const dropGroups = useMemo(
     () => ({
-      STARTERS: roster.filter((p) => ["C", "W", "F", "D", "G"].includes(p.slot)),
+      STARTERS: roster.filter((p) => isStarterSlot(p.slot)),
       BENCH: roster.filter((p) => p.slot === "BN"),
       "TAXI SQUAD": roster.filter((p) => p.slot === "TAXI"),
     }),
@@ -91,6 +96,8 @@ export function WaiverClaimDialog({
   )
 
   const dropped = roster.find((p) => p.id === dropId)
+  const openSpots = Math.max(0, rosterSize - roster.length)
+  const rosterFull = openSpots === 0
 
   if (!open || !player) return null
 
@@ -98,31 +105,45 @@ export function WaiverClaimDialog({
     setStep(1)
     setDropId(null)
     setBid(0)
+    setError(null)
+    setSubmitting(false)
     onOpenChange(false)
   }
 
   const confirm = () => {
-    if (teamId && player.nhlId) {
-      void fetch("/api/waivers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId, playerToAddId: player.nhlId, playerToDropId: dropped?.nhlId ?? null, bidAmount: bid }),
-      }).then(async (response) => {
-        const data = await response.json() as { error?: string; claim?: WaiverClaim }
-        if (!response.ok || !data.claim) throw new Error(data.error ?? "Could not submit waiver claim")
-        onConfirm(data.claim)
-        close()
-      }).catch((error: unknown) => console.error("Could not submit waiver claim", error))
+    // A drop is only mandatory when the roster is full; open bench spots allow a pure add.
+    if (rosterFull && !dropped) {
+      setError("Your roster is full. Select a player to drop.")
       return
     }
-    onConfirm({
+    const localClaim: WaiverClaim = {
       id: `claim-${Date.now()}`,
       playerToAdd: player,
       playerToDrop: dropped ?? null,
       bidAmount: bid,
       status: "pending",
       runTime: "Wed 3:05 AM",
-    })
+    }
+    if (teamId && player.nhlId) {
+      setSubmitting(true)
+      setError(null)
+      void fetch("/api/waivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId, playerToAddId: player.nhlId, playerToDropId: dropped?.nhlId ?? null, bidAmount: bid }),
+      }).then(async (response) => {
+        const data = await response.json() as { error?: string; claim?: { id?: string } }
+        if (!response.ok || !data.claim) throw new Error(data.error ?? "Could not submit waiver claim")
+        onConfirm({ ...localClaim, id: data.claim.id ?? localClaim.id })
+        close()
+      }).catch((caught: unknown) => {
+        console.error("Could not submit waiver claim", caught)
+        setError(caught instanceof Error ? caught.message : "Could not submit waiver claim")
+        setSubmitting(false)
+      })
+      return
+    }
+    onConfirm(localClaim)
     close()
   }
 
@@ -173,11 +194,11 @@ export function WaiverClaimDialog({
 
             <div className="mx-3 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
               <AlertTriangle className="size-4 shrink-0" />
-              {roster.length >= 27 ? "Your roster is full, please select a player to drop" : `${27 - roster.length} open roster spot${27 - roster.length === 1 ? "" : "s"} available`}
+              {rosterFull ? "Your roster is full, please select a player to drop" : `${openSpots} open roster spot${openSpots === 1 ? "" : "s"} available - dropping a player is optional`}
             </div>
 
             <div className="px-3 pb-3">
-              {roster.length < 27 && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left text-xs font-bold text-emerald-300">+ Do not drop any player ({27 - roster.length} open roster spots)</button>}
+              {!rosterFull && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left text-xs font-bold text-emerald-300">+ Do not drop any player ({openSpots} open roster spot{openSpots === 1 ? "" : "s"})</button>}
               <p className="mt-4 px-1 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">
                 Select Player to Drop
               </p>
@@ -200,7 +221,7 @@ export function WaiverClaimDialog({
             <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] p-4">
               <button
                 type="button"
-                disabled={roster.length >= 27 && !dropped}
+                disabled={rosterFull && !dropped}
                 onClick={() => setStep(2)}
                 className="h-11 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black uppercase tracking-wider text-[#080c14] transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(25,255,255,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -250,9 +271,11 @@ export function WaiverClaimDialog({
                 </div>
               </div>
 
+              {error && <p role="alert" className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-bold text-rose-300">{error}</p>}
               <button
                 type="button"
                 onClick={confirm}
+                disabled={submitting}
                 className="mt-5 h-11 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black uppercase tracking-wider text-[#080c14] transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(25,255,255,0.4)] active:scale-[0.98]"
               >
                 Confirm

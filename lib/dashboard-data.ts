@@ -9,7 +9,26 @@ import {
   type StandingRow,
 } from "@/lib/hockey-data"
 
+export interface MatchupResult {
+  week: number
+  homeTeam: string
+  awayTeam: string
+  homeScore: number
+  awayScore: number
+  isFinal: boolean
+}
+
+export interface LineupLockInfo {
+  mode: "WEEKLY" | "DAILY"
+  locked: boolean
+  week: number
+  firstGameAt: string | null
+  weekEndDate: string
+}
+
 export interface DashboardInitialData {
+  matchupResults?: MatchupResult[]
+  lineupLock?: LineupLockInfo
   leagueId?: string
   teamId?: string
   managerHandle?: string
@@ -17,6 +36,8 @@ export interface DashboardInitialData {
   teamName: string
   teamLogo?: string
   userFaab: number
+  waiverPriority?: number
+  leagueRosters?: Record<string, Array<{ nhlId: number; slot: string }>>
   roster: Player[]
   standings: StandingRow[]
   draftPicks: string[]
@@ -28,9 +49,11 @@ export interface DashboardInitialData {
     waiverSettings?: Record<string, unknown>
     tradeSettings?: Record<string, unknown>
     draftSettings?: Record<string, unknown>
+    rosterSize?: number
     taxiSlots: number
     taxiMaxGames: number
     irSlots: number
+    lineupLockMode?: "WEEKLY" | "DAILY"
     currentWeek: number
   }
 }

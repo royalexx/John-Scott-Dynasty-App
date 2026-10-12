@@ -1,7 +1,7 @@
-"use client"
+﻿"use client"
 
 import Image from "next/image"
-import { useState } from "react"
+import React, { useState } from "react"
 import { cn } from "@/lib/utils"
 import type { Player } from "@/lib/hockey-data"
 import { PlayerDetailDialog } from "@/components/hockey/player-detail-dialog"
@@ -34,7 +34,7 @@ const statusBadgeStyles: Record<string, string> = {
   TAXI: "bg-amber-400/15 text-amber-300 border border-amber-400/30",
 }
 
-export function PlayerRow({
+export const PlayerRow = React.memo(function PlayerRow({
   player,
   onEditSlot,
   onSelect,
@@ -104,7 +104,7 @@ export function PlayerRow({
           className="shrink-0 text-right"
         >
           <p className="text-xs font-black tabular-nums text-white">
-            {player.todayPts != null ? player.todayPts.toFixed(2) : "—"}
+            {(player.todayPts ?? 0).toFixed(2)}
           </p>
           <p className="text-[10px] font-bold tabular-nums text-[#5e7090]">
             proj {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(2)}
@@ -127,4 +127,4 @@ export function PlayerRow({
       />
     </>
   )
-}
+})

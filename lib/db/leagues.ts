@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
+import { computeStandings } from "@/lib/standings"
+import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 
 export async function getLeague(leagueId: string) {
   return prisma.league.findUnique({
@@ -21,6 +23,7 @@ export async function getLeagueStandings(leagueId: string, season?: number) {
   if (!league) return null
 
   const targetSeason = season ?? league.currentSeason
+  const currentWeek = getCurrentFantasyWeek(targetSeason)
   const [teams, matchups] = await Promise.all([
     prisma.team.findMany({
       where: { leagueId },
@@ -29,50 +32,17 @@ export async function getLeagueStandings(leagueId: string, season?: number) {
     }),
     prisma.matchup.findMany({
       where: { leagueId, season: targetSeason },
-      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, week: true },
+      select: { homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, week: true, isFinal: true },
     }),
   ])
 
+  const records = new Map(computeStandings(teams.map((team) => team.id), matchups, currentWeek).map((record) => [record.teamId, record]))
   return teams
     .map((team) => {
-      const record = matchups.reduce(
-        (totals, matchup) => {
-          const isHome = matchup.homeTeamId === team.id
-          const teamScore = isHome ? matchup.homeScore : matchup.awayScore
-          const opponentScore = isHome ? matchup.awayScore : matchup.homeScore
-          if (teamScore === null || opponentScore === null) return totals
-          const score = Number(teamScore)
-          const opponent = Number(opponentScore)
-          return {
-            wins: totals.wins + (score > opponent ? 1 : 0),
-            losses: totals.losses + (score < opponent ? 1 : 0),
-            pointsFor: totals.pointsFor + score,
-            pointsAgainst: totals.pointsAgainst + opponent,
-          }
-        },
-        { wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 },
-      )
-      const completedResults = matchups
-        .filter((matchup) => matchup.homeScore !== null && matchup.awayScore !== null)
-        .sort((a, b) => b.week - a.week)
-        .map((matchup) => {
-          const isHome = matchup.homeTeamId === team.id
-          const score = Number(isHome ? matchup.homeScore : matchup.awayScore)
-          const opponent = Number(isHome ? matchup.awayScore : matchup.homeScore)
-          return score === opponent ? null : score > opponent ? "W" : "L"
-        })
-      const latestResult = completedResults[0]
-      const streakCount = latestResult
-        ? completedResults.findIndex((result) => result !== latestResult)
-        : 0
-      const resolvedStreakCount = streakCount === -1 ? completedResults.length : streakCount
-      return {
-        team,
-        ...record,
-        streak: latestResult && resolvedStreakCount > 0 ? `${resolvedStreakCount}${latestResult}` : null,
-      }
+      const record = records.get(team.id)!
+      return { team, wins: record.wins, losses: record.losses, ties: record.ties, pointsFor: record.pointsFor, pointsAgainst: record.pointsAgainst, streak: record.streak }
     })
-    .sort((a, b) => b.wins - a.wins || b.pointsFor - a.pointsFor)
+    .sort((a, b) => b.wins - a.wins || a.losses - b.losses || b.pointsFor - a.pointsFor)
 }
 
 export async function getWeeklyMatchups(leagueId: string, season: number, week: number) {
