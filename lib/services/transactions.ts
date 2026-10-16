@@ -2,32 +2,36 @@ import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Prisma, SlotType,
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
+import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
+import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
 type TransactionClient = Prisma.TransactionClient
 const injuredStatuses = new Set<PlayerStatus>([PlayerStatus.IR, PlayerStatus.O, PlayerStatus.DTD])
+const RESERVE_SLOTS: SlotType[] = [SlotType.TAXI, SlotType.IR, SlotType.IR_PLUS]
 
 export interface SubmitWaiverClaimParams {
   teamId: string
   playerToAddId: number
   playerToDropId?: number | null
   bidAmount: number
-  processDate: Date
 }
 
 export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
   if (!Number.isInteger(params.bidAmount) || params.bidAmount < 0) throw new Error("Bid amount must be a non-negative integer")
   return prisma.$transaction(async (tx) => {
-    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true } } } })
+    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true } } } })
     if (!team) throw new Error("Team not found")
     if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
     // A drop is optional while the team has an open roster spot; it is only required when the roster is full.
     if (params.playerToDropId == null) {
-      const rosterCount = await tx.rosterSlot.count({ where: { teamId: params.teamId } })
+      const rosterCount = await tx.rosterSlot.count({ where: { teamId: params.teamId, slot: { notIn: RESERVE_SLOTS } } })
       if (rosterCount >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
     }
 
     const addPlayer = await tx.player.findUnique({ where: { id: params.playerToAddId }, select: { id: true } })
     if (!addPlayer) throw new Error("Player to add not found")
+    const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: params.playerToAddId, team: { leagueId: team.leagueId } }, select: { id: true } })
+    if (alreadyRostered) throw new Error("Player is already on a league roster")
     if (params.playerToDropId != null) {
       const dropSlot = await tx.rosterSlot.findUnique({
         where: { teamId_playerId: { teamId: params.teamId, playerId: params.playerToDropId } },
@@ -41,16 +45,16 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
         playerToAddId: params.playerToAddId,
         playerToDropId: params.playerToDropId ?? null,
         bidAmount: params.bidAmount,
-        processDate: params.processDate,
+        processDate: nextWaiverProcessAt(team.league.currentSeason),
       },
       include: { playerToAdd: true, playerToDrop: true },
     })
   })
 }
 
-export async function processWaiversForLeague(leagueId: string) {
+export async function processWaiversForLeague(leagueId: string, now: Date = new Date()) {
   const claims = await prisma.waiverClaim.findMany({
-    where: { status: ClaimStatus.PENDING, team: { leagueId } },
+    where: { status: ClaimStatus.PENDING, processDate: { lte: now }, team: { leagueId } },
     include: { team: true, playerToAdd: true, playerToDrop: true },
     orderBy: [{ bidAmount: "desc" }, { team: { waiverPriority: "asc" } }, { processDate: "asc" }],
   })
@@ -60,36 +64,43 @@ export async function processWaiversForLeague(leagueId: string) {
     if (claimedPlayers.has(claim.playerToAddId)) continue
     await prisma.$transaction(async (tx) => {
       const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true, faabBalance: true } })
-      if (!team || team.leagueId !== leagueId || team.faabBalance < claim.bidAmount) {
+      if (!team || team.leagueId !== leagueId) {
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
         return
       }
-      const existingAdd = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: claim.teamId, playerId: claim.playerToAddId } } })
+      if (team.faabBalance < claim.bidAmount) {
+        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.INSUFFICIENT_FAAB } })
+        return
+      }
+      const existingAdd = await tx.rosterSlot.findFirst({ where: { playerId: claim.playerToAddId, team: { leagueId } }, select: { id: true } })
       if (existingAdd) {
-        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
+        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ALREADY_ROSTERED } })
         return
       }
       if (claim.playerToDropId != null) {
         const dropSlot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: claim.teamId, playerId: claim.playerToDropId } } })
         if (!dropSlot) {
-          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
+          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.DROP_MISSING } })
           return
         }
         await tx.rosterSlot.delete({ where: { id: dropSlot.id } })
         await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.DROP, details: { playerId: claim.playerToDropId, playerName: claim.playerToDrop?.name ?? null } } })
       } else {
-        const rosterCount = await tx.rosterSlot.count({ where: { teamId: claim.teamId } })
+        const rosterCount = await tx.rosterSlot.count({ where: { teamId: claim.teamId, slot: { notIn: RESERVE_SLOTS } } })
         const league = await tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true } })
         if (!league || rosterCount >= league.rosterSize) {
-          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
+          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ROSTER_FULL } })
           return
         }
       }
       await tx.team.update({ where: { id: claim.teamId }, data: { faabBalance: { decrement: claim.bidAmount } } })
       await tx.rosterSlot.create({ data: { teamId: claim.teamId, playerId: claim.playerToAddId, slot: SlotType.BN } })
-      await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.ADD, details: { playerId: claim.playerToAddId, playerName: claim.playerToAdd.name, bidAmount: claim.bidAmount } } })
-      await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.SUCCESSFUL } })
-      await tx.waiverClaim.updateMany({ where: { team: { leagueId }, playerToAddId: claim.playerToAddId, status: ClaimStatus.PENDING, id: { not: claim.id } }, data: { status: ClaimStatus.FAILED } })
+      await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.ADD, details: { playerId: claim.playerToAddId, playerName: claim.playerToAdd.name, bidAmount: claim.bidAmount, outcome: "Won" } } })
+      await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.SUCCESSFUL, resolution: WAIVER_RESOLUTIONS.WON } })
+      await tx.waiverClaim.updateMany({
+        where: { team: { leagueId }, playerToAddId: claim.playerToAddId, status: ClaimStatus.PENDING, processDate: { lte: now }, id: { not: claim.id } },
+        data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.OUTBID },
+      })
       await rotateWaiverPriority(tx, leagueId, claim.teamId)
       claimedPlayers.add(claim.playerToAddId)
       processed += 1
@@ -123,6 +134,19 @@ export async function createTradeOffer(params: {
   expiresAt?: Date
 }) {
   if (params.proposingTeamId === params.receivingTeamId) throw new Error("Teams must be different")
+  const league = await prisma.league.findUnique({
+    where: { id: params.leagueId },
+    select: { currentWeek: true, tradeSettings: true },
+  })
+  if (league) {
+    const settings = (league.tradeSettings ?? {}) as { deadlineWeek?: number; allowPickTrading?: boolean }
+    if (typeof settings.deadlineWeek === "number" && league.currentWeek > settings.deadlineWeek) {
+      throw new Error(`The trade deadline (Week ${settings.deadlineWeek}) has passed`)
+    }
+    if (settings.allowPickTrading === false && params.assets.some((asset) => asset.assetType === AssetType.PICK)) {
+      throw new Error("Draft pick trading is disabled in this league")
+    }
+  }
   return prisma.tradeOffer.create({
     data: {
       leagueId: params.leagueId,
@@ -137,8 +161,10 @@ export async function createTradeOffer(params: {
 
 export async function executeTrade(tradeOfferId: string) {
   return prisma.$transaction(async (tx) => {
-    const offer = await tx.tradeOffer.findUnique({ where: { id: tradeOfferId }, include: { assets: true } })
+    const offer = await tx.tradeOffer.findUnique({ where: { id: tradeOfferId }, include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true } } } })
     if (!offer || offer.status !== TradeStatus.PENDING) throw new Error("Trade offer is not pending")
+    const lock = await getLockSummary(offer.league.currentSeason, offer.league.lineupLockMode)
+    if (lock.mode === "WEEKLY" && lock.weekStarted) await freezeWeekLineup(tx, offer.leagueId, offer.league.currentSeason, lock.week)
     const teams = await tx.team.findMany({ where: { id: { in: [offer.proposingTeamId, offer.receivingTeamId] } }, select: { id: true, faabBalance: true } })
     const balances = new Map(teams.map((team) => [team.id, team.faabBalance]))
     for (const asset of offer.assets) {
@@ -200,15 +226,18 @@ function slotCapacity(league: { rosterPositions: Prisma.JsonValue; taxiSlots: nu
  * Moves a player to `targetSlot`. If `targetPlayerId` is given (or the slot is full) the two players trade
  * places, so the mover really ends up in `targetSlot`. Every placement is validated for both players.
  */
-export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType, targetPlayerId?: number) {
+export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType, targetPlayerId?: number, week?: number) {
   return prisma.$transaction(async (tx) => {
     const slot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId } }, include: { player: true, team: { include: { league: true } } } })
     if (!slot) throw new Error("Player is not on this roster")
     const league = slot.team.league
     const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
+    const selectedWeek = week ?? lock.week
+    if (isWeekLineupLocked(lock, selectedWeek)) throw new Error(FUTURE_LINEUP_LOCK_MESSAGE)
+    const arrangingFutureWeek = selectedWeek > lock.week
     // An injured (IR-status) starter may always be moved onto IR, even while starters are locked.
     const injuredToIr = slot.player.injuryStatus === "IR" && (targetSlot === SlotType.IR || targetSlot === SlotType.IR_PLUS)
-    if (!injuredToIr && (isSlotLocked(lock, slot.slot, slot.player.teamAbbrev) || (lock.mode === "WEEKLY" && isSlotLocked(lock, targetSlot, slot.player.teamAbbrev)))) {
+    if (!arrangingFutureWeek && !injuredToIr && (isSlotLocked(lock, slot.slot, slot.player.teamAbbrev) || (lock.mode === "WEEKLY" && isSlotLocked(lock, targetSlot, slot.player.teamAbbrev)))) {
       throw new Error(lock.mode === "WEEKLY" ? "Starting lineups are locked until next week (first game has started)" : "Player's roster slot is locked (their game has started)")
     }
     if (slot.slot === targetSlot) return tx.rosterSlot.findMany({ where: { teamId }, include: { player: true }, orderBy: { slot: "asc" } })
@@ -220,7 +249,7 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
     if (!swapWith && targetSlot !== SlotType.BN && occupants.length >= slotCapacity(league, targetSlot)) swapWith = occupants[0] ?? null
 
     if (swapWith) {
-      if (isSlotLocked(lock, swapWith.slot, swapWith.player.teamAbbrev)) throw new Error("The target roster slot is locked")
+      if (!arrangingFutureWeek && (isSlotLocked(lock, swapWith.slot, swapWith.player.teamAbbrev) || isSlotLocked(lock, slot.slot, swapWith.player.teamAbbrev))) throw new Error("The target roster slot is locked")
       // The displaced player takes the mover's old slot, which must also be legal for them.
       assertSlotEligible(swapWith.player, slot.slot, league.taxiMaxGames, swapWith.player.name)
       await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })

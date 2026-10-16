@@ -59,7 +59,7 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
           <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-[#19ffff]/30 bg-[#102642] text-[#19ffff] shadow-[0_0_30px_rgba(25,255,255,0.12)]">
             <LockKeyhole className="size-7" />
           </div>
-          <p className="mt-5 text-[10px] font-black uppercase tracking-[0.3em] text-[#19ffff]">John Scott Dynasty</p>
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.3em] text-[#19ffff]">John Scott Dynasty</p>
           <h1 className="mt-2 text-2xl font-black">Manager Access</h1>
           <p className="mt-2 text-sm text-[#8ba0c7]">Choose your team to unlock the league.</p>
         </header>
@@ -74,7 +74,7 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
                 className="flex min-h-24 items-center gap-3 rounded-2xl border border-[#1b2b46] bg-[#0d1424] p-3 text-left transition hover:border-[#19ffff]/60 hover:bg-[#102642] active:scale-[0.98]"
               >
                 {team.avatarUrl ? <img src={team.avatarUrl} alt="" className="size-10 rounded-full object-cover" /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#172338] text-xs font-black text-[#19ffff]">{team.managerName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
-                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-[10px] text-[#6d86ab]">@{team.managerHandle}</small>{team.isCommissioner && <small className="mt-1 inline-block rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-black text-amber-300">👑 Commish</small>}</span>
+                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-xs text-[#6d86ab]">@{team.managerHandle}</small>{team.isCommissioner && <small className="mt-1 inline-block rounded-full bg-amber-400/15 px-1.5 py-0.5 text-xs font-black text-amber-300">👑 Commish</small>}</span>
               </button>
             ))}
           </div>
@@ -94,7 +94,7 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
                 <button type="button" onClick={() => addDigit("0")} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">0</button>
                 <button type="button" aria-label="Backspace" onClick={() => { setError(""); submittedPin.current = ""; setPin((current) => current.slice(0, -1)) }} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-[#8ba0c7] hover:border-[#19ffff] active:scale-90"><Delete className="size-5" /></button>
               </div>
-              <p className="mt-6 text-[11px] text-[#6d86ab]">Default league PIN is 1234</p>
+              <p className="mt-6 text-xs text-[#6d86ab]">Default league PIN is 1234</p>
             </div>
           </section>
         )}

@@ -52,9 +52,9 @@ export function PlayerGridSettingsDialog({
             ["YEAR", years, draft.year, (value: string) => setDraft({ ...draft, year: value })],
           ].map(([label, options, active, select]) => (
             <div key={label as string}>
-              <p className="mb-2 text-[10px] font-black tracking-wider text-[#5e7090]">{label as string}</p>
+              <p className="mb-2 text-xs font-black tracking-wider text-[#5e7090]">{label as string}</p>
               <div className="flex flex-wrap gap-2">
-                {(options as string[]).map((option) => <button key={option} type="button" onClick={() => (select as (value: string) => void)(option)} className={cn("rounded-full px-3 py-1.5 text-[11px] font-black transition-all duration-150 active:scale-95", option === active ? "cursor-pointer bg-[#19ffff] text-[#080c14] hover:brightness-110 hover:shadow-[0_0_10px_rgba(25,255,255,0.35)]" : "cursor-pointer border border-[#1b2842] bg-[#101829] text-white hover:bg-[#16233b] hover:border-[#2a3f66]")}>{option}</button>)}
+                {(options as string[]).map((option) => <button key={option} type="button" onClick={() => (select as (value: string) => void)(option)} className={cn("rounded-full px-3 py-1.5 text-xs font-black transition-all duration-150 active:scale-95", option === active ? "cursor-pointer bg-[#19ffff] text-[#080c14] hover:brightness-110 hover:shadow-[0_0_10px_rgba(25,255,255,0.35)]" : "cursor-pointer border border-[#1b2842] bg-[#101829] text-white hover:bg-[#16233b] hover:border-[#2a3f66]")}>{option}</button>)}
               </div>
             </div>
           ))}

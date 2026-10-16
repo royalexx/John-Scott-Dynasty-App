@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Image from "next/image"
 import React, { useState } from "react"
@@ -61,7 +61,7 @@ export const PlayerRow = React.memo(function PlayerRow({
             }}
             title="Swap position slot"
             className={cn(
-              "flex size-7 shrink-0 items-center justify-center rounded-[5px] text-[11px] font-black uppercase transition-transform active:scale-95",
+              "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95",
               badgeClass,
               onEditSlot && "cursor-pointer hover:brightness-110",
             )}
@@ -81,12 +81,12 @@ export const PlayerRow = React.memo(function PlayerRow({
               <div className="flex items-center gap-1.5">
                 <p className="truncate text-xs font-black tracking-tight text-white">{player.name}</p>
                 {player.status && (
-                  <span className={cn("shrink-0 rounded px-1 py-0.2 text-[9px] font-black", statusBadgeStyles[player.status])}>
+                  <span className={cn("shrink-0 rounded px-1 py-0.2 text-xs font-black", statusBadgeStyles[player.status])}>
                     {player.status}
                   </span>
                 )}
               </div>
-              <p className="truncate text-[10px] text-[#5e7090]">
+              <p className="truncate text-xs text-[#5e7090]">
                 <span className={cn("font-bold", positionTextColors[player.position])}>{player.position}</span>
                 {" • "}
                 <span>{player.team}</span>
@@ -106,7 +106,7 @@ export const PlayerRow = React.memo(function PlayerRow({
           <p className="text-xs font-black tabular-nums text-white">
             {(player.todayPts ?? 0).toFixed(2)}
           </p>
-          <p className="text-[10px] font-bold tabular-nums text-[#5e7090]">
+          <p className="text-xs font-bold tabular-nums text-[#5e7090]">
             proj {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(2)}
           </p>
         </button>

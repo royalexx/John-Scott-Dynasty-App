@@ -12,12 +12,13 @@ test("roster names and player profiles render safely", async ({ page }) => {
 
   const playerRow = page.locator("button").filter({ hasText: /Matthews|MacKinnon/ }).first()
   await playerRow.click()
-  await expect(page.getByRole("button", { name: "summary", exact: true })).toBeVisible()
-  for (const tab of ["Game Log", "team", "history", "news"]) {
+  await expect(page.getByRole("button", { name: "Summary", exact: true })).toBeVisible()
+  await expect(page.getByText("This week", { exact: true })).toBeVisible()
+  for (const tab of ["Log", "Team", "History", "News"]) {
     await page.getByRole("button", { name: tab, exact: true }).click()
     await expect(page.getByRole("button", { name: tab, exact: true })).toBeVisible()
   }
-  await page.getByRole("button", { name: "Close player profile" }).click()
+  await page.getByRole("button", { name: "Close player" }).click()
   expect(errors, errors.join("\n")).toEqual([])
 })
 

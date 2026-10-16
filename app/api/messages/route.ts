@@ -6,16 +6,20 @@ function formatTime(date: Date) {
   return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date)
 }
 
-async function caller(request: Request) {
+async function caller() {
   const session = await getManagerSession()
-  const managerId = session?.managerId ?? new URL(request.url).searchParams.get("managerId")
+  const managerId = session?.managerId
   return managerId ? prisma.user.findUnique({ where: { id: managerId } }) : null
 }
 
 export async function GET(request: Request) {
-  const user = await caller(request)
+  const user = await caller()
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
   const url = new URL(request.url)
+  if (url.searchParams.get("unreadOnly") === "1") {
+    const unreadCount = await prisma.directMessage.count({ where: { recipientId: user.id, readAt: null } })
+    return NextResponse.json([{ unreadCount }])
+  }
   const recipientId = url.searchParams.get("recipientId")
   if (recipientId) {
     const messages = await prisma.directMessage.findMany({
@@ -28,23 +32,30 @@ export async function GET(request: Request) {
       timestamp: formatTime(message.createdAt), isMe: message.senderId === user.id,
     })))
   }
-  const partners = await prisma.user.findMany({
-    where: { id: { not: user.id }, managedTeams: { some: {} } },
-    include: { managedTeams: { select: { name: true }, take: 1 } },
-    orderBy: { name: "asc" },
-  })
-  const summaries = await Promise.all(partners.map(async (partner) => {
-    const messages = await prisma.directMessage.findMany({
-      where: { OR: [{ senderId: user.id, recipientId: partner.id }, { senderId: partner.id, recipientId: user.id }] },
-      orderBy: { createdAt: "desc" }, take: 1,
-    })
-    const unreadCount = await prisma.directMessage.count({ where: { senderId: partner.id, recipientId: user.id, readAt: null } })
-    const latest = messages[0]
+  const [partners, allMessages, unreadGroups] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { not: user.id }, managedTeams: { some: {} } },
+      include: { managedTeams: { select: { name: true }, take: 1 } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.directMessage.findMany({
+      where: { OR: [{ senderId: user.id }, { recipientId: user.id }] },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.directMessage.groupBy({
+      by: ["senderId"],
+      where: { recipientId: user.id, readAt: null },
+      _count: { _all: true },
+    }),
+  ])
+  const unreadBySender = new Map(unreadGroups.map((group) => [group.senderId, group._count._all]))
+  const summaries = partners.map((partner) => {
+    const latest = allMessages.find((msg) => msg.senderId === partner.id || msg.recipientId === partner.id)
     return {
       managerId: partner.id, name: partner.name, handle: `@${partner.handle}`, teamName: partner.managedTeams[0]?.name ?? "Unassigned",
-      lastMessage: latest?.body ?? "Start a conversation", timestamp: latest ? formatTime(latest.createdAt) : "", unreadCount,
+      lastMessage: latest?.body ?? "Start a conversation", timestamp: latest ? formatTime(latest.createdAt) : "", unreadCount: unreadBySender.get(partner.id) ?? 0,
     }
-  }))
+  })
   return NextResponse.json(summaries)
 }
 

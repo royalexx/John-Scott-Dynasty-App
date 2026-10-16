@@ -6,6 +6,7 @@ import { isWeekFinal } from "@/lib/matchup-scoring"
 import { getCurrentFantasyWeek, getEasternDate, getFantasyWeekDates } from "@/lib/season-calendar"
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isStarterSlot } from "@/lib/lineup-lock"
+import { freezeWeekLineup, scoringSlotsForWeek } from "@/lib/services/week-lineups"
 
 const NHL_HEADERS = { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" }
 const ACTIVE_STATES = ["LIVE", "CRIT", "FINAL", "OFF"]
@@ -241,10 +242,7 @@ export async function updateWeeklyMatchupScores(leagueId: string, week: number) 
   const { dates, endDate } = getFantasyWeekDates(week, league.currentSeason)
   const [games, slots] = await Promise.all([
     prisma.nhlGame.findMany({ where: { gameDate: { in: dates } }, select: { id: true, gameState: true } }),
-    prisma.rosterSlot.findMany({
-      where: { team: { leagueId } },
-      select: { teamId: true, playerId: true, slot: true },
-    }),
+    scoringSlotsForWeek(leagueId, league.currentSeason, week),
   ])
   const stats = await prisma.playerGameStat.findMany({
     where: { gameId: { in: games.map((game) => game.id) }, playerId: { in: slots.filter((slot) => isStarterSlot(slot.slot)).map((slot) => slot.playerId) } },
@@ -252,14 +250,16 @@ export async function updateWeeklyMatchupScores(leagueId: string, week: number) 
   const totals = scoreTeams(slots, stats, league.scoringSettings as LeagueScoring | null)
   const final = isWeekFinal(endDate, getEasternDate(), games.map((game) => game.gameState))
 
-  for (const matchup of matchups) {
-    const home = totals.get(matchup.homeTeamId) ?? 0
-    const away = totals.get(matchup.awayTeamId) ?? 0
-    await prisma.matchup.update({
-      where: { id: matchup.id },
-      data: { homePoints: home, awayPoints: away, homeScore: home, awayScore: away, isFinal: final },
-    })
-  }
+  await prisma.$transaction(
+    matchups.map((matchup) => {
+      const home = totals.get(matchup.homeTeamId) ?? 0
+      const away = totals.get(matchup.awayTeamId) ?? 0
+      return prisma.matchup.update({
+        where: { id: matchup.id },
+        data: { homePoints: home, awayPoints: away, homeScore: home, awayScore: away, isFinal: final },
+      })
+    }),
+  )
   return matchups.length
 }
 
@@ -290,6 +290,7 @@ export async function enforceRosterLocks() {
     const summary = await getLockSummary(league.currentSeason, league.lineupLockMode)
     const inLeague = { team: { leagueId: league.id } }
     if (summary.mode === "WEEKLY") {
+      if (summary.weekStarted) await freezeWeekLineup(prisma, league.id, league.currentSeason, summary.week)
       const starters = [SlotType.C, SlotType.W, SlotType.F, SlotType.D, SlotType.G]
       await prisma.rosterSlot.updateMany({
         where: { ...inLeague, lockedAt: { not: null }, ...(summary.weekStarted ? { slot: { notIn: starters } } : {}) },

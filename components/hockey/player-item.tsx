@@ -9,8 +9,9 @@ export const slotBadgeColors: Record<string, string> = {
 
 function isInvalidRosterPlacement(player: Player): boolean {
   const injured = player.status === "IR" || player.status === "O" || player.status === "DTD"
-  if (player.slot === "TAXI") return !injured && (player.nhlGamesPlayed == null || player.nhlGamesPlayed >= TAXI_MAX_NHL_GAMES)
-  if (player.slot === "IR") return !injured
+  if (player.slot === "BN") return false
+  if (player.slot === "TAXI") return player.nhlGamesPlayed == null || player.nhlGamesPlayed >= TAXI_MAX_NHL_GAMES
+  if (player.slot === "IR") return player.status !== "IR"
   return injured
 }
 export const PlayerItem = React.memo(function PlayerItem({
@@ -30,7 +31,7 @@ export const PlayerItem = React.memo(function PlayerItem({
     return (
       <button type="button" onClick={() => onEdit(null, fallbackSlot)} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-[#0f1726] px-3.5 py-2 text-left transition-colors hover:bg-[#16233b] active:scale-[0.99]">
         <div className="flex items-center gap-2.5">
-          <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-[11px] font-black uppercase", slotBadgeColors[fallbackSlot])}>
+          <span className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase", slotBadgeColors[fallbackSlot])}>
             {fallbackSlot}
           </span>
           <span className="text-xs font-bold text-[#45546d]">Empty</span>
@@ -46,7 +47,7 @@ export const PlayerItem = React.memo(function PlayerItem({
         <button
           type="button"
           onClick={() => onEdit(player, fallbackSlot)}
-          className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-[11px] font-black uppercase transition-transform active:scale-95", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}
+          className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}
         >
           {player.slot}
         </button>
@@ -55,15 +56,15 @@ export const PlayerItem = React.memo(function PlayerItem({
           <PlayerPortrait player={player} name={player.name} className="size-8 border border-[#1b263b]" />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <p className="truncate text-xs font-bold text-white tracking-tight leading-tight">{player.name}</p>
+              <p className="truncate text-sm font-bold tracking-tight leading-tight text-white">{player.name}</p>
               {player.status && (
-                <span className={cn("shrink-0 rounded px-1 text-[8px] font-black uppercase", player.status === "DTD" ? "bg-amber-400/20 text-amber-300" : "bg-[#ff2a85]/20 text-[#ff2a85]")}>
+                <span className={cn("shrink-0 rounded px-1 text-xs font-black uppercase", player.status === "DTD" ? "bg-amber-400/20 text-amber-300" : "bg-[#ff2a85]/20 text-[#ff2a85]")}>
                   {player.status}
                 </span>
               )}
             </div>
-            {nickname && <p className="truncate text-[10px] italic text-[#5e7090]">{nickname}</p>}
-            <p className="truncate text-[10px] text-[#5e7090] leading-tight">
+            {nickname && <p className="truncate text-xs italic text-[#5e7090]">{nickname}</p>}
+            <p className="truncate text-xs text-[#5e7090] leading-tight">
               <span className="font-semibold text-zinc-300">{player.position}</span> - {player.team} • {player.schedule ? `${player.schedule.day} ${player.schedule.time}` : "No game this week"} 
             </p>
           </div>
@@ -72,7 +73,7 @@ export const PlayerItem = React.memo(function PlayerItem({
 
       <button type="button" onClick={() => onSelect(player)} className="min-h-11 min-w-11 shrink-0 cursor-pointer pl-2 text-right">
         <p className="text-xs font-black text-white tabular-nums leading-tight">{getWeekActualPoints(player).toFixed(1)}</p>
-        <p className="text-[10px] font-semibold text-[#5e7090] tabular-nums leading-tight">{player.schedule ? `${player.schedule.weekGamesPlayed} GP` : "week"}</p>
+        <p className="text-xs font-semibold text-[#5e7090] tabular-nums leading-tight">{player.schedule ? `${player.schedule.weekGamesPlayed} GP` : "week"}</p>
       </button>
     </div>
   )

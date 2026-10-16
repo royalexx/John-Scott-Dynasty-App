@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getManagerSession } from "@/lib/auth-session"
 
 type TeamSettingsBody = {
   teamId?: unknown
@@ -8,6 +9,8 @@ type TeamSettingsBody = {
 }
 
 export async function PATCH(request: NextRequest) {
+  const session = await getManagerSession()
+  if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
   try {
     const body = await request.json() as TeamSettingsBody
     if (typeof body.teamId !== "string" || !body.teamId.trim()) {
@@ -18,6 +21,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.logoUrl !== undefined && typeof body.logoUrl !== "string") {
       return NextResponse.json({ error: "logoUrl must be a string" }, { status: 400 })
+    }
+    if (body.teamId !== session.teamId && !session.isCommissioner) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
     const team = await prisma.team.update({

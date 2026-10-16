@@ -49,6 +49,12 @@ enum ClaimStatus {
   CANCELLED
 }
 
+enum DraftStatus {
+  SCHEDULED
+  LIVE
+  COMPLETE
+}
+
 enum ActivityAction {
   ADD
   DROP
@@ -101,6 +107,7 @@ model League {
   activityLogs    ActivityLog[]
   matchups        Matchup[]
   leagueMessages  LeagueMessage[]
+  drafts          Draft[]
 }
 
 model Team {
@@ -124,6 +131,8 @@ model Team {
   homeMatchups    Matchup[]     @relation("HomeTeam")
   awayMatchups    Matchup[]     @relation("AwayTeam")
   activityLogs    ActivityLog[]
+  weekLineups     WeekLineup[]
+  draftSlots      DraftSlot[]
 
   @@unique([leagueId, managerId])
   @@index([leagueId])
@@ -143,6 +152,8 @@ model Player {
   waiverAdds        WaiverClaim[]    @relation("WaiverPlayerToAdd")
   waiverDrops       WaiverClaim[]    @relation("WaiverPlayerToDrop")
   gameStats         PlayerGameStat[]
+  weekLineups       WeekLineup[]
+  draftSlots        DraftSlot[]
 }
 
 model RosterSlot {
@@ -156,6 +167,62 @@ model RosterSlot {
 
   @@unique([teamId, playerId])
   @@index([playerId])
+  @@index([teamId, slot])
+}
+
+/// Frozen roster for a fantasy week. Written when the week locks, and left unchanged by later trades.
+model WeekLineup {
+  id       String   @id @default(uuid()) @db.Uuid
+  teamId   String   @db.Uuid
+  season   Int
+  week     Int
+  playerId Int
+  slot     SlotType
+  team     Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player   Player   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, season, week, playerId])
+  @@index([season, week])
+  @@index([teamId, season, week])
+}
+
+/// Live snake draft. Separate from tradable future DraftPick assets.
+model Draft {
+  id             String      @id @default(uuid()) @db.Uuid
+  leagueId       String      @unique @db.Uuid
+  status         DraftStatus @default(SCHEDULED)
+  rounds         Int
+  timerSeconds   Int
+  startAt        DateTime
+  onClock        Int         @default(0)
+  clockStartedAt DateTime?
+  paused          Boolean     @default(false)
+  pausedRemaining Int?
+  queues          Json        @default("{}")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  league         League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  slots          DraftSlot[]
+
+  @@index([leagueId, status])
+}
+
+model DraftSlot {
+  id         String    @id @default(uuid()) @db.Uuid
+  draftId    String    @db.Uuid
+  pickNumber Int
+  round      Int
+  slot       Int
+  teamId     String    @db.Uuid
+  playerId   Int?
+  pickedAt   DateTime?
+  draft      Draft     @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  team       Team      @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  player     Player?   @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([draftId, pickNumber])
+  @@index([draftId, round])
+  @@index([teamId])
 }
 
 model DraftPick {
@@ -218,11 +285,15 @@ model WaiverClaim {
   bidAmount      Int
   processDate    DateTime
   status         ClaimStatus @default(PENDING)
+  /// Why a processed claim won or failed: WON, OUTBID, INSUFFICIENT_FAAB, ROSTER_FULL, ALREADY_ROSTERED, DROP_MISSING.
+  resolution     String?
   team           Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
   playerToAdd    Player      @relation("WaiverPlayerToAdd", fields: [playerToAddId], references: [id], onDelete: Restrict)
   playerToDrop   Player?     @relation("WaiverPlayerToDrop", fields: [playerToDropId], references: [id], onDelete: Restrict)
 
   @@index([teamId, processDate])
+  @@index([teamId, status])
+  @@index([status, bidAmount])
 }
 
 model ActivityLog {
@@ -249,6 +320,8 @@ model DirectMessage {
   recipient   User      @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId, createdAt])
+  @@index([recipientId, readAt])
+  @@index([senderId, recipientId, createdAt])
 }
 
 model LeagueMessage {

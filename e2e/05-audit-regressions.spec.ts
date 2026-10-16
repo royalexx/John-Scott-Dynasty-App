@@ -5,6 +5,7 @@ test.describe("audit regressions", () => {
     await page.goto("/")
     await page.getByRole("button", { name: "PLAYERS", exact: true }).click()
     await expect(page.getByRole("heading", { name: "Available", exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "Filters", exact: true }).click()
 
     // Skater sorts include SOG; goalie sorts must replace them with W / SV / SV% / GAA / SO.
     await expect(page.getByRole("button", { name: "SOG", exact: true })).toBeVisible()

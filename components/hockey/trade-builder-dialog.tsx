@@ -57,7 +57,7 @@ function PlayerAvatar({ player }: { player: Player }) {
 
 function TeamAvatar({ team }: { team: TradeTeam }) {
   if (team.avatar) return <img src={team.avatar} alt="" className="size-9 rounded-full object-cover" />
-  return <div className="flex size-9 items-center justify-center rounded-full bg-[#172338] text-[10px] font-black text-[#19ffff]">{team.abbreviation ?? team.name.slice(0, 3).toUpperCase()}</div>
+  return <div className="flex size-9 items-center justify-center rounded-full bg-[#172338] text-xs font-black text-[#19ffff]">{team.abbreviation ?? team.name.slice(0, 3).toUpperCase()}</div>
 }
 
 function AssetName({ asset }: { asset: TradeAsset }) {
@@ -126,7 +126,7 @@ export function TradeBuilderDialog({
             {step > 1 && <button type="button" onClick={() => setStep((step - 1) as Step)} aria-label="Previous step" className="rounded-full p-1.5 text-[#8ba0c7] hover:bg-[#172338]"><ArrowLeft className="size-4" /></button>}
             <div>
               <DialogTitle className="text-base font-black text-white">Trade Builder</DialogTitle>
-              <DialogDescription className="mt-1 text-[10px] text-[#5e7090]">Step {step} of 3 · {step === 1 ? "Choose a trade partner" : step === 2 ? "Select assets" : "Review and send"}</DialogDescription>
+              <DialogDescription className="mt-1 text-xs text-[#5e7090]">Step {step} of 3 · {step === 1 ? "Choose a trade partner" : step === 2 ? "Select assets" : "Review and send"}</DialogDescription>
             </div>
           </div>
           <button type="button" onClick={close} aria-label="Close trade builder" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><X className="size-4" /></button>
@@ -147,7 +147,7 @@ export function TradeBuilderDialog({
                   return (
                     <button key={candidate.id} type="button" onClick={() => { setPartnerId(candidate.id); setStep(2) }} className={cn("flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors", candidate.id === partnerId ? "border-[#19ffff] bg-[#123246]" : "border-[#1b2842] bg-[#101829] hover:bg-[#172338]")}>
                       <TeamAvatar team={candidate} />
-                      <span className="min-w-0 flex-1"><b className="block truncate text-sm">{candidate.name}</b><small className="text-[10px] text-[#5e7090]">{candidate.players.length} players{pickCount > 0 ? ` · ${pickCount} picks` : ""}</small></span>
+                      <span className="min-w-0 flex-1"><b className="block truncate text-sm">{candidate.name}</b><small className="text-xs text-[#5e7090]">{candidate.players.length} players{pickCount > 0 ? ` · ${pickCount} picks` : ""}</small></span>
                       {candidate.id === partnerId && <Check className="size-4 text-[#19ffff]" />}
                     </button>
                   )
@@ -174,16 +174,16 @@ export function TradeBuilderDialog({
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You send: ${proposal.faabFrom ?? 0} FAAB</div><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You receive: ${proposal.faabTo ?? 0} FAAB</div></div>
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note to the manager (optional)" className="mt-3 min-h-16 w-full rounded-lg border border-[#263858] bg-[#101829] p-3 text-xs text-white outline-none placeholder:text-[#5e7090]" />
-              <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">⚠️ You will have {team.players.length - proposal.offering.filter((asset) => asset.kind === "player").length + proposal.receiving.filter((asset) => asset.kind === "player").length}/20 players if accepted.</div>
+              <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">⚠️ You will have {team.players.length - proposal.offering.filter((asset) => asset.kind === "player").length + proposal.receiving.filter((asset) => asset.kind === "player").length}/27 players if accepted.</div>
               {!proposal.offering.length && !proposal.receiving.length && <div className="mt-3 flex gap-2 rounded-lg bg-[#172338] p-3 text-xs text-[#8ba0c7]"><CircleHelp className="size-4 shrink-0 text-[#19ffff]" />Add at least one asset to make a trade.</div>}
             </section>
           )}
         </div>
 
         <div className="shrink-0 flex gap-2 border-t border-[#1a263d] bg-[#070a12] p-4">
-          {step === 1 && <button type="button" disabled={!partnerId} onClick={() => setStep(2)} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-xs font-black uppercase tracking-wider text-[#080c14] disabled:opacity-40">Choose assets <ChevronRight className="size-4" /></button>}
-          {step === 2 && <div className="flex w-full flex-col gap-2"><p className="text-center text-[10px] font-black text-[#8ba0c7]">Sending: {offering.length} assets ⇄ Receiving: {receiving.length} assets</p><button type="button" disabled={!partner || (!offering.length && !receiving.length)} onClick={() => setStep(3)} className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-[#19ffff] text-xs font-black uppercase tracking-wider text-[#080c14] disabled:opacity-40">Review Proposal <ChevronRight className="size-4" /></button></div>}
-          {step === 3 && <button type="button" disabled={!proposal || (!proposal.offering.length && !proposal.receiving.length)} onClick={() => { if (proposal) { onSendTrade(proposal); close() } }} className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-xs font-black uppercase tracking-wider text-[#080c14] disabled:opacity-40">Send trade <Handshake className="size-4" /></button>}
+          {step === 1 && <button type="button" disabled={!partnerId} onClick={() => setStep(2)} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Choose assets <ChevronRight className="size-4" /></button>}
+          {step === 2 && <div className="flex w-full flex-col gap-2"><p className="text-center text-xs font-bold text-[#8ba0c7]">Sending {offering.length} · Receiving {receiving.length}</p><button type="button" disabled={!partner || (!offering.length && !receiving.length)} onClick={() => setStep(3)} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Review proposal <ChevronRight className="size-4" /></button></div>}
+          {step === 3 && <button type="button" disabled={!proposal || (!proposal.offering.length && !proposal.receiving.length)} onClick={() => { if (proposal) { onSendTrade(proposal); close() } }} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Send trade <Handshake className="size-4" /></button>}
         </div>
       </DialogContent>
     </Dialog>
@@ -191,7 +191,7 @@ export function TradeBuilderDialog({
 }
 
 function SectionHeader({ label, count }: { label: string; count: number }) {
-  return <div className="my-1.5 flex items-center justify-between rounded bg-[#0b1220] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#5e7090]"><span>{label}</span><span className="rounded bg-[#141e33] px-1.5 py-0.5 text-[8px] text-[#8ba0c7]">{count}</span></div>
+  return <div className="my-1.5 flex items-center justify-between rounded bg-[#0b1220] px-2 py-1 text-xs font-black uppercase tracking-wider text-[#5e7090]"><span>{label}</span><span className="rounded bg-[#141e33] px-1.5 py-0.5 text-xs text-[#8ba0c7]">{count}</span></div>
 }
 
 function CompactTradePlayerRow({ player, selected, owner, onToggle, onPlayerClick }: { player: Player; selected: boolean; owner: TradeTeam; onToggle: () => void; onPlayerClick?: (player: Player, team: TradeTeam) => void }) {
@@ -200,8 +200,8 @@ function CompactTradePlayerRow({ player, selected, owner, onToggle, onPlayerClic
   const shortName = player.name.split(" ").slice(-1)[0]
   return <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onToggle() }} className={cn("flex w-full cursor-pointer items-center gap-1.5 rounded-lg border p-1.5 transition-colors", selected ? "border-[#19ffff]/50 bg-[#0c2231] text-white" : "border-[#141e33] bg-[#0d1424] text-[#cbd5e1] hover:bg-[#111c2e]")}>
     <input type="checkbox" checked={selected} onChange={(event) => { event.stopPropagation(); onToggle() }} onClick={(event) => event.stopPropagation()} aria-label={`Select ${player.name}`} className="size-3.5 shrink-0 rounded accent-[#19ffff]" />
-    <span className={cn("flex size-5 shrink-0 items-center justify-center rounded text-[8px] font-black", positionClass)}>{position === "LW" || position === "RW" ? "W" : position}</span>
-    <button type="button" onClick={(event) => { event.stopPropagation(); onPlayerClick?.(player, owner) }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"><PlayerAvatar player={player} /><span className="min-w-0"><b className="block truncate text-[11px] font-bold leading-tight text-white">{shortName}</b>    <small className="block text-[9px] tabular-nums text-[#5e7090]">{(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</small></span></button>
+    <span className={cn("flex size-5 shrink-0 items-center justify-center rounded text-xs font-black", positionClass)}>{position === "LW" || position === "RW" ? "W" : position}</span>
+    <button type="button" onClick={(event) => { event.stopPropagation(); onPlayerClick?.(player, owner) }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"><PlayerAvatar player={player} /><span className="min-w-0"><b className="block truncate text-xs font-bold leading-tight text-white">{shortName}</b>    <small className="block text-xs tabular-nums text-[#5e7090]">{(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</small></span></button>
   </div>
 }
 
@@ -224,15 +224,15 @@ function AssetList({ title, owner, selected, side, onToggle, onPlayerClick, faab
   ] as const
   const picks = owner.draftPicks ?? []
   const assetCount = selected.length + (faab > 0 ? 1 : 0)
-  return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain"><div className="sticky top-0 z-20 mb-2 shrink-0 border-b border-[#1a263d] bg-[#070a12] pb-2 pt-1"><div className={cn("flex items-center gap-1 text-[10px] font-black uppercase tracking-wider", receive ? "text-rose-400" : "text-[#19ffff]")}><TeamAvatar team={owner} /><span className="truncate">{title}</span></div><div className="flex items-center justify-between gap-1"><p className="truncate text-xs font-bold text-white">{owner.name}</p><span className="shrink-0 rounded bg-[#172338] px-1.5 py-0.5 text-[9px] text-[#8ba0c7]">{assetCount} selected</span></div></div>
-    {groups.map(([label, players]) => <section key={label}><SectionHeader label={label} count={players.length} />{players.length ? <div className="space-y-1.5">{players.map((player) => <CompactTradePlayerRow key={player.id} player={player} selected={selected.includes(player.id)} owner={owner} onToggle={() => onToggle(player.id, side)} onPlayerClick={onPlayerClick} />)}</div> : <p className="px-1.5 py-1 text-[10px] italic text-[#3e4c63]">None</p>}</section>)}
+  return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain"><div className="sticky top-0 z-20 mb-2 shrink-0 border-b border-[#1a263d] bg-[#070a12] pb-2 pt-1"><div className={cn("flex items-center gap-1 text-xs font-black uppercase tracking-wider", receive ? "text-rose-400" : "text-[#19ffff]")}><TeamAvatar team={owner} /><span className="truncate">{title}</span></div><div className="flex items-center justify-between gap-1"><p className="truncate text-xs font-bold text-white">{owner.name}</p><span className="shrink-0 rounded bg-[#172338] px-1.5 py-0.5 text-xs text-[#8ba0c7]">{assetCount} selected</span></div></div>
+    {groups.map(([label, players]) => <section key={label}><SectionHeader label={label} count={players.length} />{players.length ? <div className="space-y-1.5">{players.map((player) => <CompactTradePlayerRow key={player.id} player={player} selected={selected.includes(player.id)} owner={owner} onToggle={() => onToggle(player.id, side)} onPlayerClick={onPlayerClick} />)}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}</section>)}
     <SectionHeader label="DRAFT PICKS" count={picks.length} />
-    {picks.length ? <div className="grid grid-cols-1 gap-1 px-1 py-1">{picks.map((pick) => { const checked = selected.includes(pick.id); return <button type="button" key={pick.id} onClick={() => onToggle(pick.id, side)} className={cn("flex items-center justify-between rounded border p-1.5 text-[10px] font-bold transition-colors", checked ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7] hover:border-[#2a3f66]")}>{pick.label}<span>{checked ? "✓" : ""}</span></button> })}</div> : <p className="px-1.5 py-1 text-[10px] italic text-[#3e4c63]">None</p>}
+    {picks.length ? <div className="grid grid-cols-1 gap-1 px-1 py-1">{picks.map((pick) => { const checked = selected.includes(pick.id); return <button type="button" key={pick.id} onClick={() => onToggle(pick.id, side)} className={cn("flex items-center justify-between rounded border p-1.5 text-xs font-bold transition-colors", checked ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7] hover:border-[#2a3f66]")}>{pick.label}<span>{checked ? "✓" : ""}</span></button> })}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}
     <SectionHeader label="FAAB BUDGET" count={owner.faabAvailable ?? 100} />
-    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-[9px] font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1 text-right text-[10px] outline-none" /></span></label><p className="mt-1 text-[9px] text-[#5e7090]">${owner.faabAvailable ?? 100} available</p></div>
+    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-xs font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1 text-right text-xs outline-none" /></span></label><p className="mt-1 text-xs text-[#5e7090]">${owner.faabAvailable ?? 100} available</p></div>
   </div>
 }
 
 function ReviewColumn({ title, assets }: { title: string; assets: TradeAsset[] }) {
-  return <div className="rounded-xl border border-[#1b2842] bg-[#101829] p-3"><h3 className="text-[10px] font-black uppercase tracking-wider text-[#5e7090]">{title}</h3><div className="mt-2 space-y-2">{assets.length ? assets.map((asset) => <div key={asset.kind === "player" ? asset.player.id : asset.pick.id} className="flex items-center gap-2 text-xs font-bold"><span className="size-1.5 rounded-full bg-[#19ffff]" /><AssetName asset={asset} /></div>) : <p className="text-xs text-[#5e7090]">Nothing selected</p>}</div></div>
+  return <div className="rounded-xl border border-[#1b2842] bg-[#101829] p-3"><h3 className="text-xs font-black uppercase tracking-wider text-[#5e7090]">{title}</h3><div className="mt-2 space-y-2">{assets.length ? assets.map((asset) => <div key={asset.kind === "player" ? asset.player.id : asset.pick.id} className="flex items-center gap-2 text-xs font-bold"><span className="size-1.5 rounded-full bg-[#19ffff]" /><AssetName asset={asset} /></div>) : <p className="text-xs text-[#5e7090]">Nothing selected</p>}</div></div>
 }

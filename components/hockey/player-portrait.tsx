@@ -27,7 +27,7 @@ export function PlayerPortrait({
     return (
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-[#1b2842] text-[9px] font-black text-[#8ba0c7]",
+          "flex shrink-0 items-center justify-center rounded-full bg-[#1b2842] text-xs font-black text-[#8ba0c7]",
           className
         )}
       >

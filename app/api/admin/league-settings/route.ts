@@ -1,9 +1,18 @@
-﻿import { NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
 import { rescoreAllStats, recomputeMatchupsThroughWeek } from "@/lib/services/nhl-sync"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import { getLockSummary } from "@/lib/services/lineup-locks"
 import type { LeagueScoring } from "@/lib/scoring"
+
+/** Scoring weights and roster shape lock once week 1 has started. */
+export async function isSeasonStructureLocked(season: number, lineupLockMode: unknown, now: Date = new Date()) {
+  const week = getCurrentFantasyWeek(season, now)
+  if (week > 1) return true
+  const lock = await getLockSummary(season, lineupLockMode, now)
+  return lock.weekStarted
+}
 
 const leagueId = "00000000-0000-0000-0000-000000000001"
 const jsonFields = ["rosterPositions", "scoringSettings", "waiverSettings", "tradeSettings", "draftSettings"] as const
@@ -12,7 +21,7 @@ async function getLeague() {
   return prisma.league.findUnique({
     where: { id: leagueId },
     select: {
-      id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
+      id: true, name: true, currentSeason: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
       scoringSettings: true, rosterPositions: true, waiverSettings: true, tradeSettings: true, draftSettings: true,
     },
   })
@@ -29,7 +38,9 @@ export async function GET() {
   const session = await getManagerSession()
   if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
   const league = await getLeague()
-  return league ? NextResponse.json(league) : NextResponse.json({ error: "League not found." }, { status: 404 })
+  if (!league) return NextResponse.json({ error: "League not found." }, { status: 404 })
+  const structureLocked = await isSeasonStructureLocked(league.currentSeason, league.lineupLockMode)
+  return NextResponse.json({ ...league, structureLocked })
 }
 
 export async function PATCH(request: Request) {
@@ -60,6 +71,15 @@ export async function PATCH(request: Request) {
     }
     data.lineupLockMode = body.lineupLockMode
   }
+  const existing = await getLeague()
+  if (!existing) return NextResponse.json({ error: "League not found." }, { status: 404 })
+  if (await isSeasonStructureLocked(existing.currentSeason, existing.lineupLockMode)) {
+    delete data.rosterPositions
+    delete data.scoringSettings
+    delete data.taxiSlots
+    delete data.taxiMaxGames
+    delete data.irSlots
+  }
   // Roster capacity always follows the configured slots, independent of which other fields were sent.
   if (data.rosterPositions) {
     const positions = Object.values(data.rosterPositions as Record<string, unknown>)
@@ -69,13 +89,14 @@ export async function PATCH(request: Request) {
     data.rosterSize = (positions as number[]).reduce((total, value) => total + value, 0)
   }
   const league = await prisma.league.update({ where: { id: leagueId }, data, select: {
-    id: true, name: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
+    id: true, name: true, currentSeason: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
     scoringSettings: true, rosterPositions: true, waiverSettings: true, tradeSettings: true, draftSettings: true,
   } })
+  const structureLocked = await isSeasonStructureLocked(league.currentSeason, league.lineupLockMode)
   if (data.scoringSettings) {
     // Scoring changed: re-price every stat line and rebuild all matchup totals and standings from history.
     await rescoreAllStats(data.scoringSettings as LeagueScoring)
     await recomputeMatchupsThroughWeek(leagueId, getCurrentFantasyWeek())
   }
-  return NextResponse.json(league)
+  return NextResponse.json({ ...league, structureLocked })
 }

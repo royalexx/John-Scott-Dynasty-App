@@ -105,28 +105,28 @@ export function LineupSlotDialog({
   const targets = eligibleTargets(player, roster, capacities, emptySlot ?? undefined, irSlots)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="mx-auto max-w-[430px] rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
+      <SheetContent side="bottom" spring="snappy" className="mx-auto max-w-[430px] rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#5e7090]" />
         <div className="flex items-center justify-between px-4 pb-3 pt-2">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#5e7090]">1/1 Choose player to swap</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-[#5e7090]">1/1 Choose player to swap</p>
             <h2 className="text-lg font-black text-white">{player ? "Swap Player" : `Fill ${emptySlot} Slot`}</h2>
           </div>
           <button type="button" onClick={() => onOpenChange(false)} aria-label="Close swap player drawer" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><X className="size-5" /></button>
         </div>
 
         <div className="mx-3 flex items-center gap-3 rounded-lg border border-[#1e2f4f] bg-[#141e33] p-3">
-          <span className={cn("flex size-8 items-center justify-center rounded-md text-[10px] font-black", slotColors[player?.slot ?? emptySlot ?? "BN"])}>{player?.slot ?? emptySlot}</span>
+          <span className={cn("flex size-8 items-center justify-center rounded-md text-xs font-black", slotColors[player?.slot ?? emptySlot ?? "BN"])}>{player?.slot ?? emptySlot}</span>
           {player ? <PlayerAvatar player={player} /> : <div className="flex size-10 shrink-0 items-center justify-center rounded-full border border-dashed border-[#34476a] text-[#5e7090]">+</div>}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-black text-white">{player?.name ?? `Empty ${emptySlot} starter`}</p>
-            <p className="truncate text-[11px] text-[#5e7090]">{player ? <>{player.team} · {player.opponent}{player.status && <span className="ml-1 font-black text-rose-300">{player.status}</span>}</> : "Select an eligible bench player"}</p>
+            <p className="truncate text-xs text-[#5e7090]">{player ? <>{player.team} · {player.opponent}{player.status && <span className="ml-1 font-black text-rose-300">{player.status}</span>}</> : "Select an eligible bench player"}</p>
           </div>
           {player && <span className="text-sm font-black tabular-nums text-white">proj {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</span>}
         </div>
 
         <div className="max-h-[45vh] overflow-y-auto px-3 pb-5">
-          <p className="px-1 py-2 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Eligible swap targets</p>
+          <p className="px-1 py-2 text-xs font-black uppercase tracking-wider text-[#5e7090]">Eligible swap targets</p>
           {targets.map((option, index) => (
             <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" onClick={() => {
               const movedPlayer = player ?? option.target
@@ -146,8 +146,8 @@ export function LineupSlotDialog({
               onMove(movedPlayer.id, option.slot, option.target?.id)
               onOpenChange(false)
             }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
-              <span className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
-              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-[10px] text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
+              <span className={cn("flex size-7 items-center justify-center rounded-md text-xs font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
+              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-xs text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
             </button>
           ))}
           {!targets.length && <p className="rounded-lg border border-dashed border-[#34476a] px-3 py-5 text-center text-xs text-[#5e7090]">No eligible swap targets</p>}

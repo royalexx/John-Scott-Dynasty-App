@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   })
   const teams = await prisma.team.findMany({
     where: { leagueId },
-    select: { id: true, name: true, manager: { select: { name: true, handle: true } } },
+    select: { id: true, name: true, faabBalance: true, manager: { select: { name: true, handle: true } } },
   })
   return NextResponse.json({ offers, picks, teams })
 }

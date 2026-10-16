@@ -22,3 +22,4 @@ node_modules
 repomix-output.xml
 test-results/
 playwright-report/
+_FOR_REFERENCE_ONLY/

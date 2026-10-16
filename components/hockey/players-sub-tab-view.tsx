@@ -5,6 +5,7 @@ import { weekMatchups, getTeamRoster, calculatePlayerFPTS, type GoalieStats, typ
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
 import type { PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
+import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { getLeaderStat, getProjectedFPTS, getSyncedPlayerFPTS, getSyncedPlayerStats, normalizeSearchText, type LeaderCategory, type LeaderMode, type SearchPlayer } from "@/lib/hockey-calculators"
 type HorizonMode = "stats" | "projections"
 type HockeyHorizon = "Last 7 Days" | "Last 14 Days" | "Last 30 Days" | "Season Totals" | "Season Avg / Per Game" | "This Week" | "Next 14 Days" | "Rest of Season (ROS)"
@@ -13,11 +14,70 @@ function formatShortPlayerName(name: string): string {
   const parts = name.trim().split(/\s+/)
   return parts.length < 2 ? name : `${parts[0][0]}. ${parts.slice(1).join(" ")}`
 }
-export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlayers, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, horizonMode, horizon, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter }: { teamName: string; tab: "search" | "leaders" | "trade"; roster: Player[]; players: MarketPlayer[]; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; horizonMode: HorizonMode; horizon: HockeyHorizon; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void }) {
+
+function tradeAssetLines(assets: LeagueTradeOffer["sendingAssets"]) {
+  const lines = [
+    ...(assets.players ?? []).filter(Boolean).map((player) => player.name),
+    ...(assets.picks ?? []),
+  ]
+  if (assets.faab) lines.push(`$${assets.faab} FAAB`)
+  return lines.length ? lines : ["Nothing"]
+}
+
+function HorizonPicker({ mode, horizon, onChange }: { mode: HorizonMode; horizon: HockeyHorizon; onChange: (mode: HorizonMode, horizon: HockeyHorizon) => void }) {
+  const options = mode === "stats" ? ["Last 7 Days", "Last 14 Days", "Last 30 Days", "Season Totals", "Season Avg / Per Game"] : ["This Week", "Next 14 Days", "Rest of Season (ROS)"]
+  return (
+    <>
+      <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Window</p>
+      <div className="mt-2 flex gap-2">
+        <button type="button" onClick={() => onChange("stats", "Last 14 Days")} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", mode === "stats" ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>Stats</button>
+        <button type="button" onClick={() => onChange("projections", "This Week")} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", mode === "projections" ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>Projections</button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">{options.map((option) => <button key={option} type="button" onClick={() => onChange(mode, option as HockeyHorizon)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", horizon === option ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{option}</button>)}</div>
+    </>
+  )
+}
+
+function TradeOfferCard({ trade, onAccept, onDecline, onCounter }: { trade: LeagueTradeOffer; onAccept: () => void; onDecline: () => void; onCounter: () => void }) {
+  const send = trade.isIncoming ? trade.receivingAssets : trade.sendingAssets
+  const receive = trade.isIncoming ? trade.sendingAssets : trade.receivingAssets
+  const statusLabel = trade.status === "ACTIVE" ? "Pending" : trade.status === "ACCEPTED" ? "Accepted" : "Declined"
+  return (
+    <article className="rounded-2xl border border-[#172338] bg-[#101829] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-bold text-white">{trade.isIncoming ? trade.senderTeam : trade.receiverTeam}</p>
+          <p className="text-[13px] text-[#8ba0c7]">{trade.timestamp}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-bold", trade.status === "ACTIVE" ? "bg-amber-300/15 text-amber-200" : trade.status === "ACCEPTED" ? "bg-emerald-300/15 text-emerald-200" : "bg-rose-300/15 text-rose-200")}>{statusLabel}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <p className="text-[13px] font-bold text-[#8ba0c7]">You send</p>
+          <ul className="mt-1 space-y-1">{tradeAssetLines(send).map((line, index) => <li key={`${line}-${index}`} className="text-sm font-bold text-white">{line}</li>)}</ul>
+        </div>
+        <div>
+          <p className="text-[13px] font-bold text-[#8ba0c7]">You receive</p>
+          <ul className="mt-1 space-y-1">{tradeAssetLines(receive).map((line, index) => <li key={`${line}-${index}`} className="text-sm font-bold text-white">{line}</li>)}</ul>
+        </div>
+      </div>
+      {trade.status === "ACTIVE" && (
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <button type="button" onClick={onAccept} className="h-10 rounded-xl bg-emerald-400 text-sm font-bold text-[#080c14]">Accept</button>
+          <button type="button" onClick={onDecline} className="h-10 rounded-xl bg-rose-500 text-sm font-bold text-white">Decline</button>
+          <button type="button" onClick={onCounter} className="h-10 rounded-xl border border-[#19ffff] text-sm font-bold text-[#19ffff]">Counter</button>
+        </div>
+      )}
+    </article>
+  )
+}
+export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlayers, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, horizonMode, horizon, onHorizonChange, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter }: { teamName: string; tab: "search" | "leaders" | "trade"; roster: Player[]; players: MarketPlayer[]; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; horizonMode: HorizonMode; horizon: HockeyHorizon; onHorizonChange: (mode: HorizonMode, horizon: HockeyHorizon) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedSearchPos, setSelectedSearchPos] = useState("ALL")
   const [searchOwnerFilter, setSearchOwnerFilter] = useState("ALL")
   const [searchTeamFilter, setSearchTeamFilter] = useState("ALL")
+  const [searchFiltersOpen, setSearchFiltersOpen] = useState(false)
+  const [leaderFiltersOpen, setLeaderFiltersOpen] = useState(false)
   const [leaderCategory, setLeaderCategory] = useState<LeaderCategory>("FPTS")
   const [leaderPosFilter, setLeaderPosFilter] = useState<"ALL" | "C" | "W" | "D" | "G">("ALL")
   const leaderMode: LeaderMode = horizon === "Season Avg / Per Game" ? "per_game" : "total"
@@ -41,8 +101,8 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
     })
     return Array.from(teamNames)
       .filter((otherTeamName) => otherTeamName !== teamName)
-      .map((teamName) => ({ teamName, players: getTeamRoster(teamName, roster) }))
-  }, [roster])
+      .map((otherTeamName) => ({ teamName: otherTeamName, players: getTeamRoster(otherTeamName, roster, dynastyPlayers) }))
+  }, [roster, dynastyPlayers, teamName])
 
   const canonicalPlayersByName = useMemo(() => new Map(dynastyPlayers.map((player) => [normalizeSearchText(player.name), player])), [dynastyPlayers])
   const allLeaguePlayers = useMemo<SearchPlayer[]>(() => {
@@ -137,19 +197,29 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search 300+ NHL players" className="w-full rounded-lg border border-[#263858] bg-[#101829] py-2 pl-9 pr-9 text-sm text-white outline-none focus:border-[#19ffff]" />
         {searchQuery.length > 0 && <button type="button" aria-label="Clear search" onClick={() => setSearchQuery("")} className="absolute right-2 top-1.5 rounded-full p-1 text-[#8ba0c7] hover:bg-[#172338] hover:text-white"><X className="size-4" /></button>}
       </div>
-      <div className="mb-2 flex w-full gap-1.5 overflow-x-auto">{["ALL", "C", "LW", "RW", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setSelectedSearchPos(value)} className={cn("flex-1 rounded-full px-2.5 py-1 text-[10px] font-black", selectedSearchPos === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}{[["ALL", "All"], ["AVAILABLE", "Available Only"]].map(([value, label]) => <button key={value} type="button" onClick={() => setSearchOwnerFilter(value)} className={cn("flex-1 rounded-full px-2.5 py-1 text-[10px] font-black", searchOwnerFilter === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{label}</button>)}</div>
-      <select aria-label="Filter by NHL team" value={searchTeamFilter} onChange={(event) => setSearchTeamFilter(event.target.value)} className="mb-3 w-full rounded-lg border border-[#263858] bg-[#101829] px-3 py-2 text-xs text-white outline-none"><option value="ALL">All NHL teams</option>{teams.map((team) => <option key={team} value={team}>{team}</option>)}</select>
+      <button type="button" onClick={() => setSearchFiltersOpen(true)} className="mb-3 max-w-full truncate rounded-full bg-[#172338] px-3 py-1.5 text-left text-[13px] font-bold text-white">{selectedSearchPos} · {searchOwnerFilter === "AVAILABLE" ? "Available" : searchOwnerFilter === "ALL" ? "All owners" : "Rostered"}{searchTeamFilter !== "ALL" ? ` · ${searchTeamFilter}` : ""} · {horizon}</button>
+      <Sheet open={searchFiltersOpen} onOpenChange={setSearchFiltersOpen}>
+        <SheetContent side="bottom" spring="snappy" className="mx-auto max-h-[80vh] max-w-[430px] overflow-y-auto rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4 text-white">
+          <h2 className="text-lg font-black">Filters</h2>
+          <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Position</p>
+          <div className="mt-2 flex flex-wrap gap-2">{["ALL", "C", "LW", "RW", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setSelectedSearchPos(value)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", selectedSearchPos === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
+          <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Ownership</p>
+          <div className="mt-2 flex flex-wrap gap-2">{[["ALL", "All"], ["AVAILABLE", "Available"], ["ROSTERED", "Rostered"]].map(([value, label]) => <button key={value} type="button" onClick={() => setSearchOwnerFilter(value)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", searchOwnerFilter === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{label}</button>)}</div>
+          <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">NHL team</p>
+          <select aria-label="Filter by NHL team" value={searchTeamFilter} onChange={(event) => setSearchTeamFilter(event.target.value)} className="mt-2 w-full rounded-xl border border-[#263858] bg-[#101829] px-3 py-3 text-sm text-white outline-none"><option value="ALL">All NHL teams</option>{teams.map((team) => <option key={team} value={team}>{team}</option>)}</select>
+          <HorizonPicker mode={horizonMode} horizon={horizon} onChange={onHorizonChange} />
+        </SheetContent>
+      </Sheet>
       {searchQuery.length > 0 && filteredSearchResults.length === 0 ? <div className="rounded-lg border border-[#172338] bg-[#0d1424] px-4 py-10 text-center text-sm text-[#8ba0c7]">No players found matching '{searchQuery}'</div> : <div className="rounded-lg border border-[#172338] bg-[#0d1424]">{filteredSearchResults.slice(0, 50).map((player) => {
         const available = player.owner === "FA" || player.owner.startsWith("W")
         const points = horizonMode === "projections"
           ? ("projPts" in player ? player.projPts : player.projection)
           : "stats" in player && player.stats ? calculatePlayerFPTS(player) : Number("fpts" in player ? player.fpts : player.todayPts ?? 0)
         return <button type="button" key={player.id} onClick={() => onSelect(toTarget(player))} className="flex w-full items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
-          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-[10px] font-black", positionClass(player.position))}>{player.position}</span>
-          <PlayerPortrait player={player} name={player.name} className="size-8" />
-          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block truncate text-[10px] text-[#5e7090]">{player.team} · {"opponent" in player ? player.opponent : (player.schedule?.opponent ?? "—")}</span></span>
-          <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black", available ? player.owner.startsWith("W") ? "bg-amber-400/15 text-amber-300" : "bg-emerald-400/15 text-emerald-300" : "text-[#8ba0c7]")}>{available ? player.owner : player.owner}</span>
-          <span className="w-10 text-right text-xs font-black tabular-nums text-[#19ffff]">{points.toFixed(1)}</span>
+          <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-black", positionClass(player.position))}>{player.position}</span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-white">{player.name}</span><span className="block truncate text-[13px] text-[#8ba0c7]">{player.team} · {"opponent" in player ? player.opponent : (player.schedule?.opponent ?? "—")}</span></span>
+          <span className={cn("shrink-0 text-[13px] font-bold", available ? player.owner.startsWith("W") ? "text-amber-300" : "text-emerald-300" : "text-[#8ba0c7]")}>{player.owner}</span>
+          <span className="w-12 text-right text-base font-black tabular-nums text-white">{points.toFixed(1)}</span>
         </button>
       })}</div>}
     </div>
@@ -162,11 +232,18 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
     const positionClass = (positionValue: string) =>
       positionValue === "G" ? "bg-sky-500 text-white" : positionValue === "D" ? "bg-amber-600 text-white" : positionValue === "C" ? "bg-blue-600 text-white" : "bg-teal-600 text-white"
     return <div className="p-3">
-      <div className="mb-2 flex gap-1.5 overflow-x-auto">
-        {(["ALL", "C", "W", "D", "G"] as const).map((position) => <button key={position} type="button" onClick={() => selectLeaderPosition(position)} className={cn("h-7 cursor-pointer rounded-full px-3 text-xs font-black transition-all active:scale-95", leaderPosFilter === position ? "bg-[#19ffff] text-[#080c14] shadow-[0_0_8px_rgba(25,255,255,0.3)]" : "border border-[#1b2842] bg-[#101829] text-[#8ba0c7] hover:bg-[#16233b] hover:text-white")}>{position}</button>)}
-      </div>
-      <div className="mb-3 flex gap-1.5 overflow-x-auto">{leaderCategories.map((category) => <button key={category} type="button" onClick={() => selectLeaderCategory(category)} className={cn("rounded-full px-2.5 py-1 text-[10px] font-black", leaderCategory === category ? "bg-[#19ffff] text-[#080c14]" : "border border-[#1b2842] bg-[#101829] text-[#8ba0c7]")}>{category}</button>)}</div>
-      <div className="rounded-lg border border-[#172338] bg-[#0d1424]">{sortedLeaders.slice(0, 50).map(({ player, displayValue, rank }) => <button type="button" key={player.id} onClick={() => onSelect(toTarget(player))} className="flex w-full items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80"><span className={cn("w-5 text-center text-xs font-black", rank === 1 ? "text-yellow-300" : rank === 2 ? "text-slate-300" : rank === 3 ? "text-amber-600" : "text-[#5e7090]")}>#{rank}</span><span className={cn("flex size-7 shrink-0 items-center justify-center rounded-md text-[9px] font-black", positionClass(player.position))}>{player.position}</span><PlayerPortrait player={player} name={player.name} className="size-7" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-black text-white">{player.name}</span><span className="block truncate text-[10px] text-[#5e7090]">{player.team} · {player.owner}</span></span><span className="text-right text-sm font-black tabular-nums text-cyan-400">{displayValue}<small className="ml-1 text-[9px] text-[#5e7090]">{leaderCategory === "FPTS" && leaderMode === "per_game" ? "FPTS/G" : leaderCategory}</small></span></button>)}</div>
+      <button type="button" onClick={() => setLeaderFiltersOpen(true)} className="mb-3 max-w-full truncate rounded-full bg-[#172338] px-3 py-1.5 text-left text-[13px] font-bold text-white">{leaderPosFilter} · {leaderCategory} · {horizon}</button>
+      <Sheet open={leaderFiltersOpen} onOpenChange={setLeaderFiltersOpen}>
+        <SheetContent side="bottom" spring="snappy" className="mx-auto max-h-[80vh] max-w-[430px] overflow-y-auto rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4 text-white">
+          <h2 className="text-lg font-black">Filters</h2>
+          <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Position</p>
+          <div className="mt-2 flex flex-wrap gap-2">{(["ALL", "C", "W", "D", "G"] as const).map((position) => <button key={position} type="button" onClick={() => selectLeaderPosition(position)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", leaderPosFilter === position ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{position}</button>)}</div>
+          <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Category</p>
+          <div className="mt-2 flex flex-wrap gap-2">{leaderCategories.map((category) => <button key={category} type="button" onClick={() => selectLeaderCategory(category)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", leaderCategory === category ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{category}</button>)}</div>
+          <HorizonPicker mode={horizonMode} horizon={horizon} onChange={onHorizonChange} />
+        </SheetContent>
+      </Sheet>
+      <div className="rounded-lg border border-[#172338] bg-[#0d1424]">{sortedLeaders.slice(0, 50).map(({ player, displayValue, rank }) => <button type="button" key={player.id} onClick={() => onSelect(toTarget(player))} className="flex w-full items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80"><span className={cn("w-5 text-center text-xs font-black", rank === 1 ? "text-yellow-300" : rank === 2 ? "text-slate-300" : rank === 3 ? "text-amber-600" : "text-[#5e7090]")}>#{rank}</span><span className={cn("flex size-7 shrink-0 items-center justify-center rounded-md text-xs font-black", positionClass(player.position))}>{player.position}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-white">{player.name}</span><span className="block truncate text-[13px] text-[#8ba0c7]">{player.team} · {player.owner}</span></span><span className="text-right text-base font-black tabular-nums text-white">{displayValue}<small className="ml-1 text-xs font-bold text-[#5e7090]">{leaderCategory === "FPTS" && leaderMode === "per_game" ? "FPTS/G" : leaderCategory}</small></span></button>)}</div>
     </div>
   }
   const tradeBlockPlayers = tradeBlock.map((entry) => {
@@ -176,5 +253,45 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
     return { player: databasePlayer ? { ...player, ...databasePlayer, id: player.id, slot: player.slot, status: databasePlayer.injuryStatus ?? null, opponent: player.opponent, gameTime: player.gameTime } : player, entry }
   }).filter((item): item is { player: Player; entry: TradeBlockEntry } => item !== null)
   const displayedTrades = tradeOffers.filter((trade) => activeTradeFilter === "ALL" || trade.status === activeTradeFilter)
-  return <div className="space-y-4 p-3"><section><div className="mb-2"><h2 className="text-sm font-black uppercase tracking-wide text-white">Trade Block</h2></div><div className="flex gap-2 overflow-x-auto pb-1">{tradeBlockPlayers.map(({ player, entry }) => <button type="button" key={player.id} onClick={() => onSelect({ ...player,   owned: entry.teamName === teamName, playerId: player.id, ownerName: entry.teamName, tradeBlockNote: entry.note })}   className="min-w-[170px] rounded-xl border border-[#172338] bg-[#101829] p-4 text-left"><div className="flex items-center gap-3"><PlayerPortrait player={player} name={player.name} className="size-10 border border-[#2a3f66]" /><div className="min-w-0 flex-1">  <p className="truncate text-xs font-black text-white">{formatShortPlayerName(player.name)}</p>  <p className="mt-1 truncate text-[10px] text-[#8ba0c7]">{player.team}</p></div></div>  <div className="mt-3 border-t border-[#172338] pt-2">  <span className="text-[10px] font-black text-[#8ba0c7]">{entry.teamName}</span></div></button>)}</div></section><section className="rounded-xl border border-[#19ffff]/30 bg-[#101a2b] p-4"><p className="text-[10px] font-black uppercase text-[#19ffff]">Propose a Trade</p><p className="mt-1 text-xs text-[#8ba0c7]">Build a multi-team offer with players, draft picks, and FAAB.</p><button type="button" onClick={onOpenTradeBuilder} className="mt-3 w-full rounded-full bg-[#19ffff] py-2.5 text-xs font-black text-[#080c14]">Open Trade Builder</button></section><section><div className="mb-2 flex items-center justify-between"><h3 className="text-[10px] font-black uppercase tracking-wider text-[#5e7090]">Trade History & Active Offers</h3><div className="flex gap-1">{(["ALL", "ACTIVE", "ACCEPTED", "REJECTED"] as const).map((filter) => <button type="button" key={filter} onClick={() => setActiveTradeFilter(filter)} className={cn("rounded-full px-2 py-1 text-[8px] font-black", activeTradeFilter === filter ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{filter}</button>)}</div></div><div className="space-y-2">{displayedTrades.length ? displayedTrades.map((trade) => <div key={trade.id} className="rounded-xl border border-[#172338] bg-[#101829] p-3"><div className="flex items-start gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#1b2842]">🏒</span><div className="min-w-0 flex-1"><p className="text-xs font-black text-white">{trade.senderName} offered {trade.sendingAssets.players?.filter(Boolean).map((player) => player.name).join(", ") || "assets"} for {trade.receivingAssets.players?.filter(Boolean).map((player) => player.name).join(", ") || "assets"}</p><p className="mt-1 text-[10px] text-[#8ba0c7]">You send {trade.isIncoming ? trade.receivingAssets.players?.filter(Boolean).map((player) => player.name).join(", ") : trade.sendingAssets.players?.filter(Boolean).map((player) => player.name).join(", ")} · You receive {trade.isIncoming ? trade.sendingAssets.players?.filter(Boolean).map((player) => player.name).join(", ") : trade.receivingAssets.players?.filter(Boolean).map((player) => player.name).join(", ")}</p><p className="mt-1 text-[9px] text-[#5e7090]">{trade.timestamp}</p></div><span className={cn("rounded px-1.5 py-1 text-[8px] font-black", trade.status === "ACTIVE" ? "bg-amber-300/15 text-amber-200" : trade.status === "ACCEPTED" ? "bg-emerald-300/15 text-emerald-200" : "bg-rose-300/15 text-rose-200")}>{trade.status}</span></div>{trade.status === "ACTIVE" && <div className="mt-3 flex gap-2"><button type="button" onClick={() => onAcceptTrade(trade.id)} className="flex-1 rounded-full bg-emerald-400 py-1.5 text-[9px] font-black text-[#080c14]">ACCEPT</button><button type="button" onClick={() => onDeclineTrade(trade.id)} className="flex-1 rounded-full bg-rose-400 py-1.5 text-[9px] font-black text-white">DECLINE</button><button type="button" onClick={() => onCounterTrade(trade)} className="flex-1 rounded-full border border-[#19ffff] py-1.5 text-[9px] font-black text-[#19ffff]">COUNTER</button></div>}</div>) : <p className="rounded-xl border border-dashed border-[#263858] p-6 text-center text-xs italic text-[#5e7090]">No {activeTradeFilter.toLowerCase()} trade offers.</p>}</div></section></div>
+  return (
+    <div className="space-y-4 p-3">
+      <section>
+        <h2 className="mb-2 text-base font-black text-white">Trade block</h2>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {tradeBlockPlayers.map(({ player, entry }) => (
+            <button type="button" key={player.id} onClick={() => onSelect({ ...player, owned: entry.teamName === teamName, playerId: player.id, ownerName: entry.teamName, tradeBlockNote: entry.note })} className="min-w-[180px] rounded-2xl border border-[#172338] bg-[#101829] p-3 text-left">
+              <div className="flex items-center gap-3">
+                <PlayerPortrait player={player} name={player.name} className="size-10" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-white">{formatShortPlayerName(player.name)}</p>
+                  <p className="truncate text-[13px] text-[#8ba0c7]">{player.team}</p>
+                </div>
+              </div>
+              <p className="mt-3 truncate text-[13px] text-[#8ba0c7]">{entry.teamName}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[#19ffff]/30 bg-[#101a2b] p-4">
+        <p className="text-sm font-bold text-[#19ffff]">Propose a trade</p>
+        <p className="mt-1 text-[13px] text-[#8ba0c7]">Players, draft picks, and FAAB.</p>
+        <button type="button" onClick={onOpenTradeBuilder} className="mt-3 h-10 w-full rounded-xl bg-[#19ffff] text-sm font-bold text-[#080c14]">Open Trade Builder</button>
+      </section>
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-base font-black text-white">Offers</h3>
+          <div className="flex gap-1">
+            {(["ALL", "ACTIVE", "ACCEPTED", "REJECTED"] as const).map((filter) => (
+              <button type="button" key={filter} onClick={() => setActiveTradeFilter(filter)} className={cn("rounded-full px-2.5 py-1 text-xs font-bold", activeTradeFilter === filter ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{filter === "ALL" ? "All" : filter === "ACTIVE" ? "Open" : filter === "ACCEPTED" ? "Done" : "Out"}</button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-3">
+          {displayedTrades.length ? displayedTrades.map((trade) => (
+            <TradeOfferCard key={trade.id} trade={trade} onAccept={() => onAcceptTrade(trade.id)} onDecline={() => onDeclineTrade(trade.id)} onCounter={() => onCounterTrade(trade)} />
+          )) : <p className="rounded-2xl border border-dashed border-[#263858] p-6 text-center text-sm text-[#8ba0c7]">{activeTradeFilter === "ALL" ? "No offers." : `No ${activeTradeFilter.toLowerCase()} offers.`}</p>}
+        </div>
+      </section>
+    </div>
+  )
 }

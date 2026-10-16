@@ -54,13 +54,19 @@ function normalizePlayer(player: Record<string, unknown>) {
   }
 }
 
+let cachedPlayers: { mtimeMs: number; payload: ReturnType<typeof normalizePlayer>[] } | null = null
+
 export async function GET() {
   const filePath = path.join(process.cwd(), "public", "data", "nhl-players.json")
 
   if (fs.existsSync(filePath)) {
-    const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>[]
-    return NextResponse.json(data.map(normalizePlayer), {
-      headers: { "Cache-Control": "no-store" },
+    const stat = fs.statSync(filePath)
+    if (!cachedPlayers || cachedPlayers.mtimeMs !== stat.mtimeMs) {
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Record<string, unknown>[]
+      cachedPlayers = { mtimeMs: stat.mtimeMs, payload: data.map(normalizePlayer) }
+    }
+    return NextResponse.json(cachedPlayers.payload, {
+      headers: { "Cache-Control": "public, max-age=300, stale-while-revalidate=3600" },
     })
   }
 

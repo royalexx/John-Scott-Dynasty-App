@@ -39,5 +39,5 @@ export async function getRosterWithCompliance(teamId: string) {
 }
 
 export function isEligibleForIr(status: PlayerStatus) {
-  return status === PlayerStatus.IR || status === PlayerStatus.O
+  return status === PlayerStatus.IR
 }

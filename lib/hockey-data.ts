@@ -318,11 +318,12 @@ export interface MarketPlayer extends PlayerEnrichment {
 
 export interface WaiverClaim {
   id: string
-  playerToAdd: MarketPlayer
-  playerToDrop: Player | null
+  playerToAdd: MarketPlayer | { name: string }
+  playerToDrop: Player | { name: string } | null
   bidAmount: number
-  status: "pending" | "processed"
+  status: "pending" | "processed" | "won" | "failed"
   runTime: string
+  outcome?: string | null
 }
 
 export interface ActivityItem {
@@ -492,6 +493,28 @@ function playerFromMarket(entry: LeagueRosterEntry, market: MarketPlayer): Playe
     schedule: market.schedule,
     injuryStatus: market.injuryStatus,
   }
+}
+
+/** Replaces a team's live roster with the frozen week snapshot. Unfrozen weeks keep the live roster. */
+export function applyWeekLineup(
+  teamName: string,
+  live: Player[],
+  market: MarketPlayer[],
+  assignments: Array<{ teamName: string; nhlId: number; slot: string }> | null,
+  frozen: boolean,
+): Player[] {
+  if (!frozen || !assignments) return live
+  const mine = assignments.filter((entry) => entry.teamName === teamName)
+  const liveById = new Map(live.filter((player) => player.nhlId).map((player) => [Number(player.nhlId), player]))
+  const marketById = new Map(market.filter((player) => player.nhlId).map((player) => [Number(player.nhlId), player]))
+  return mine.flatMap((entry) => {
+    const existing = liveById.get(entry.nhlId)
+    if (existing) return [{ ...existing, slot: entry.slot as Player["slot"] }]
+    const listed = marketById.get(entry.nhlId)
+    if (!listed) return []
+    const built = playerFromMarket({ nhlId: entry.nhlId, slot: entry.slot }, listed)
+    return [{ ...built, slot: entry.slot as Player["slot"] }]
+  })
 }
 
 export function getTeamRoster(teamName: string, userRoster: Player[], databasePlayers: MarketPlayer[] = []): Player[] {

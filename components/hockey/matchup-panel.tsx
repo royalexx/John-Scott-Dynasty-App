@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
+  applyWeekLineup,
   DEFAULT_SLOT_CAPACITIES,
   STARTER_SLOTS,
   getTeamRoster,
@@ -18,6 +19,7 @@ import {
   type StarterSlot,
 } from "@/lib/hockey-data"
 import type { MatchupResult } from "@/lib/dashboard-data"
+import { SwipeSurface } from "@/components/hockey/swipe-gestures"
 import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
 import { MatchupBanner } from "@/components/hockey/matchup-banner"
 import { PlayerRow } from "@/components/hockey/player-row"
@@ -87,12 +89,12 @@ const PlayerSide = React.memo(function PlayerSide({
       className={cn("w-full min-w-0 rounded-md px-1 py-1 hover:bg-[#101a2e]", align === "left" ? "text-right" : "text-left")}
     >
       <div className={cn("flex items-center gap-1.5", align === "left" ? "justify-end" : "justify-start")}>
-        {align === "left" && player.status && <span className={cn("rounded px-1 py-0.5 text-[9px] font-black", statusStyles[player.status])}>{player.status}</span>}
-        <span className="truncate text-xs font-bold text-white">{player.name}</span>
-        {align === "right" && player.status && <span className={cn("rounded px-1 py-0.5 text-[9px] font-black", statusStyles[player.status])}>{player.status}</span>}
+        {align === "left" && player.status && <span className={cn("rounded px-1 py-0.5 text-xs font-black", statusStyles[player.status])}>{player.status}</span>}
+        <span className="truncate text-sm font-bold text-white">{player.name}</span>
+        {align === "right" && player.status && <span className={cn("rounded px-1 py-0.5 text-xs font-black", statusStyles[player.status])}>{player.status}</span>}
       </div>
-      {nickname && <p className="truncate text-[10px] italic text-[#5e7090]">{nickname}</p>}
-      <p className="truncate text-[10px] text-[#5e7090]">
+      {nickname && <p className="truncate text-xs italic text-[#5e7090]">{nickname}</p>}
+      <p className="truncate text-xs text-[#5e7090]">
         {player.schedule
           ? align === "left"
             ? `${player.schedule.day} ${player.schedule.time} · ${player.schedule.opponent} · ${player.team}`
@@ -120,7 +122,7 @@ const Score = React.memo(function Score({ player, align, week }: { player: Match
   return (
     <div className={cn("w-full shrink-0", align === "left" ? "pr-2 text-right" : "pl-2 text-left")}>
       <p className="text-sm font-bold tabular-nums text-white">{player.empty ? "—" : getActualPoints(player, week)}</p>
-      <p className="text-[10px] leading-tight text-[#5e7090]">
+      <p className="text-xs leading-tight text-[#5e7090]">
         <span className="block">proj</span>
         <span className="block tabular-nums">{player.empty ? "—" : getProjectedPoints(player, week)}</span>
       </p>
@@ -147,7 +149,7 @@ const PlayerStats = React.memo(function PlayerStats({ player, align }: { player:
         game ? game.gameWinningGoals > 0 ? `${game.gameWinningGoals} GWG` : null : (current?.gameWinningGoals ?? 0) > 0 ? `${current?.gameWinningGoals} GWG` : null,
       ].filter(Boolean).join(", ")
   return (
-    <p className={cn("truncate text-[9px] text-[#5e7090]", align === "left" ? "text-right" : "text-left")}>
+    <p className={cn("truncate text-xs text-[#5e7090]", align === "left" ? "text-right" : "text-left")}>
       {stats || "No game stats"}
     </p>
   )
@@ -179,23 +181,23 @@ const Reserves = React.memo(function Reserves({
   return (
     <section className="overflow-hidden border-y border-[#111929] bg-[#080c14]">
       <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex w-full items-center justify-between border-b border-[#111929] px-3 py-3 text-left">
-        <span><b className="block text-sm text-white">Bench & Reserves</b><small className="text-[10px] text-[#5e7090]">BN · TAXI · IR</small></span>
+        <span><b className="block text-sm text-white">Bench & Reserves</b><small className="text-xs text-[#5e7090]">BN · TAXI · IR</small></span>
         <ChevronDown className={cn("size-5 text-[#5e7090] transition-transform", open && "rotate-180")} />
       </button>
       {open && (
         <>
-          <div className="grid grid-cols-2 border-b border-[#111929] px-3 py-2 text-[10px] font-bold text-[#5e7090]"><span>{teamName}</span><span className="text-right">{opponentName}</span></div>
+          <div className="grid grid-cols-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span>{teamName}</span><span className="text-right">{opponentName}</span></div>
           {groups.map(({ slot, label }) => {
             const home = homeRoster.filter((player) => player.slot === slot)
             const away = awayRoster.filter((player) => player.slot === slot)
             return (
               <div key={slot} className="grid grid-cols-2 border-b border-[#111929] last:border-0">
                 <div className="border-r border-[#111929]">
-                  <p className="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
+                  <p className="px-3 py-2 text-xs font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
                   {home.length ? home.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectHome} onEditSlot={() => onEdit(player)} />) : <p className="px-3 pb-3 text-xs text-[#5e7090]">Empty</p>}
                 </div>
                 <div>
-                  <p className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
+                  <p className="px-3 py-2 text-right text-xs font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
                   {away.length ? away.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectAway} />) : <p className="px-3 pb-3 text-right text-xs text-[#5e7090]">Empty</p>}
                 </div>
               </div>
@@ -222,6 +224,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   onMatchupChange,
   onLiveSummary,
   matchupResults = [],
+  weekLineup = null,
 }: {
   roster: Player[]
   players?: MarketPlayer[]
@@ -237,6 +240,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   onMatchupChange?: (matchupId: string) => void
   onLiveSummary?: (summary: LiveMatchupSummary) => void
   matchupResults?: MatchupResult[]
+  weekLineup?: { frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
 }) {
   const weekSchedule = useMemo(() => getWeekMatchups(week), [week])
   const userMatchup = useMemo(
@@ -271,8 +275,8 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   const isUserMatchup = summary.homeTeam === teamName || summary.awayTeam === teamName
   // The user's own team is always shown on the left, even when scheduled as the away team.
   const flip = summary.awayTeam === teamName
-  const trueHomeRoster = useMemo(() => getTeamRoster(summary.homeTeam, roster, players), [summary.homeTeam, roster, players])
-  const trueAwayRoster = useMemo(() => getTeamRoster(summary.awayTeam, roster, players), [summary.awayTeam, roster, players])
+  const trueHomeRoster = useMemo(() => applyWeekLineup(summary.homeTeam, getTeamRoster(summary.homeTeam, roster, players), players ?? [], weekLineup?.assignments ?? null, weekLineup != null), [summary.homeTeam, roster, players, weekLineup])
+  const trueAwayRoster = useMemo(() => applyWeekLineup(summary.awayTeam, getTeamRoster(summary.awayTeam, roster, players), players ?? [], weekLineup?.assignments ?? null, weekLineup != null), [summary.awayTeam, roster, players, weekLineup])
   const homeRoster = flip ? trueAwayRoster : trueHomeRoster
   const awayRoster = flip ? trueHomeRoster : trueAwayRoster
   const display = useMemo(() => flip
@@ -330,15 +334,15 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   const noopEdit = useCallback(() => undefined, [])
 
   return (
-    <div className="flex flex-col gap-3 pb-16">
+    <SwipeSurface zone="matchup" onSwipeLeft={nextMatchup} onSwipeRight={previousMatchup} className="flex flex-col gap-3 pb-16">
       <MatchupBanner summary={bannerSummary} projectedHome={flip ? totals.projectedAway : totals.projectedHome} projectedAway={flip ? totals.projectedHome : totals.projectedAway} week={week} homeGamesLeft={flip ? totals.awayGamesLeft : totals.homeGamesLeft} awayGamesLeft={flip ? totals.homeGamesLeft : totals.awayGamesLeft} />
-      <div className="flex items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
+      <div data-swipe-ignore="true" className="flex items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
         <button type="button" onClick={previousMatchup} aria-label="Previous matchup" className="shrink-0 text-[#5e7090]"><ChevronLeft className="size-4" /></button>
         {weekSchedule.map((matchup, index) => (
-          <button key={matchup.id} type="button" onClick={() => selectMatchup(index)} aria-label={`Matchup ${index + 1}: ${matchup.homeTeam} vs ${matchup.awayTeam}`} className={cn("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-black", matchup.id === selectedMatchupId ? "border-[#19ffff] bg-[#19ffff]/10 text-[#19ffff]" : "border-[#172338] bg-[#0d1424] text-[#5e7090]")}>
-            <span className="flex size-4 items-center justify-center rounded-full bg-[#172338] text-[8px]">{matchup.homeTeam.slice(0, 1)}</span>
+          <button key={matchup.id} type="button" onClick={() => selectMatchup(index)} aria-label={`Matchup ${index + 1}: ${matchup.homeTeam} vs ${matchup.awayTeam}`} className={cn("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-black", matchup.id === selectedMatchupId ? "border-[#19ffff] bg-[#19ffff]/10 text-[#19ffff]" : "border-[#172338] bg-[#0d1424] text-[#5e7090]")}>
+            <span className="flex size-6 items-center justify-center rounded-full bg-[#172338] text-xs">{matchup.homeTeam.slice(0, 1)}</span>
             <span>vs</span>
-            <span className="flex size-4 items-center justify-center rounded-full bg-[#3b1824] text-[8px]">{matchup.awayTeam.slice(0, 1)}</span>
+            <span className="flex size-6 items-center justify-center rounded-full bg-[#3b1824] text-xs">{matchup.awayTeam.slice(0, 1)}</span>
           </button>
         ))}
         <button type="button" onClick={nextMatchup} aria-label="Next matchup" className="shrink-0 text-[#5e7090]"><ChevronRight className="size-4" /></button>
@@ -346,7 +350,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
       <section className="overflow-hidden border-y border-[#111929] bg-[#080c14]">
         <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
           <h2 className="text-sm font-black text-white">Starters ({rows.filter((row) => !row.home.empty).length}) <ChevronDown className="inline size-3.5 text-[#5e7090]" /></h2>
-          <div className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
+          <SwipeSurface zone="week" onSwipeLeft={() => onWeekChange(week + 1)} onSwipeRight={() => onWeekChange(Math.max(1, week - 1))} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
             <button type="button" onClick={() => onWeekChange(Math.max(1, week - 1))} aria-label="Previous scoring week" className="rounded p-1 hover:bg-[#172338]">
               <ChevronLeft className="size-3.5" />
             </button>
@@ -354,9 +358,9 @@ export const MatchupPanel = React.memo(function MatchupPanel({
             <button type="button" onClick={() => onWeekChange(week + 1)} aria-label="Next scoring week" className="rounded p-1 hover:bg-[#172338]">
               <ChevronRight className="size-3.5" />
             </button>
-          </div>
+          </SwipeSurface>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-[10px] font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{display.homeTeam}</span><span className="min-w-0 truncate text-right">{display.awayTeam}</span></div>
+        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{display.homeTeam}</span><span className="min-w-0 truncate text-right">{display.awayTeam}</span></div>
         {rows.map((row, index) => (
           <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_34px_44px_minmax(0,1fr)] items-center border-b border-[#111929] bg-[#0d1424] px-2 py-2 last:border-0 hover:bg-[#101a2e]">
             <div className="min-w-0 text-right">
@@ -373,7 +377,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
               type="button"
               disabled={row.home.empty || !isUserMatchup}
               onClick={() => row.homeSource && startEdit(row.homeSource)}
-              className={cn("flex size-7 items-center justify-center rounded-md text-[10px] font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}
+              className={cn("flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}
             >{row.slot}</button>
             <Score player={row.away} align="right" week={week} />
             <div className="min-w-0 text-left">
@@ -390,6 +394,6 @@ export const MatchupPanel = React.memo(function MatchupPanel({
       <Reserves homeRoster={homeRoster} awayRoster={awayRoster} teamName={display.homeTeam} opponentName={display.awayTeam} onEdit={isUserMatchup ? startEdit : noopEdit} onSelectHome={selectHome} onSelectAway={selectAway} />
 
       <LineupSlotDialog player={editingPlayer} roster={roster} capacities={slotCapacities} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot) => { onMove(playerId, destSlot); setEditingPlayer(null) }} />
-    </div>
+    </SwipeSurface>
   )
 })

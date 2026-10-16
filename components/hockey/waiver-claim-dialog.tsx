@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useMemo, useState } from "react"
 import { AlertTriangle, Check, ChevronLeft, X } from "lucide-react"
@@ -18,6 +18,16 @@ const colors: Record<string, string> = {
   BN: "bg-[#1e293b] text-[#cbd5e1]",
   TAXI: "bg-[#451a03] text-[#f59e0b]",
   IR: "bg-[#4c0519] text-[#f43f5e]",
+}
+
+function WaiverTiming({ weekLocked }: { weekLocked: boolean }) {
+  return (
+    <p className="mt-3 text-left text-xs leading-relaxed text-[#8ba0c7]">
+      {weekLocked
+        ? "This week is locked. This add is for next week's lineup. Waivers run Monday at midnight, after the final game."
+        : "Waivers run Monday at midnight, after the final game of the week. The player joins your bench then and can be started next week."}
+    </p>
+  )
 }
 
 function DropRow({ player, selected, onSelect }: { player: Player; selected: boolean; onSelect: () => void }) {
@@ -40,7 +50,7 @@ function DropRow({ player, selected, onSelect }: { player: Player; selected: boo
       </span>
       <span
         className={cn(
-          "flex size-7 shrink-0 items-center justify-center rounded-md text-[10px] font-black",
+          "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-1 text-xs font-black",
           colors[player.slot] || colors[player.position] || "bg-[#1e293b] text-white"
         )}
       >
@@ -49,7 +59,7 @@ function DropRow({ player, selected, onSelect }: { player: Player; selected: boo
       <PlayerPortrait player={player} name={player.name} className="size-7 bg-[#1b2842]" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-bold text-white">{player.name}</span>
-        <span className="block text-[10px] text-[#5e7090]">{player.team} · {player.opponent}</span>
+        <span className="block text-xs text-[#5e7090]">{player.team} · {player.opponent}</span>
       </span>
       <span className="text-xs font-black tabular-nums text-white">
         {(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}
@@ -68,6 +78,7 @@ export function WaiverClaimDialog({
   onConfirm,
   teamId,
   rosterSize = DEFAULT_ROSTER_SIZE,
+  weekLocked = false,
 }: {
   player: MarketPlayer | null
   roster: Player[]
@@ -79,6 +90,8 @@ export function WaiverClaimDialog({
   teamId?: string
   /** League roster capacity; drops are optional only while the roster is below this. */
   rosterSize?: number
+  /** True once the current Monday–Sunday week has locked. The add still lands next week. */
+  weekLocked?: boolean
 }) {
   const [step, setStep] = useState<1 | 2>(1)
   const [bid, setBid] = useState(0)
@@ -122,7 +135,7 @@ export function WaiverClaimDialog({
       playerToDrop: dropped ?? null,
       bidAmount: bid,
       status: "pending",
-      runTime: "Wed 3:05 AM",
+      runTime: "Monday midnight",
     }
     if (teamId && player.nhlId) {
       setSubmitting(true)
@@ -151,6 +164,7 @@ export function WaiverClaimDialog({
     <Sheet open={open} onOpenChange={(value) => !value && close()}>
       <SheetContent
         side="bottom"
+        spring="snappy"
         className="mx-auto flex h-[90vh] max-h-[90vh] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none"
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[#5e7090]" />
@@ -162,7 +176,7 @@ export function WaiverClaimDialog({
                 <span className="flex size-9 items-center justify-center rounded-full bg-[#1b2842]">🏒</span>
                 <div>
                   <h2 className="text-sm font-black">+ ADD {player.name}</h2>
-                  <p className="text-[10px] text-[#5e7090]">
+                  <p className="text-xs text-[#5e7090]">
                     {player.position} · {player.team} · {teamName}
                   </p>
                 </div>
@@ -174,7 +188,7 @@ export function WaiverClaimDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <section className="px-4 py-3 text-center">
-              <p className="text-[10px] font-black uppercase tracking-widest text-[#5e7090]">Bid Amount</p>
+              <p className="text-xs font-black uppercase tracking-widest text-[#5e7090]">Bid Amount</p>
               <div className="mx-auto mt-2 flex w-32 items-center justify-center rounded-lg border border-[#263858] bg-[#101829] px-2">
                 <span className="text-xl font-black text-[#19ffff]">$</span>
                 <input
@@ -190,6 +204,7 @@ export function WaiverClaimDialog({
                 />
               </div>
               <p className="mt-1 text-xs text-[#5e7090]">${userFaab} remaining</p>
+              <WaiverTiming weekLocked={weekLocked} />
             </section>
 
             <div className="mx-3 flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">
@@ -199,12 +214,12 @@ export function WaiverClaimDialog({
 
             <div className="px-3 pb-3">
               {!rosterFull && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left text-xs font-bold text-emerald-300">+ Do not drop any player ({openSpots} open roster spot{openSpots === 1 ? "" : "s"})</button>}
-              <p className="mt-4 px-1 text-[10px] font-black uppercase tracking-wider text-[#5e7090]">
+              <p className="mt-4 px-1 text-xs font-black uppercase tracking-wider text-[#5e7090]">
                 Select Player to Drop
               </p>
               {Object.entries(dropGroups).map(([group, players]) => (
                 <div key={group}>
-                  <p className="mt-3 px-1 text-[10px] font-black text-[#8ba0c7]">{group}</p>
+                  <p className="mt-3 px-1 text-xs font-black text-[#8ba0c7]">{group}</p>
                   {players.map((candidate) => (
                     <DropRow
                       key={candidate.id}
@@ -223,7 +238,7 @@ export function WaiverClaimDialog({
                 type="button"
                 disabled={rosterFull && !dropped}
                 onClick={() => setStep(2)}
-                className="h-11 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black uppercase tracking-wider text-[#080c14] transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(25,255,255,0.4)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-12 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black text-[#080c14] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
@@ -242,16 +257,16 @@ export function WaiverClaimDialog({
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
-              <span className="rounded bg-[#19ffff]/15 px-2 py-1 text-[10px] font-black text-[#19ffff]">
+              <span className="rounded bg-[#19ffff]/15 px-2 py-1 text-xs font-black text-[#19ffff]">
                 {player.waiver === "FA" ? "FREE AGENCY" : "WAIVERS"}
               </span>
 
               <div className="mt-4 rounded-xl border border-[#1b2b46] bg-[#121c2e] p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <span className="text-[10px] font-black text-[#19ffff]">+ ADD</span>
+                    <span className="text-xs font-black text-[#19ffff]">+ ADD</span>
                     <p className="mt-1 text-xs font-bold text-white">{player.name}</p>
-                    <p className="text-[10px] text-[#5e7090]">
+                    <p className="text-xs text-[#5e7090]">
                       {player.position} · {player.team}
                     </p>
                   </div>
@@ -259,24 +274,27 @@ export function WaiverClaimDialog({
                   <ChevronLeft className="size-4 rotate-180 text-[#5e7090]" />
 
                   <div>
-                    <span className="text-[10px] font-black text-[#ff2a85]">- DROP</span>
+                    <span className="text-xs font-black text-[#ff2a85]">- DROP</span>
                     <p className="mt-1 text-xs font-bold text-white">{dropped?.name ?? "None (Keep open roster spot)"}</p>
-                    {dropped && <p className="text-[10px] text-[#5e7090]">{dropped.position} · {dropped.team}</p>}
+                    {dropped && <p className="text-xs text-[#5e7090]">{dropped.position} · {dropped.team}</p>}
                   </div>
 
                   <div className="text-right">
-                    <p className="text-[9px] font-black text-[#5e7090]">BID</p>
+                    <p className="text-xs font-black text-[#5e7090]">BID</p>
                     <p className="text-lg font-black text-white">${bid}</p>
                   </div>
                 </div>
               </div>
 
+              <WaiverTiming weekLocked={weekLocked} />
               {error && <p role="alert" className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-bold text-rose-300">{error}</p>}
+            </div>
+            <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] p-4">
               <button
                 type="button"
                 onClick={confirm}
                 disabled={submitting}
-                className="mt-5 h-11 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black uppercase tracking-wider text-[#080c14] transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(25,255,255,0.4)] active:scale-[0.98]"
+                className="h-12 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black text-[#080c14] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
               >
                 Confirm
               </button>
