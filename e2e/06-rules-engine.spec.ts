@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 import { getFantasyWeekDates, getFantasyWeekForDate, getCurrentFantasyWeek } from "../lib/season-calendar"
 import { computeStandings, isCompletedMatchup } from "../lib/standings"
 import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type LockContext } from "../lib/lineup-lock"
+import { displacedLandingSlot, positionFitsSlot } from "../lib/roster-eligibility"
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 
@@ -148,6 +149,21 @@ test.describe("standings from matchup results", () => {
   test("streak counts consecutive latest results", () => {
     const rows = computeStandings(["A", "B"], [m(1, "A", "B", 1, 9), m(2, "A", "B", 9, 1), m(3, "A", "B", 9, 1)], 4)
     expect(rows.find((row) => row.teamId === "A")!.streak).toBe("2W")
+  })
+})
+
+test.describe("roster swap eligibility", () => {
+  test("a defenseman leaving IR cannot take the goalie slot he was swapped with", () => {
+    expect(positionFitsSlot("G", "D")).toBe(false)
+    expect(displacedLandingSlot("G", "D", true)).toBe("BN")
+    expect(displacedLandingSlot("G", "D", false)).toBeNull()
+  })
+
+  test("a player who can play the vacated slot takes it, including flex", () => {
+    expect(displacedLandingSlot("G", "G", false)).toBe("G")
+    expect(displacedLandingSlot("C", "C", false)).toBe("C")
+    expect(displacedLandingSlot("F", "LW", false)).toBe("F")
+    expect(displacedLandingSlot("W", "C", true)).toBe("BN")
   })
 })
 

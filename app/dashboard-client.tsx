@@ -55,6 +55,7 @@ import {
   type NhlScheduleGame,
   type PlayerGameLog,
 } from "@/lib/hockey-data"
+import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { useStableCallback } from "@/lib/use-stable-callback"
 import { MatchupPanel } from "@/components/hockey/matchup-panel"
@@ -107,6 +108,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     D: configuredSlots?.D ?? DEFAULT_SLOT_CAPACITIES.D,
     G: configuredSlots?.G ?? DEFAULT_SLOT_CAPACITIES.G,
   }), [configuredSlots])
+  const benchCapacity = configuredSlots?.BN ?? DEFAULT_BENCH_CAPACITY
   const startingSlots = useMemo(() => (Object.keys(slotCapacities) as Array<keyof typeof slotCapacities>).map((slot) => ({ slot, capacity: slotCapacities[slot] })), [slotCapacities])
   const rosterSize = initialData.league?.rosterSize ?? DEFAULT_ROSTER_SIZE
   const initialRoster = initialData.roster.length > 0 ? initialData.roster : fallbackRoster
@@ -438,21 +440,31 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   }
 
   function handleRosterMove(playerId: string, destSlot: Player["slot"], targetPlayerId?: string) {
-    const source = roster.find((player) => player.id === playerId) ?? lineupRef.current.find((player) => player.id === playerId)
-    const target = targetPlayerId ? roster.find((player) => player.id === targetPlayerId) : undefined
+    const visibleRoster = lineupRef.current.length ? lineupRef.current : roster
+    const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
+    const target = targetPlayerId ? visibleRoster.find((player) => player.id === targetPlayerId) ?? roster.find((player) => player.id === targetPlayerId) : undefined
     if (!source) return
     if (weekView?.frozen) {
       setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
       window.setTimeout(() => setToast(null), 4000)
       return
     }
+    const benchCount = visibleRoster.filter((player) => player.slot === "BN" && player.id !== source.id && player.id !== target?.id).length
+    const targetLanding = target ? displacedLandingSlot(source.slot, target.position, benchCount < benchCapacity) : null
+    if (target && !targetLanding) {
+      setToast(`${target.name} (${target.position}) cannot play ${source.slot}, and the bench is full`)
+      window.setTimeout(() => setToast(null), 4000)
+      return
+    }
+    const sourceNext = target ? target.slot : destSlot
     const previousRoster = roster
+    const previousWeekView = weekView
     // Optimistic update; rolled back below if the server rejects the move.
     const sourceNhl = Number(source.nhlId)
     const targetNhl = target?.nhlId ? Number(target.nhlId) : undefined
     setRoster((current) => current.map((player) => {
-      if (target && player.id === target.id) return { ...player, slot: source.slot }
-      if (player.id === source.id) return { ...player, slot: target ? target.slot : destSlot }
+      if (target && targetLanding && player.id === target.id) return { ...player, slot: targetLanding as Player["slot"] }
+      if (player.id === source.id) return { ...player, slot: sourceNext }
       return player
     }))
     setWeekView((current) => {
@@ -461,15 +473,18 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         ...current,
         assignments: current.assignments.map((entry) => {
           if (entry.teamName !== teamName) return entry
-          if (targetNhl !== undefined && entry.nhlId === targetNhl) return { ...entry, slot: source.slot }
-          if (entry.nhlId === sourceNhl) return { ...entry, slot: target ? target.slot : destSlot }
+          if (targetNhl !== undefined && targetLanding && entry.nhlId === targetNhl) return { ...entry, slot: targetLanding }
+          if (entry.nhlId === sourceNhl) return { ...entry, slot: sourceNext }
           return entry
         }),
       }
     })
+    const slotLabel = (slot: string) => slot === "BN" ? "the bench" : slot === "IR" ? "IR" : slot === "TAXI" ? "the taxi squad" : `Starting ${slot}`
     const message = target
-      ? `Swapped ${source.name} with ${target.name}`
-      : `${source.name} moved to ${destSlot === "BN" ? "the bench" : destSlot === "IR" ? "IR" : destSlot === "TAXI" ? "the taxi squad" : `Starting ${destSlot}`}`
+      ? targetLanding === source.slot
+        ? `Swapped ${source.name} with ${target.name}`
+        : `${source.name} moved to ${slotLabel(sourceNext)}. ${target.name} moved to ${slotLabel(targetLanding ?? "BN")}`
+      : `${source.name} moved to ${slotLabel(destSlot)}`
     setToast(message)
     if (initialData.teamId) {
       const playerNumId = Number(playerId.replace("nhl-", ""))
@@ -485,6 +500,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
       }).catch((error: unknown) => {
         console.error("Roster move failed to persist:", error)
         setRoster(previousRoster)
+        setWeekView(previousWeekView)
         setToast(error instanceof Error ? error.message : "Roster move failed")
         window.setTimeout(() => setToast(null), 4000)
       })
@@ -687,7 +703,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     setEditingPlayer(player)
     setEditingSlot(player || !isStarterSlot(fallbackSlot) ? null : fallbackSlot)
   })
-  const onMoveStable = useStableCallback((playerId: string, destSlot: Player["slot"]) => handleRosterMove(playerId, destSlot))
+  const onMoveStable = useStableCallback((playerId: string, destSlot: Player["slot"], targetPlayerId?: string) => handleRosterMove(playerId, destSlot, targetPlayerId))
   const onAcceptTradeStable = useStableCallback((tradeId: string) => handleAcceptTrade(tradeId))
   const onDeclineTradeStable = useStableCallback((tradeId: string) => handleDeclineTrade(tradeId))
   const onCounterTradeStable = useStableCallback((offer: LeagueTradeOffer) => handleCounterTrade(offer))
@@ -881,7 +897,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           if (target.marketPlayer) setClaimPlayer(target.marketPlayer)
         }} />
         <TradeBuilderDialog open={tradeBuilderOpen} onOpenChange={(open) => { setTradeBuilderOpen(open); if (!open) { setCounterTrade(null); setPrefilledTrade(null) } }} team={userTradeTeam} partners={tradePartners} initialPartnerId={counterTrade?.partnerId ?? prefilledTrade?.partnerId} initialOffering={counterTrade?.offering ?? prefilledTrade?.offering} initialReceiving={counterTrade?.receiving ?? prefilledTrade?.receiving} onPlayerClick={(player) => setSelectedPlayer({ ...player, owned: roster.some((rosterPlayer) => rosterPlayer.id === player.id), playerId: player.id })} onSendTrade={handleSendTrade} />
-        <LineupSlotDialog player={editingPlayer} emptySlot={editingSlot as Extract<Player["slot"], "C" | "W" | "F" | "D" | "G"> | null} roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} open={editingPlayer !== null || editingSlot !== null} onOpenChange={(open) => { if (!open) { setEditingPlayer(null); setEditingSlot(null) } }} onMove={handleRosterMove} />
+        <LineupSlotDialog player={editingPlayer} emptySlot={editingSlot as Extract<Player["slot"], "C" | "W" | "F" | "D" | "G"> | null} roster={lineupRoster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} benchCapacity={benchCapacity} open={editingPlayer !== null || editingSlot !== null} onOpenChange={(open) => { if (!open) { setEditingPlayer(null); setEditingSlot(null) } }} onMove={handleRosterMove} />
         <DirectMessagesDialog open={dmOpen} onOpenChange={setDmOpen} onUnreadChange={setHasUnreadMessages} onTrade={(conversation) => { const partner = standings.find((team) => team.team === conversation.teamName); if (partner) { setDmOpen(false); handleLeagueTrade(partner) } }} />
         <TeamDrawer
           type={teamDrawer}

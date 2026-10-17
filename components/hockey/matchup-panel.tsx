@@ -231,7 +231,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   teamName: string
   playerNicknames: Record<string, string>
   slotCapacities?: Record<StarterSlot, number>
-  onMove: (playerId: string, destSlot: Player["slot"]) => void
+  onMove: (playerId: string, destSlot: Player["slot"], targetPlayerId?: string) => void
   onSelectPlayer?: (player: LineupPlayerSelection) => void
   onEditSlot?: (player: Player) => void
   week: number
@@ -393,7 +393,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
       </section>
       <Reserves homeRoster={homeRoster} awayRoster={awayRoster} teamName={display.homeTeam} opponentName={display.awayTeam} onEdit={isUserMatchup ? startEdit : noopEdit} onSelectHome={selectHome} onSelectAway={selectAway} />
 
-      <LineupSlotDialog player={editingPlayer} roster={roster} capacities={slotCapacities} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot) => { onMove(playerId, destSlot); setEditingPlayer(null) }} />
+      <LineupSlotDialog player={editingPlayer} roster={roster} capacities={slotCapacities} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot, targetPlayerId) => { onMove(playerId, destSlot, targetPlayerId); setEditingPlayer(null) }} />
     </SwipeSurface>
   )
 })
