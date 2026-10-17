@@ -15,11 +15,12 @@ import {
   type LiveMatchupSummary,
   type MatchupPlayer,
   type MarketPlayer,
+  type MatchupSummary,
   type Player,
   type StarterSlot,
 } from "@/lib/hockey-data"
 import type { MatchupResult } from "@/lib/dashboard-data"
-import { SwipeSurface } from "@/components/hockey/swipe-gestures"
+import { SwipePager, SwipeSurface } from "@/components/hockey/swipe-gestures"
 import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
 import { MatchupBanner } from "@/components/hockey/matchup-banner"
 import { PlayerRow } from "@/components/hockey/player-row"
@@ -52,6 +53,74 @@ export function getYetToPlayText(teamRoster: Player[]): string {
     })
   const parts = STARTER_SLOTS.filter((slot) => counts[slot] > 0).map((slot) => `${counts[slot]} ${slot}`)
   return `yet to play: ${parts.length ? parts.join(", ") : "none"}`
+}
+
+type WeekLineup = { frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
+
+function buildMatchupCard(
+  summary: MatchupSummary,
+  teamName: string,
+  roster: Player[],
+  players: MarketPlayer[] | undefined,
+  week: number,
+  weekLineup: WeekLineup,
+  matchupResults: MatchupResult[],
+) {
+  const flip = summary.awayTeam === teamName
+  const market = players ?? []
+  const assignments = weekLineup?.assignments ?? null
+  const frozen = weekLineup != null
+  const trueHomeRoster = applyWeekLineup(summary.homeTeam, getTeamRoster(summary.homeTeam, roster, market), market, assignments, frozen)
+  const trueAwayRoster = applyWeekLineup(summary.awayTeam, getTeamRoster(summary.awayTeam, roster, market), market, assignments, frozen)
+  const starters = (list: Player[]) => list.filter((player) => isStarterSlot(player.slot))
+  const expected = (list: Player[]) => starters(list).reduce((sum, player) => sum + (getWeekProjectedPoints(player, week) ?? 0), 0)
+  const actual = (list: Player[]) => starters(list).reduce((sum, player) => sum + getWeekActualPoints(player, week), 0)
+  const gamesLeft = (list: Player[]) => starters(list).filter((player) => player.gameState !== "Final").length
+  const finalResult = matchupResults.find((result) => result.week === week && result.isFinal && result.homeTeam === summary.homeTeam && result.awayTeam === summary.awayTeam)
+  const trueHomeScore = finalResult ? finalResult.homeScore : actual(trueHomeRoster)
+  const trueAwayScore = finalResult ? finalResult.awayScore : actual(trueAwayRoster)
+  const trueProjectedHome = expected(trueHomeRoster)
+  const trueProjectedAway = expected(trueAwayRoster)
+  const trueHomeGamesLeft = gamesLeft(trueHomeRoster)
+  const trueAwayGamesLeft = gamesLeft(trueAwayRoster)
+  const display = flip
+    ? {
+        ...summary,
+        homeTeam: summary.awayTeam,
+        homeOwner: summary.awayOwner,
+        homeRecord: summary.awayRecord,
+        homeScore: summary.awayScore,
+        awayTeam: summary.homeTeam,
+        awayOwner: summary.homeOwner,
+        awayRecord: summary.homeRecord,
+        awayScore: summary.homeScore,
+      }
+    : summary
+  const status = finalResult ? "Final" : summary.status
+  return {
+    id: summary.id,
+    isUserMatchup: summary.homeTeam === teamName || summary.awayTeam === teamName,
+    homeRoster: flip ? trueAwayRoster : trueHomeRoster,
+    awayRoster: flip ? trueHomeRoster : trueAwayRoster,
+    banner: {
+      ...display,
+      homeScore: flip ? trueAwayScore : trueHomeScore,
+      awayScore: flip ? trueHomeScore : trueAwayScore,
+      status,
+    },
+    projectedHome: flip ? trueProjectedAway : trueProjectedHome,
+    projectedAway: flip ? trueProjectedHome : trueProjectedAway,
+    homeGamesLeft: flip ? trueAwayGamesLeft : trueHomeGamesLeft,
+    awayGamesLeft: flip ? trueHomeGamesLeft : trueAwayGamesLeft,
+    live: {
+      ...summary,
+      homeScore: trueHomeScore,
+      awayScore: trueAwayScore,
+      status,
+      projectedHome: trueProjectedHome,
+      projectedAway: trueProjectedAway,
+    },
+  }
 }
 
 function emptyPlayer(slot: StarterSlot): MatchupPlayer {
@@ -271,17 +340,14 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   }, [week, userMatchup.id, setSelectedMatchupId])
 
   const matchupIndex = Math.max(0, weekSchedule.findIndex((matchup) => matchup.id === selectedMatchupId))
-  const summary = weekSchedule[matchupIndex] ?? userMatchup
-  const isUserMatchup = summary.homeTeam === teamName || summary.awayTeam === teamName
-  // The user's own team is always shown on the left, even when scheduled as the away team.
-  const flip = summary.awayTeam === teamName
-  const trueHomeRoster = useMemo(() => applyWeekLineup(summary.homeTeam, getTeamRoster(summary.homeTeam, roster, players), players ?? [], weekLineup?.assignments ?? null, weekLineup != null), [summary.homeTeam, roster, players, weekLineup])
-  const trueAwayRoster = useMemo(() => applyWeekLineup(summary.awayTeam, getTeamRoster(summary.awayTeam, roster, players), players ?? [], weekLineup?.assignments ?? null, weekLineup != null), [summary.awayTeam, roster, players, weekLineup])
-  const homeRoster = flip ? trueAwayRoster : trueHomeRoster
-  const awayRoster = flip ? trueHomeRoster : trueAwayRoster
-  const display = useMemo(() => flip
-    ? { ...summary, homeTeam: summary.awayTeam, homeOwner: summary.awayOwner, homeRecord: summary.awayRecord, homeScore: summary.awayScore, awayTeam: summary.homeTeam, awayOwner: summary.homeOwner, awayRecord: summary.homeRecord, awayScore: summary.homeScore }
-    : summary, [flip, summary])
+  const cards = useMemo(
+    () => weekSchedule.map((summary) => buildMatchupCard(summary, teamName, roster, players, week, weekLineup, matchupResults)),
+    [matchupResults, players, roster, teamName, week, weekLineup, weekSchedule],
+  )
+  const card = cards[matchupIndex] ?? cards[0]
+  const homeRoster = card?.homeRoster ?? []
+  const awayRoster = card?.awayRoster ?? []
+  const isUserMatchup = card?.isUserMatchup ?? false
 
   const rows = useMemo(() => STARTER_SLOTS.flatMap((slot) => {
     const homePlayers = homeRoster.filter((player) => player.slot === slot)
@@ -293,39 +359,22 @@ export const MatchupPanel = React.memo(function MatchupPanel({
       homeSource: homePlayers[index] as Player | undefined,
       awaySource: awayPlayers[index] as Player | undefined,
     }))
-  }), [homeRoster, awayRoster, slotCapacities])
-
-  const finalResult = matchupResults.find((result) => result.week === week && result.isFinal && result.homeTeam === summary.homeTeam && result.awayTeam === summary.awayTeam)
-  const totals = useMemo(() => {
-    const starters = (list: Player[]) => list.filter((player) => isStarterSlot(player.slot))
-    const expected = (list: Player[]) => starters(list).reduce((sum, player) => sum + (getWeekProjectedPoints(player, week) ?? 0), 0)
-    const actual = (list: Player[]) => starters(list).reduce((sum, player) => sum + getWeekActualPoints(player, week), 0)
-    const gamesLeft = (list: Player[]) => starters(list).filter((player) => player.gameState !== "Final").length
-    return {
-      projectedHome: expected(trueHomeRoster),
-      projectedAway: expected(trueAwayRoster),
-      homeScore: finalResult ? finalResult.homeScore : actual(trueHomeRoster),
-      awayScore: finalResult ? finalResult.awayScore : actual(trueAwayRoster),
-      homeGamesLeft: gamesLeft(trueHomeRoster),
-      awayGamesLeft: gamesLeft(trueAwayRoster),
-    }
-  }, [trueHomeRoster, trueAwayRoster, week, finalResult])
-
-  // True home/away orientation, consumed by the league feed.
-  const liveSummary = useMemo(() => ({ ...summary, homeScore: totals.homeScore, awayScore: totals.awayScore, ...(finalResult ? { status: "Final" } : {}) }), [summary, totals.homeScore, totals.awayScore, finalResult])
-  // Left/right orientation (user's team on the left), consumed by the banner.
-  const bannerSummary = useMemo(() => ({ ...display, homeScore: flip ? totals.awayScore : totals.homeScore, awayScore: flip ? totals.homeScore : totals.awayScore, ...(finalResult ? { status: "Final" } : {}) }), [display, flip, totals.homeScore, totals.awayScore, finalResult])
+  }), [awayRoster, homeRoster, slotCapacities])
 
   useEffect(() => {
-    onLiveSummary?.({ ...liveSummary, projectedHome: totals.projectedHome, projectedAway: totals.projectedAway })
-  }, [liveSummary, totals.projectedHome, totals.projectedAway, onLiveSummary])
+    if (!card) return
+    onLiveSummary?.(card.live)
+  }, [card, onLiveSummary])
 
-  const selectMatchup = (index: number) => setSelectedMatchupId(weekSchedule[index].id)
+  const selectMatchup = useCallback((index: number) => {
+    const matchup = weekSchedule[index]
+    if (matchup) setSelectedMatchupId(matchup.id)
+  }, [setSelectedMatchupId, weekSchedule])
   const previousMatchup = () => selectMatchup((matchupIndex === 0 ? weekSchedule.length : matchupIndex) - 1)
   const nextMatchup = () => selectMatchup((matchupIndex + 1) % weekSchedule.length)
 
   const selectHome = useCallback((player: Player) => onSelectPlayer?.(player), [onSelectPlayer])
-  const selectAway = useCallback((player: Player) => onSelectPlayer?.({ ...player, ownerName: display.awayTeam }), [onSelectPlayer, display.awayTeam])
+  const selectAway = useCallback((player: Player) => onSelectPlayer?.({ ...player, ownerName: card?.banner.awayTeam }), [card?.banner.awayTeam, onSelectPlayer])
   const startEdit = useCallback((player: Player) => {
     if (!isUserMatchup) return
     if (onEditSlot) onEditSlot(player)
@@ -333,10 +382,22 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   }, [isUserMatchup, onEditSlot])
   const noopEdit = useCallback(() => undefined, [])
 
+  if (!card) return null
+
   return (
-    <SwipeSurface zone="matchup" onSwipeLeft={nextMatchup} onSwipeRight={previousMatchup} className="flex flex-col gap-3 pb-16">
-      <MatchupBanner summary={bannerSummary} projectedHome={flip ? totals.projectedAway : totals.projectedHome} projectedAway={flip ? totals.projectedHome : totals.projectedAway} week={week} homeGamesLeft={flip ? totals.awayGamesLeft : totals.homeGamesLeft} awayGamesLeft={flip ? totals.homeGamesLeft : totals.awayGamesLeft} />
-      <div data-swipe-ignore="true" className="flex items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
+    <div className="flex min-w-0 flex-col gap-3 pb-16">
+      <SwipePager zone="matchup" activeIndex={matchupIndex} itemCount={weekSchedule.length} onIndexChange={selectMatchup} peekPx={14} gapPx={10} className="min-w-0 px-3">
+        {cards.map((entry, index) => (
+          <div key={entry.id} aria-hidden={index === matchupIndex ? undefined : true} className="h-full">
+            <MatchupBanner summary={entry.banner} projectedHome={entry.projectedHome} projectedAway={entry.projectedAway} week={week} homeGamesLeft={entry.homeGamesLeft} awayGamesLeft={entry.awayGamesLeft} active={index === matchupIndex} />
+          </div>
+        ))}
+      </SwipePager>
+      <div className="grid grid-cols-2 gap-3 px-3 text-[11px] font-semibold leading-snug text-[#8ba0c7]">
+        <p className="min-w-0">{getYetToPlayText(homeRoster)}</p>
+        <p className="min-w-0 text-right">{getYetToPlayText(awayRoster)}</p>
+      </div>
+      <div data-swipe-ignore="true" className="flex touch-pan-x items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
         <button type="button" onClick={previousMatchup} aria-label="Previous matchup" className="shrink-0 text-[#5e7090]"><ChevronLeft className="size-4" /></button>
         {weekSchedule.map((matchup, index) => (
           <button key={matchup.id} type="button" onClick={() => selectMatchup(index)} aria-label={`Matchup ${index + 1}: ${matchup.homeTeam} vs ${matchup.awayTeam}`} className={cn("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-black", matchup.id === selectedMatchupId ? "border-[#19ffff] bg-[#19ffff]/10 text-[#19ffff]" : "border-[#172338] bg-[#0d1424] text-[#5e7090]")}>
@@ -360,7 +421,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
             </button>
           </SwipeSurface>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{display.homeTeam}</span><span className="min-w-0 truncate text-right">{display.awayTeam}</span></div>
+        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{card.banner.homeTeam}</span><span className="min-w-0 truncate text-right">{card.banner.awayTeam}</span></div>
         {rows.map((row, index) => (
           <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_34px_44px_minmax(0,1fr)] items-center border-b border-[#111929] bg-[#0d1424] px-2 py-2 last:border-0 hover:bg-[#101a2e]">
             <div className="min-w-0 text-right">
@@ -391,9 +452,9 @@ export const MatchupPanel = React.memo(function MatchupPanel({
           </div>
         ))}
       </section>
-      <Reserves homeRoster={homeRoster} awayRoster={awayRoster} teamName={display.homeTeam} opponentName={display.awayTeam} onEdit={isUserMatchup ? startEdit : noopEdit} onSelectHome={selectHome} onSelectAway={selectAway} />
+      <Reserves homeRoster={homeRoster} awayRoster={awayRoster} teamName={card.banner.homeTeam} opponentName={card.banner.awayTeam} onEdit={isUserMatchup ? startEdit : noopEdit} onSelectHome={selectHome} onSelectAway={selectAway} />
 
       <LineupSlotDialog player={editingPlayer} roster={roster} capacities={slotCapacities} open={editingPlayer !== null} onOpenChange={(open) => !open && setEditingPlayer(null)} onMove={(playerId, destSlot) => { onMove(playerId, destSlot); setEditingPlayer(null) }} />
-    </SwipeSurface>
+    </div>
   )
 })

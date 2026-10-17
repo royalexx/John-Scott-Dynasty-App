@@ -69,7 +69,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { TradeBuilderDialog, type TradeAsset, type TradeProposal, type TradeTeam } from "@/components/hockey/trade-builder-dialog"
 import { LeagueFeed } from "@/components/hockey/league-feed"
 import { PlayerItem, slotBadgeColors } from "@/components/hockey/player-item"
-import { SwipeRow, SwipeSurface } from "@/components/hockey/swipe-gestures"
+import { motion, useMotionValue, useTransform } from "motion/react"
+import { SwipePager, SwipeSurface } from "@/components/hockey/swipe-gestures"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { TeamHeader } from "@/components/hockey/team-header"
 import { LineupAlerts } from "@/components/hockey/lineup-alerts"
@@ -694,24 +695,12 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const onInitiateTradeStable = useStableCallback((player: PlayerDialogTarget) => handleInitiateTradeWithPlayer(player))
   const onOpenTradeBuilderStable = useStableCallback(() => { setCounterTrade(null); setPrefilledTrade(null); setTradeBuilderOpen(true) })
   const mainTabs: MainTab[] = ["MATCH", "TEAM", "PLAYERS", "LEAGUE"]
-  const shiftTab = (step: number) => {
-    const next = mainTabs.indexOf(activeTab) + step
-    if (next >= 0 && next < mainTabs.length) setActiveTab(mainTabs[next])
-  }
+  const activeTabIndex = mainTabs.indexOf(activeTab)
+  const tabProgress = useMotionValue(activeTabIndex)
+  const underlineX = useTransform(tabProgress, (value) => `${value * 100}%`)
   const shiftWeek = (step: number) => setWeek((current) => Math.max(1, current + step))
   const renderRosterRow = (player: Player) => (
-    <SwipeRow
-      key={player.id}
-      rightLabel={player.slot === "BN" || player.slot === "TAXI" || player.slot === "IR" ? "Start" : "Bench"}
-      leftLabel="Block"
-      onSwipeRight={() => {
-        if (player.slot === "BN" || player.slot === "TAXI" || player.slot === "IR") onEditRosterSlot(player, player.slot)
-        else onMoveStable(player.id, "BN")
-      }}
-      onSwipeLeft={() => toggleTradeBlock({ ...player, owned: true, playerId: player.id })}
-    >
-      <PlayerItem player={player} fallbackSlot={player.slot} onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
-    </SwipeRow>
+    <PlayerItem key={player.id} player={player} fallbackSlot={player.slot} onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
   )
 
   return (
@@ -729,31 +718,50 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         </header>
 
         {/* 4 Core Tabs */}
-        <nav className="flex border-b border-[#141d2f] bg-[#070a12] px-3">
-          {(["MATCH", "TEAM", "PLAYERS", "LEAGUE"] as MainTab[]).map((tab) => {
-            const active = activeTab === tab
-            return (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "relative flex-1 py-2.5 text-center text-xs font-black tracking-widest transition-colors",
-                  active ? "text-[#19ffff]" : "text-[#5e7090] hover:text-zinc-300"
-                )}
-              >
-                {tab}
-                {active && <span className="absolute inset-x-2 bottom-0 h-[3px] rounded-full bg-[#19ffff] shadow-[0_0_8px_#19ffff]" />}
-              </button>
-            )
-          })}
+        <nav className="border-b border-[#141d2f] bg-[#070a12]">
+          <div className="relative mx-3 flex">
+            {mainTabs.map((tab) => {
+              const active = activeTab === tab
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    "relative flex-1 py-2.5 text-center text-xs font-black tracking-widest transition-colors",
+                    active ? "text-[#19ffff]" : "text-[#5e7090] hover:text-zinc-300"
+                  )}
+                >
+                  {tab}
+                </button>
+              )
+            })}
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-1/4 rounded-full bg-[#19ffff] shadow-[0_0_8px_#19ffff]"
+              style={{ x: underlineX }}
+            />
+          </div>
         </nav>
 
         {/* Dynamic Body */}
-        <SwipeSurface zone="tab" onSwipeLeft={() => shiftTab(1)} onSwipeRight={() => shiftTab(-1)} className={cn("relative z-0 min-h-0 flex flex-1 flex-col pointer-events-auto", activeTab === "LEAGUE" ? "overflow-hidden" : "overflow-y-auto")}>
-          {activeTab === "MATCH" && <MatchupPanel matchupResults={initialData.matchupResults} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />}
+        <SwipePager
+          zone="tab"
+          fill
+          activeIndex={activeTabIndex}
+          itemCount={mainTabs.length}
+          onIndexChange={(index) => {
+            const next = mainTabs[index]
+            if (next) setActiveTab(next)
+          }}
+          onProgressChange={tabProgress}
+          className="relative z-0 min-h-0 min-w-0 flex-1 pointer-events-auto"
+        >
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "MATCH"} inert={activeTab !== "MATCH"}>
+            <MatchupPanel matchupResults={initialData.matchupResults} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
+          </div>
 
-          {activeTab === "TEAM" && (
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
             <div className="flex flex-col pb-16">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
@@ -820,8 +828,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 <span className="text-xs text-amber-400 font-bold">&lt; {initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES} NHL GP</span>
               </div>
               {taxi.map((player) => (
-                <SwipeRow key={player.id} rightLabel="Start" leftLabel="Block" onSwipeRight={() => onEditRosterSlot(player, "TAXI")} onSwipeLeft={() => toggleTradeBlock({ ...player, owned: true, playerId: player.id })}>
-                <div className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", (player.nhlGamesPlayed == null || player.nhlGamesPlayed >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
+                <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", (player.nhlGamesPlayed == null || player.nhlGamesPlayed >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
                   <div className="flex items-center gap-2.5">
                     <button type="button" onClick={() => setEditingPlayer(player)} className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.TAXI)}>
                       TX
@@ -837,7 +844,6 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   </div>
                   <span className="text-xs font-black text-white tabular-nums">0.00</span>
                 </div>
-                </SwipeRow>
               ))}
 
               {/* Future Draft Picks */}
@@ -854,11 +860,15 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 <span className="text-xs font-black tracking-widest uppercase">sleeper</span>
               </div>
             </div>
-          )}
+          </div>
 
-          {activeTab === "PLAYERS" && <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />}
-          {activeTab === "LEAGUE" && <LeagueFeed matchupResults={initialData.matchupResults} week={week} teamName={teamName} teamLogo={teamLogo} isCommissioner={initialData.isCommissioner} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />}
-        </SwipeSurface>
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
+            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />
+          </div>
+          <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
+            <LeagueFeed matchupResults={initialData.matchupResults} week={week} teamName={teamName} teamLogo={teamLogo} isCommissioner={initialData.isCommissioner} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />
+          </div>
+        </SwipePager>
 
         <div className="absolute inset-x-3 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
           <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">

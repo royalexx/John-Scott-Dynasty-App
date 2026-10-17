@@ -1,10 +1,15 @@
 "use client"
 
-import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
-import { animate, motion, useMotionValue } from "motion/react"
+import { Children, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react"
+import { animate, motion, useMotionValue, type MotionValue } from "motion/react"
 import { springs, type SpringName } from "@/lib/springs"
+import { cn } from "@/lib/utils"
 
 type Direction = "left" | "right"
+type Axis = "horizontal" | "vertical"
+type ProgressInput = ((continuousIndex: number) => void) | MotionValue<number>
+
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
 
 function prefersReducedMotion() {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -16,6 +21,27 @@ function nestedClaim(target: EventTarget | null, zone: string) {
   const claim = element.closest("[data-swipe]")
   if (claim && claim.getAttribute("data-swipe") !== zone) return true
   return Boolean(element.closest("[data-swipe-ignore], input, textarea, select"))
+}
+
+function publishProgress(target: ProgressInput | undefined, progress: number) {
+  if (!target || !Number.isFinite(progress)) return
+  if (typeof target === "function") target(progress)
+  else target.set(progress)
+}
+
+function paneWidthFor(width: number, peekPx: number, gapPx: number) {
+  if (width <= 0) return 0
+  if (peekPx > 0) return Math.max(1, width - peekPx - gapPx)
+  return width
+}
+
+type DragState = {
+  x: number
+  y: number
+  startTrackX: number
+  time: number
+  locked: Axis | null
+  pointerId: number
 }
 
 /** Horizontal swipe that springs back. Vertical movement keeps normal scrolling. */
@@ -99,6 +125,262 @@ export function SwipeSurface({
     <motion.div data-swipe={zone} className={className} style={{ x: swipe.x, touchAction: "pan-y" }} {...swipe.handlers}>
       {children}
     </motion.div>
+  )
+}
+
+/**
+ * 1:1 horizontal pager. The track follows the finger, then snaps by distance or velocity.
+ * `fill` stretches the track to the pager height (main tabs). Matchup cards stay content-sized
+ * and use `peekPx` / `gapPx` so the next card stays in view.
+ */
+export function SwipePager({
+  zone,
+  activeIndex,
+  itemCount,
+  onIndexChange,
+  onProgressChange,
+  loop = false,
+  peekPx = 0,
+  gapPx = 0,
+  fill = false,
+  className,
+  children,
+}: {
+  zone: string
+  activeIndex: number
+  itemCount: number
+  onIndexChange: (nextIndex: number) => void
+  onProgressChange?: ProgressInput
+  loop?: boolean
+  peekPx?: number
+  gapPx?: number
+  fill?: boolean
+  className?: string
+  children: ReactNode
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const childArray = Children.toArray(children)
+  const pageCount = itemCount > 0 ? Math.min(itemCount, childArray.length) : childArray.length
+  const safeIndex = pageCount <= 0 ? 0 : Math.min(Math.max(activeIndex, 0), pageCount - 1)
+  const [width, setWidth] = useState(0)
+  const paneWidth = paneWidthFor(width, peekPx, gapPx)
+  const stride = paneWidth > 0 ? paneWidth + gapPx : 0
+  // Percentage offset is correct before the container is measured, including server HTML.
+  const x = useMotionValue<number | string>(stride > 0 ? -safeIndex * stride : `${-safeIndex * 100}%`)
+  const drag = useRef<DragState | null>(null)
+  const dragDistance = useRef(0)
+  const controls = useRef<{ stop: () => void } | null>(null)
+  const animatingTo = useRef<number | null>(null)
+  const lastWidth = useRef(0)
+  const widthRef = useRef(0)
+  const strideRef = useRef(0)
+  const activeIndexRef = useRef(0)
+  const itemCountRef = useRef(itemCount)
+  const loopRef = useRef(loop)
+  const onIndexChangeRef = useRef(onIndexChange)
+  const onProgressRef = useRef(onProgressChange)
+
+  widthRef.current = width
+  strideRef.current = stride
+  activeIndexRef.current = safeIndex
+  itemCountRef.current = pageCount
+  loopRef.current = loop
+  onIndexChangeRef.current = onIndexChange
+  onProgressRef.current = onProgressChange
+
+  const animateToRef = useRef<(index: number, immediate?: boolean) => void>(() => {})
+  animateToRef.current = (index: number, immediate = false) => {
+    const currentStride = strideRef.current
+    const count = itemCountRef.current
+    if (currentStride <= 0 || count <= 0) return
+    const safe = Math.min(Math.max(index, 0), count - 1)
+    const target = -safe * currentStride
+    controls.current?.stop()
+    animatingTo.current = safe
+    if (immediate || prefersReducedMotion()) {
+      x.set(target)
+      return
+    }
+    controls.current = animate(x, target, springs.snappy)
+  }
+
+  useIsoLayoutEffect(() => {
+    const element = containerRef.current
+    if (!element) return
+    const measure = () => {
+      const style = getComputedStyle(element)
+      const pad = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+      const next = Math.max(0, Math.round(element.clientWidth - pad))
+      if (next === widthRef.current) return
+      widthRef.current = next
+      setWidth(next)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [setWidth])
+
+  useIsoLayoutEffect(() => {
+    const emit = (latest: number | string) => {
+      const currentStride = strideRef.current
+      if (currentStride <= 0 || typeof latest !== "number") return
+      publishProgress(onProgressRef.current, -latest / currentStride)
+    }
+    emit(x.get())
+    return x.on("change", emit)
+  }, [x])
+
+  useIsoLayoutEffect(() => {
+    if (stride <= 0) {
+      x.set(`${-safeIndex * 100}%`)
+      return
+    }
+    const widthChanged = width !== lastWidth.current
+    lastWidth.current = width
+    if (drag.current?.locked === "horizontal") return
+    if (!widthChanged && animatingTo.current === safeIndex) return
+    const current = x.get()
+    animateToRef.current(safeIndex, widthChanged || typeof current !== "number" || !Number.isFinite(current))
+  }, [safeIndex, width, stride, gapPx, peekPx, x])
+
+  const detachDrag = useRef<(() => void) | null>(null)
+  const stopTracking = () => {
+    detachDrag.current?.()
+    detachDrag.current = null
+  }
+  useEffect(() => () => {
+    controls.current?.stop()
+    stopTracking()
+  }, [])
+
+  const finishDrag = (event: PointerEvent, cancel: boolean) => {
+    const origin = drag.current
+    if (!origin || origin.pointerId !== event.pointerId) return
+    drag.current = null
+    stopTracking()
+    const node = containerRef.current
+    if (node?.hasPointerCapture?.(origin.pointerId)) {
+      try {
+        node.releasePointerCapture(origin.pointerId)
+      } catch {
+        // The pointer can already be gone on cancel.
+      }
+    }
+    if (cancel || origin.locked !== "horizontal") {
+      dragDistance.current = 0
+      if (origin.locked === "horizontal") animateToRef.current(activeIndexRef.current)
+      return
+    }
+    const dx = event.clientX - origin.x
+    dragDistance.current = dx
+    const elapsed = Math.max((performance.now() - origin.time) / 1000, 0.016)
+    const vx = dx / elapsed
+    const currentStride = strideRef.current
+    let next = activeIndexRef.current
+    if (currentStride > 0 && (dx < -currentStride * 0.22 || vx < -320)) next += 1
+    else if (currentStride > 0 && (dx > currentStride * 0.22 || vx > 320)) next -= 1
+    const count = itemCountRef.current
+    if (count <= 0) return
+    if (loopRef.current) next = ((next % count) + count) % count
+    else next = Math.max(0, Math.min(count - 1, next))
+    animateToRef.current(next)
+    if (next !== activeIndexRef.current) onIndexChangeRef.current(next)
+  }
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    dragDistance.current = 0
+    if (nestedClaim(event.target, zone)) return
+    const trackX = x.get()
+    if (typeof trackX !== "number" || strideRef.current <= 0) return
+    // Track on the window so a fast drag that leaves the card is not dropped
+    // before the axis locks. Capture only once the gesture is horizontal.
+    controls.current?.stop()
+    stopTracking()
+    const pointerId = event.pointerId
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      startTrackX: trackX,
+      time: performance.now(),
+      locked: null,
+      pointerId,
+    }
+    const onMove = (move: PointerEvent) => {
+      const origin = drag.current
+      if (!origin || origin.pointerId !== move.pointerId || origin.locked === "vertical") return
+      const dx = move.clientX - origin.x
+      const dy = move.clientY - origin.y
+      if (origin.locked !== "horizontal") {
+        if (Math.hypot(dx, dy) <= 8) return
+        if (Math.abs(dy) > Math.abs(dx)) {
+          origin.locked = "vertical"
+          return
+        }
+        if (Math.abs(dx) <= Math.abs(dy)) return
+        origin.locked = "horizontal"
+        try {
+          containerRef.current?.setPointerCapture(origin.pointerId)
+        } catch {
+          // Window listeners still receive the gesture if capture is unavailable.
+        }
+      }
+      dragDistance.current = dx
+      const currentStride = strideRef.current
+      let next = origin.startTrackX + dx
+      if (!loopRef.current && currentStride > 0) {
+        const max = 0
+        const min = -(itemCountRef.current - 1) * currentStride
+        if (next > max) next = max + (next - max) * 0.25
+        else if (next < min) next = min + (next - min) * 0.25
+      }
+      x.set(next)
+      move.preventDefault()
+    }
+    const onUp = (up: PointerEvent) => finishDrag(up, up.type === "pointercancel")
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    detachDrag.current = () => {
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+    }
+  }
+
+  const onClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (Math.abs(dragDistance.current) <= 10) return
+    event.preventDefault()
+    event.stopPropagation()
+    dragDistance.current = 0
+  }
+
+  const renderOrder = pageCount > 0 ? [safeIndex, ...childArray.map((_, index) => index).filter((index) => index !== safeIndex)] : []
+
+  return (
+    <div
+      ref={containerRef}
+      data-swipe={zone}
+      className={cn("relative min-w-0 overflow-hidden", fill && "flex min-h-0 flex-1 flex-col", className)}
+      style={{ touchAction: "pan-y" }}
+      onPointerDown={onPointerDown}
+      onClickCapture={onClickCapture}
+    >
+      <motion.div className={cn("flex w-full min-w-0", fill && "h-full min-h-0 flex-1")} style={{ x, gap: gapPx }}>
+        {renderOrder.map((index) => (
+          <div
+            key={index}
+            aria-hidden={index === safeIndex ? undefined : true}
+            inert={fill && index !== safeIndex ? true : undefined}
+            className={cn("min-w-0 overflow-hidden", fill && "h-full min-h-0")}
+            style={{ order: index, width: paneWidth > 0 ? paneWidth : "100%", flex: "0 0 auto" }}
+          >
+            {childArray[index]}
+          </div>
+        ))}
+      </motion.div>
+    </div>
   )
 }
 
