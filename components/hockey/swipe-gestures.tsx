@@ -159,8 +159,14 @@ export function SwipePager({
   children: ReactNode
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const childArray = Children.toArray(children)
+  const pageCount = itemCount > 0 ? Math.min(itemCount, childArray.length) : childArray.length
+  const safeIndex = pageCount <= 0 ? 0 : Math.min(Math.max(activeIndex, 0), pageCount - 1)
   const [width, setWidth] = useState(0)
-  const x = useMotionValue(0)
+  const paneWidth = paneWidthFor(width, peekPx, gapPx)
+  const stride = paneWidth > 0 ? paneWidth + gapPx : 0
+  // Percentage offset is correct before the container is measured, including server HTML.
+  const x = useMotionValue<number | string>(stride > 0 ? -safeIndex * stride : `${-safeIndex * 100}%`)
   const drag = useRef<DragState | null>(null)
   const dragDistance = useRef(0)
   const controls = useRef<{ stop: () => void } | null>(null)
@@ -173,12 +179,6 @@ export function SwipePager({
   const loopRef = useRef(loop)
   const onIndexChangeRef = useRef(onIndexChange)
   const onProgressRef = useRef(onProgressChange)
-
-  const childArray = Children.toArray(children)
-  const pageCount = itemCount > 0 ? Math.min(itemCount, childArray.length) : childArray.length
-  const paneWidth = paneWidthFor(width, peekPx, gapPx)
-  const stride = paneWidth > 0 ? paneWidth + gapPx : 0
-  const safeIndex = pageCount <= 0 ? 0 : Math.min(Math.max(activeIndex, 0), pageCount - 1)
 
   widthRef.current = width
   strideRef.current = stride
@@ -222,9 +222,9 @@ export function SwipePager({
   }, [setWidth])
 
   useIsoLayoutEffect(() => {
-    const emit = (latest: number) => {
+    const emit = (latest: number | string) => {
       const currentStride = strideRef.current
-      if (currentStride <= 0) return
+      if (currentStride <= 0 || typeof latest !== "number") return
       publishProgress(onProgressRef.current, -latest / currentStride)
     }
     emit(x.get())
@@ -232,79 +232,37 @@ export function SwipePager({
   }, [x])
 
   useIsoLayoutEffect(() => {
-    if (stride <= 0) return
+    if (stride <= 0) {
+      x.set(`${-safeIndex * 100}%`)
+      return
+    }
     const widthChanged = width !== lastWidth.current
     lastWidth.current = width
     if (drag.current?.locked === "horizontal") return
     if (!widthChanged && animatingTo.current === safeIndex) return
-    animateToRef.current(safeIndex, widthChanged || !Number.isFinite(x.get()))
+    const current = x.get()
+    animateToRef.current(safeIndex, widthChanged || typeof current !== "number" || !Number.isFinite(current))
   }, [safeIndex, width, stride, gapPx, peekPx, x])
 
-  useEffect(() => () => controls.current?.stop(), [])
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
-    dragDistance.current = 0
-    if (nestedClaim(event.target, zone)) return
-    // A press that ends outside the element never delivers pointerup. Replace
-    // that stale gesture so the next one is not ignored.
+  const detachDrag = useRef<(() => void) | null>(null)
+  const stopTracking = () => {
+    detachDrag.current?.()
+    detachDrag.current = null
+  }
+  useEffect(() => () => {
     controls.current?.stop()
-    drag.current = {
-      x: event.clientX,
-      y: event.clientY,
-      startTrackX: x.get(),
-      time: performance.now(),
-      locked: null,
-      pointerId: event.pointerId,
-    }
-  }
+    stopTracking()
+  }, [])
 
-  const onPointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const origin = drag.current
-    if (!origin || origin.pointerId !== event.pointerId || origin.locked === "horizontal") return
-    drag.current = null
-  }
-
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const origin = drag.current
-    if (!origin || origin.pointerId !== event.pointerId || origin.locked === "vertical") return
-    const dx = event.clientX - origin.x
-    const dy = event.clientY - origin.y
-    if (origin.locked !== "horizontal") {
-      if (Math.hypot(dx, dy) <= 8) return
-      if (Math.abs(dy) > Math.abs(dx)) {
-        origin.locked = "vertical"
-        return
-      }
-      if (Math.abs(dx) <= Math.abs(dy)) return
-      origin.locked = "horizontal"
-      try {
-        event.currentTarget.setPointerCapture(origin.pointerId)
-      } catch {
-        origin.locked = "vertical"
-        return
-      }
-    }
-    dragDistance.current = dx
-    const currentStride = strideRef.current
-    let next = origin.startTrackX + dx
-    if (!loopRef.current && currentStride > 0) {
-      const max = 0
-      const min = -(itemCountRef.current - 1) * currentStride
-      if (next > max) next = max + (next - max) * 0.25
-      else if (next < min) next = min + (next - min) * 0.25
-    }
-    x.set(next)
-    event.preventDefault()
-  }
-
-  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>, cancel: boolean) => {
+  const finishDrag = (event: PointerEvent, cancel: boolean) => {
     const origin = drag.current
     if (!origin || origin.pointerId !== event.pointerId) return
     drag.current = null
-    if (event.currentTarget.hasPointerCapture?.(origin.pointerId)) {
+    stopTracking()
+    const node = containerRef.current
+    if (node?.hasPointerCapture?.(origin.pointerId)) {
       try {
-        event.currentTarget.releasePointerCapture(origin.pointerId)
+        node.releasePointerCapture(origin.pointerId)
       } catch {
         // The pointer can already be gone on cancel.
       }
@@ -330,6 +288,67 @@ export function SwipePager({
     if (next !== activeIndexRef.current) onIndexChangeRef.current(next)
   }
 
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return
+    dragDistance.current = 0
+    if (nestedClaim(event.target, zone)) return
+    const trackX = x.get()
+    if (typeof trackX !== "number" || strideRef.current <= 0) return
+    // Track on the window so a fast drag that leaves the card is not dropped
+    // before the axis locks. Capture only once the gesture is horizontal.
+    controls.current?.stop()
+    stopTracking()
+    const pointerId = event.pointerId
+    drag.current = {
+      x: event.clientX,
+      y: event.clientY,
+      startTrackX: trackX,
+      time: performance.now(),
+      locked: null,
+      pointerId,
+    }
+    const onMove = (move: PointerEvent) => {
+      const origin = drag.current
+      if (!origin || origin.pointerId !== move.pointerId || origin.locked === "vertical") return
+      const dx = move.clientX - origin.x
+      const dy = move.clientY - origin.y
+      if (origin.locked !== "horizontal") {
+        if (Math.hypot(dx, dy) <= 8) return
+        if (Math.abs(dy) > Math.abs(dx)) {
+          origin.locked = "vertical"
+          return
+        }
+        if (Math.abs(dx) <= Math.abs(dy)) return
+        origin.locked = "horizontal"
+        try {
+          containerRef.current?.setPointerCapture(origin.pointerId)
+        } catch {
+          // Window listeners still receive the gesture if capture is unavailable.
+        }
+      }
+      dragDistance.current = dx
+      const currentStride = strideRef.current
+      let next = origin.startTrackX + dx
+      if (!loopRef.current && currentStride > 0) {
+        const max = 0
+        const min = -(itemCountRef.current - 1) * currentStride
+        if (next > max) next = max + (next - max) * 0.25
+        else if (next < min) next = min + (next - min) * 0.25
+      }
+      x.set(next)
+      move.preventDefault()
+    }
+    const onUp = (up: PointerEvent) => finishDrag(up, up.type === "pointercancel")
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onUp)
+    detachDrag.current = () => {
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onUp)
+    }
+  }
+
   const onClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
     if (Math.abs(dragDistance.current) <= 10) return
     event.preventDefault()
@@ -346,10 +365,6 @@ export function SwipePager({
       className={cn("relative min-w-0 overflow-hidden", fill && "flex min-h-0 flex-1 flex-col", className)}
       style={{ touchAction: "pan-y" }}
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(event) => finishDrag(event, false)}
-      onPointerCancel={(event) => finishDrag(event, true)}
-      onPointerLeave={onPointerLeave}
       onClickCapture={onClickCapture}
     >
       <motion.div className={cn("flex w-full min-w-0", fill && "h-full min-h-0 flex-1")} style={{ x, gap: gapPx }}>
