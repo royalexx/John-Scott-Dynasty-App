@@ -156,9 +156,10 @@ export function SwipeRow({
 
   return (
     <div data-swipe="row" className="relative overflow-hidden" onPointerUp={(event) => { if (moved.current) event.stopPropagation() }}>
-      <div className="pointer-events-none absolute inset-y-0 left-0 flex w-24 items-center bg-[#19ffff] pl-3 text-xs font-black uppercase text-[#080c14]">{rightLabel}</div>
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-24 items-center justify-end bg-[#ff2a85] pr-3 text-xs font-black uppercase text-white">{leftLabel}</div>
-      <motion.div className="bg-[#070a12]" style={{ x, touchAction: "pan-y" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { start.current = null; animate(x, 0, springs.gentle) }}>
+      <div className="pointer-events-none absolute inset-y-0 left-0 z-0 flex w-24 items-center bg-[#19ffff] pl-3 text-xs font-black uppercase text-[#080c14]">{rightLabel}</div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-0 flex w-24 items-center justify-end bg-[#ff2a85] pr-3 text-xs font-black uppercase text-white">{leftLabel}</div>
+      {/* Absolute rails paint above an in-flow row. Keep the lineup positioned so Bench/Block stay hidden until the swipe. */}
+      <motion.div className="relative z-10 w-full bg-[#070a12]" style={{ x, touchAction: "pan-y" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { start.current = null; animate(x, 0, springs.gentle) }}>
         {children}
       </motion.div>
     </div>
