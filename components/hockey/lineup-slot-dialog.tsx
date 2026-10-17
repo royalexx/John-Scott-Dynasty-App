@@ -4,6 +4,7 @@ import { Shield, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { DEFAULT_SLOT_CAPACITIES, TAXI_MAX_NHL_GAMES, type Player, type StarterSlot } from "@/lib/hockey-data"
+import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type StartingSlot = StarterSlot
@@ -33,8 +34,8 @@ function isTaxiEligible(player: Player): boolean {
   return !isInjured(player) && player.nhlGamesPlayed != null && player.nhlGamesPlayed < TAXI_MAX_NHL_GAMES
 }
 
-function eligibleTargets(player: Player | null, roster: Player[], capacities: Record<StartingSlot, number>, emptySlot?: StartingSlot, irSlots = 1) {
-  const slots: Array<{ slot: Player["slot"]; label: string; target?: Player }> = []
+function eligibleTargets(player: Player | null, roster: Player[], capacities: Record<StartingSlot, number>, emptySlot?: StartingSlot, irSlots = 1, benchCapacity = DEFAULT_BENCH_CAPACITY): Array<{ slot: Player["slot"]; label: string; target?: Player; detail?: string }> {
+  const slots: Array<{ slot: Player["slot"]; label: string; target?: Player; detail?: string }> = []
   if (emptySlot) {
     return roster
       .filter((candidate) => candidate.slot === "BN" && eligibleStartingSlots(candidate).includes(emptySlot))
@@ -45,7 +46,12 @@ function eligibleTargets(player: Player | null, roster: Player[], capacities: Re
     if (player.status === "IR" && player.slot !== "IR") {
       const irOccupants = roster.filter((candidate) => candidate.slot === "IR" && candidate.id !== player.id)
       if (irOccupants.length < irSlots) slots.push({ slot: "IR", label: "Injured Reserve" })
-      else irOccupants.forEach((target) => slots.push({ slot: "IR", label: "Swap IR player", target }))
+      else irOccupants.forEach((target) => {
+        const benchCount = roster.filter((candidate) => candidate.slot === "BN" && candidate.id !== player.id).length
+        const landing = displacedLandingSlot(player.slot, target.position, benchCount < benchCapacity)
+        if (!landing) return
+        slots.push({ slot: "IR", label: landing === player.slot ? "Swap IR player" : "Moves to bench", target, detail: landing === "BN" ? "Moves to the bench" : undefined })
+      })
     }
     if (player.slot !== "BN") slots.push({ slot: "BN", label: "Bench player" })
   } else if (player?.slot === "BN" || player?.slot === "TAXI" || player?.slot === "IR") {
@@ -90,6 +96,7 @@ export function LineupSlotDialog({
   teamId,
   capacities = DEFAULT_SLOT_CAPACITIES,
   irSlots = 1,
+  benchCapacity = DEFAULT_BENCH_CAPACITY,
 }: {
   player: Player | null
   emptySlot?: StartingSlot | null
@@ -100,9 +107,10 @@ export function LineupSlotDialog({
   teamId?: string
   capacities?: Record<StartingSlot, number>
   irSlots?: number
+  benchCapacity?: number
 }) {
   if (!open || (!player && !emptySlot)) return null
-  const targets = eligibleTargets(player, roster, capacities, emptySlot ?? undefined, irSlots)
+  const targets = eligibleTargets(player, roster, capacities, emptySlot ?? undefined, irSlots, benchCapacity)
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" spring="snappy" className="mx-auto max-w-[430px] rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
@@ -147,7 +155,7 @@ export function LineupSlotDialog({
               onOpenChange(false)
             }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
               <span className={cn("flex size-7 items-center justify-center rounded-md text-xs font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
-              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-xs text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
+              {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-xs text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.detail ? ` · ${option.detail}` : ""}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
             </button>
           ))}
           {!targets.length && <p className="rounded-lg border border-dashed border-[#34476a] px-3 py-5 text-center text-xs text-[#5e7090]">No eligible swap targets</p>}
