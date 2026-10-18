@@ -101,11 +101,14 @@ test.describe("audit regressions", () => {
     const after = await slotsOf(swapped)
     expect(after.get(SHESTERKIN)).toBe("IR")
     expect(after.get(BEDARD)).not.toBe("IR")
+    // Bedard is a center. Coming off IR must not drop him into Shesterkin's goalie slot.
+    if (before.get(SHESTERKIN) === "G") expect(after.get(BEDARD)).not.toBe("G")
 
     // Revert so the shared database is left exactly as it was found.
+    const restoredMover = await slotsOf(await move(SHESTERKIN, before.get(SHESTERKIN) ?? "G"))
+    expect(restoredMover.get(SHESTERKIN)).toBe(before.get(SHESTERKIN))
     const reverted = await slotsOf(await move(BEDARD, "IR"))
     expect(reverted.get(BEDARD)).toBe("IR")
-    expect(reverted.get(SHESTERKIN)).toBe(before.get(SHESTERKIN))
   })
 
   test("roster move: healthy players cannot be placed on IR", async ({ request }) => {

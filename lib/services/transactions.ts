@@ -3,6 +3,7 @@ import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
+import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
 type TransactionClient = Prisma.TransactionClient
@@ -219,12 +220,14 @@ function slotCapacity(league: { rosterPositions: Prisma.JsonValue; taxiSlots: nu
   if (slot === SlotType.TAXI) return league.taxiSlots
   if (slot === SlotType.IR) return league.irSlots
   const positions = (league.rosterPositions ?? {}) as Record<string, number>
+  if (slot === SlotType.BN) return positions.BN ?? DEFAULT_BENCH_CAPACITY
   return positions[slot] ?? 0
 }
 
 /**
- * Moves a player to `targetSlot`. If `targetPlayerId` is given (or the slot is full) the two players trade
- * places, so the mover really ends up in `targetSlot`. Every placement is validated for both players.
+ * Moves a player to `targetSlot`. If `targetPlayerId` is given (or the slot is full) the occupant
+ * is displaced. They take the vacated slot only when their position can play it; otherwise they move
+ * to the bench. A full bench blocks the swap. Every placement is validated for both players.
  */
 export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType, targetPlayerId?: number, week?: number) {
   return prisma.$transaction(async (tx) => {
@@ -250,10 +253,12 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
 
     if (swapWith) {
       if (!arrangingFutureWeek && (isSlotLocked(lock, swapWith.slot, swapWith.player.teamAbbrev) || isSlotLocked(lock, slot.slot, swapWith.player.teamAbbrev))) throw new Error("The target roster slot is locked")
-      // The displaced player takes the mover's old slot, which must also be legal for them.
-      assertSlotEligible(swapWith.player, slot.slot, league.taxiMaxGames, swapWith.player.name)
+      const benchCount = await tx.rosterSlot.count({ where: { teamId, slot: SlotType.BN, id: { notIn: [slot.id, swapWith.id] } } })
+      const landing = displacedLandingSlot(slot.slot, swapWith.player.position, benchCount < slotCapacity(league, SlotType.BN))
+      if (!landing) throw new Error(`${swapWith.player.name} (${swapWith.player.position}) cannot play ${slot.slot}, and the bench is full`)
+      assertSlotEligible(swapWith.player, landing as SlotType, league.taxiMaxGames, swapWith.player.name)
       await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })
-      await tx.rosterSlot.update({ where: { id: swapWith.id }, data: { slot: slot.slot } })
+      await tx.rosterSlot.update({ where: { id: swapWith.id }, data: { slot: landing as SlotType } })
     } else {
       await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })
     }
