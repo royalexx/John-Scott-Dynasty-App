@@ -1,44 +1,43 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getFantasyWeekDates } from "@/lib/season-calendar"
+import { getCurrentFantasyWeek, getEasternDate, getFantasyWeekDates, getFantasyWeekForDate } from "@/lib/season-calendar"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 type PlayerGameLogRecord = Record<string, string | number | null>
 
-function getWeekDates(dateInput: string | null) {
-  const base = dateInput ? new Date(`${dateInput}T12:00:00Z`) : new Date()
-  const monday = new Date(base)
-  monday.setUTCDate(base.getUTCDate() - ((base.getUTCDay() + 6) % 7))
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(monday)
-    date.setUTCDate(monday.getUTCDate() + index)
-    return date.toISOString().slice(0, 10)
-  })
-}
-
 export async function GET(request: NextRequest) {
   try {
     const requestedDate = request.nextUrl.searchParams.get("date")
     const requestedWeek = Number(request.nextUrl.searchParams.get("week"))
+    const easternToday = getEasternDate()
     const weekDates = Number.isInteger(requestedWeek) && requestedWeek > 0
       ? getFantasyWeekDates(requestedWeek).dates
-      : getWeekDates(requestedDate)
-    const today = requestedDate ?? (weekDates.includes(new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date()))
-      ? new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
-      : weekDates[0])
+      : getFantasyWeekDates(getFantasyWeekForDate(requestedDate ?? easternToday)).dates
+    const today = requestedDate ?? (weekDates.includes(easternToday) ? easternToday : weekDates[0])
+    const gameStatsInclude = { include: { player: { select: { teamAbbrev: true } } } }
     let games = await prisma.nhlGame.findMany({
       where: { gameDate: { in: weekDates } },
-      include: { gameStats: true },
+      include: { gameStats: gameStatsInclude },
       orderBy: { startTimeUTC: "asc" },
     })
-    if (requestedWeek > 0 && games.length === 0) {
-      const { syncScheduleForDate } = await import("@/lib/services/nhl-sync")
-      await syncScheduleForDate(weekDates[0])
+    const missingStats = games.length === 0 || games.some((game) =>
+      (game.gameState === "FINAL" || game.gameState === "OFF") && (
+        game.gameStats.length === 0 || game.gameStats.every((stat) => stat.shots === 0)
+      ),
+    )
+    if ((requestedWeek > 0 || weekDates.includes(easternToday)) && missingStats) {
+      const { syncScheduleForDate, syncActiveGameBoxscores, recomputeMatchupsThroughWeek } = await import("@/lib/services/nhl-sync")
+      if (games.length === 0) await syncScheduleForDate(weekDates[0])
+      await syncActiveGameBoxscores(50)
+      const leagues = await prisma.league.findMany({ select: { id: true, currentSeason: true } })
+      for (const league of leagues) {
+        await recomputeMatchupsThroughWeek(league.id, getCurrentFantasyWeek(league.currentSeason))
+      }
       games = await prisma.nhlGame.findMany({
         where: { gameDate: { in: weekDates } },
-        include: { gameStats: true },
+        include: { gameStats: gameStatsInclude },
         orderBy: { startTimeUTC: "asc" },
       })
     }
@@ -58,10 +57,19 @@ export async function GET(request: NextRequest) {
     const playerGameLogs: Record<string, PlayerGameLogRecord[]> = {}
     for (const game of games) {
       for (const stat of game.gameStats) {
+        const toi = stat.toi.trim()
+        const unplayed = (toi === "0:00" || toi === "00:00" || toi === "") && !stat.decision
+          && stat.goals + stat.assists + stat.shots + stat.hits + stat.blocks + stat.pim + Math.abs(stat.plusMinus)
+            + stat.shotsAgainst + stat.goalsAgainst + stat.saves + stat.shutouts === 0
+        if (unplayed) continue
         const logs = playerGameLogs[String(stat.playerId)] ?? []
+        const teamAbbrev = stat.player?.teamAbbrev === game.awayTeamAbbrev ? game.awayTeamAbbrev : game.homeTeamAbbrev
         logs.push({
           gameId: game.id,
           gameDate: game.gameDate,
+          teamAbbrev,
+          opponentAbbrev: teamAbbrev === game.homeTeamAbbrev ? game.awayTeamAbbrev : game.homeTeamAbbrev,
+          homeRoadFlag: teamAbbrev === game.homeTeamAbbrev ? "H" : "R",
           goals: stat.goals,
           assists: stat.assists,
           shots: stat.shots,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 
 type Standing = {
   teamName?: { default?: string }
@@ -24,12 +25,15 @@ type TeamSummary = {
 export async function GET(request: Request) {
   const team = new URL(request.url).searchParams.get("team")?.toUpperCase()
   if (!team) return NextResponse.json({ error: "Team abbreviation is required" }, { status: 400 })
+  const league = await prisma.league.findFirst({ select: { currentSeason: true }, orderBy: { createdAt: "asc" } })
+  const season = league?.currentSeason ?? 2026
+  const seasonId = `${season}${season + 1}`
   const [standingsResponse, statsResponse] = await Promise.all([
     fetch("https://api-web.nhle.com/v1/standings/now", {
       headers: { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" },
       next: { revalidate: 300 },
     }),
-    fetch("https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&start=0&limit=100&cayenneExp=seasonId=20262027", {
+    fetch(`https://api.nhle.com/stats/rest/en/team/summary?isAggregate=false&isGame=false&start=0&limit=100&cayenneExp=seasonId=${seasonId}`, {
       headers: { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" },
       next: { revalidate: 300 },
     }),
@@ -39,8 +43,9 @@ export async function GET(request: Request) {
   const statsData = await statsResponse.json() as { data?: TeamSummary[] }
   const standings = data.standings ?? []
   const teamSummary = statsData.data ?? []
+  const normalizeTeamName = (value: string | undefined) => (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
   const ranked = standings.map((entry) => {
-    const summary = teamSummary.find((candidate) => candidate.teamFullName === entry.teamName?.default)
+    const summary = teamSummary.find((candidate) => normalizeTeamName(candidate.teamFullName) === normalizeTeamName(entry.teamName?.default))
     return {
       ...entry,
       abbreviation: entry.teamAbbrev?.default ?? "",

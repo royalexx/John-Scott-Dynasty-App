@@ -5,7 +5,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { type MarketPlayer, type Player, type TradeBlockEntry, type LeagueTradeOffer } from "@/lib/hockey-data"
 import { type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
 import type { PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
-import { getProjectedFPTS, getSyncedPlayerFPTS, getSyncedPlayerStats, normalizeSearchText } from "@/lib/hockey-calculators"
+import { getPlayerStatsForHorizon, getProjectedFPTS, getSyncedPlayerFPTS, normalizeSearchText } from "@/lib/hockey-calculators"
 import { PlayersSubTabView } from "@/components/hockey/players-sub-tab-view"
 
 type PositionFilter = "ALL" | "C" | "W" | "F" | "D" | "G"
@@ -25,8 +25,8 @@ function matchesPosition(playerPos: string, filter: PositionFilter): boolean {
 }
 type HorizonMode = "stats" | "projections"
 type HockeyHorizon = "Last 7 Days" | "Last 14 Days" | "Last 30 Days" | "Season Totals" | "Season Avg / Per Game" | "This Week" | "Next 14 Days" | "Rest of Season (ROS)"
-function marketStat(player: MarketPlayer, stat: "gp" | "goals" | "assists" | "sog" | "hits" | "blocks" | "wins" | "saves" | "goalsAgainst" | "shutouts" | "savePct" | "plusMinus" | "ppp"): number {
-  const stats = getSyncedPlayerStats(player)
+function marketStat(player: MarketPlayer, stat: "gp" | "goals" | "assists" | "sog" | "hits" | "blocks" | "wins" | "saves" | "goalsAgainst" | "shutouts" | "savePct" | "plusMinus" | "ppp", horizon?: string): number {
+  const stats = getPlayerStatsForHorizon(player, horizon)
   if (stat === "gp") return stats.gp
   if (stat === "wins") return "wins" in stats ? stats.wins : 0
   if (stat === "saves") return "saves" in stats ? stats.saves : 0
@@ -69,20 +69,27 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
     // Decorate-sort-undecorate: compute the sort stat once per player instead of on every comparison.
     .map((player) => {
       const getStat = (player: MarketPlayer, sort: MarketSort) => {
-        if (sort === "FPTS") return settings.viewType === "Stats" ? getSyncedPlayerFPTS(player) : (horizon === "This Week" && player.schedule ? player.schedule.weekProjectedFantasyPoints : getProjectedFPTS(player, horizon === "Next 14 Days" ? 7 : 28))
-        if (sort === "G") return marketStat(player, "goals")
-        if (sort === "A") return marketStat(player, "assists")
-        if (sort === "PTS") return marketStat(player, "goals") + marketStat(player, "assists")
-        if (sort === "SOG") return marketStat(player, "sog")
-        if (sort === "HIT") return marketStat(player, "hits")
-        if (sort === "BLK") return marketStat(player, "blocks")
-        if (sort === "W") return marketStat(player, "wins")
-        if (sort === "SV") return marketStat(player, "saves")
-        if (sort === "SV%") return marketStat(player, "savePct")
-        if (sort === "SO") return marketStat(player, "shutouts")
+        const statsHorizon = settings.viewType === "Stats" ? horizon : undefined
+        const perGame = statsHorizon === "Season Avg / Per Game"
+        const gamesPlayed = () => Math.max(1, marketStat(player, "gp", statsHorizon))
+        const counting = (stat: "goals" | "assists" | "sog" | "hits" | "blocks" | "wins" | "saves" | "shutouts") => {
+          const value = marketStat(player, stat, statsHorizon)
+          return perGame ? value / gamesPlayed() : value
+        }
+        if (sort === "FPTS") return settings.viewType === "Stats" ? getSyncedPlayerFPTS(player, statsHorizon) : (horizon === "This Week" && player.schedule ? player.schedule.weekProjectedFantasyPoints : getProjectedFPTS(player, horizon === "Next 14 Days" ? 7 : 28))
+        if (sort === "G") return counting("goals")
+        if (sort === "A") return counting("assists")
+        if (sort === "PTS") return counting("goals") + counting("assists")
+        if (sort === "SOG") return counting("sog")
+        if (sort === "HIT") return counting("hits")
+        if (sort === "BLK") return counting("blocks")
+        if (sort === "W") return counting("wins")
+        if (sort === "SV") return counting("saves")
+        if (sort === "SV%") return marketStat(player, "savePct", statsHorizon)
+        if (sort === "SO") return counting("shutouts")
         if (sort === "GAA") {
-          const gp = marketStat(player, "gp")
-          return gp > 0 ? -(marketStat(player, "goalsAgainst") / gp) : -99
+          const gp = marketStat(player, "gp", statsHorizon)
+          return gp > 0 ? -(marketStat(player, "goalsAgainst", statsHorizon) / gp) : -99
         }
         return 0
       }
@@ -104,7 +111,7 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
       <ul>
         {players.slice(0, visibleCount).map((p) => {
           const points = settings.viewType === "Stats"
-            ? getSyncedPlayerFPTS(p)
+            ? getSyncedPlayerFPTS(p, horizon)
             : horizon === "This Week" && p.schedule ? p.schedule.weekProjectedFantasyPoints : getProjectedFPTS(p, horizon === "Next 14 Days" ? 7 : 28)
           return (
             <li key={p.nhlId ? `nhl-${p.nhlId}` : p.name} className="flex items-center gap-3 border-b border-[#172338] px-3 py-3">

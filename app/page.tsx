@@ -128,6 +128,7 @@ export default async function Page() {
         weekFantasyPoints: 0,
         weekProjectedFantasyPoints: 0,
         weekGamesPlayed: 0,
+        weekGamesScheduled: 0,
         todayFantasyPoints: null,
         isToday: false,
       }
@@ -166,7 +167,7 @@ export default async function Page() {
           waiverPriority: team.waiverPriority,
           leagueRosters,
           matchupResults: matchupRows.map((row) => ({ week: row.week, homeTeam: row.homeTeam.name, awayTeam: row.awayTeam.name, homeScore: Number(row.homeScore ?? 0), awayScore: Number(row.awayScore ?? 0), isFinal: row.isFinal })),
-          lineupLock: { mode: lockSummary.mode, locked: lockSummary.mode === "WEEKLY" ? lockSummary.weekStarted : lockSummary.startedTeams.size > 0, week: lockSummary.week, firstGameAt: lockSummary.firstGameAt, weekEndDate: lockSummary.weekEndDate },
+          lineupLock: { mode: lockSummary.mode, locked: lockSummary.locked, week: lockSummary.week, firstGameAt: lockSummary.firstGameAt, weekEndDate: lockSummary.weekEndDate },
           roster,
           standings: leagueStandings?.map((row, index) => ({
             rank: index + 1,

@@ -2,8 +2,10 @@ name: Live NHL Score Sync
 
 on:
   schedule:
-    # Runs every 5 minutes from 23:00 to 05:00 UTC (evening NHL game window)
-    - cron: '*/5 0-5,23 * * *'
+    # Every 5 minutes across matinees and the evening window, including late West Coast OT (16:00–08:59 UTC).
+    - cron: '*/5 0-8,16-23 * * *'
+    # Daily morning reconciliation for final boxscores and official NHL stat corrections (13:00 UTC).
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:

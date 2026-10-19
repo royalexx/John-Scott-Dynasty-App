@@ -1,14 +1,18 @@
 import React, { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { ArrowLeftRight, Award, Check, Search, X } from "lucide-react"
-import { weekMatchups, getTeamRoster, calculatePlayerFPTS, type GoalieStats, type MarketPlayer, type Player, type SkaterStats, type TradeBlockEntry, type LeagueTradeOffer } from "@/lib/hockey-data"
+import { weekMatchups, getTeamRoster, type MarketPlayer, type Player, type TradeBlockEntry, type LeagueTradeOffer } from "@/lib/hockey-data"
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
 import type { PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
-import { getLeaderStat, getProjectedFPTS, getSyncedPlayerFPTS, getSyncedPlayerStats, normalizeSearchText, type LeaderCategory, type LeaderMode, type SearchPlayer } from "@/lib/hockey-calculators"
+import { getLeaderStat, getPlayerStatsForHorizon, normalizeSearchText, type LeaderCategory, type LeaderMode, type SearchPlayer } from "@/lib/hockey-calculators"
 type HorizonMode = "stats" | "projections"
 type HockeyHorizon = "Last 7 Days" | "Last 14 Days" | "Last 30 Days" | "Season Totals" | "Season Avg / Per Game" | "This Week" | "Next 14 Days" | "Rest of Season (ROS)"
+
+function rosterOwnerKey(player: { nhlId?: number; name: string }) {
+  return player.nhlId != null ? String(player.nhlId) : normalizeSearchText(player.name)
+}
 
 function formatShortPlayerName(name: string): string {
   const parts = name.trim().split(/\s+/)
@@ -61,13 +65,17 @@ function TradeOfferCard({ trade, onAccept, onDecline, onCounter }: { trade: Leag
           <ul className="mt-1 space-y-1">{tradeAssetLines(receive).map((line, index) => <li key={`${line}-${index}`} className="text-sm font-bold text-white">{line}</li>)}</ul>
         </div>
       </div>
-      {trade.status === "ACTIVE" && (
+      {trade.status === "ACTIVE" && !trade.isIncoming ? (
+        <div className="mt-4">
+          <button type="button" onClick={onDecline} className="h-10 w-full rounded-xl bg-rose-500 text-sm font-bold text-white">Cancel Offer</button>
+        </div>
+      ) : trade.status === "ACTIVE" ? (
         <div className="mt-4 grid grid-cols-3 gap-2">
           <button type="button" onClick={onAccept} className="h-10 rounded-xl bg-emerald-400 text-sm font-bold text-[#080c14]">Accept</button>
           <button type="button" onClick={onDecline} className="h-10 rounded-xl bg-rose-500 text-sm font-bold text-white">Decline</button>
           <button type="button" onClick={onCounter} className="h-10 rounded-xl border border-[#19ffff] text-sm font-bold text-[#19ffff]">Counter</button>
         </div>
-      )}
+      ) : null}
     </article>
   )
 }
@@ -107,16 +115,16 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
   const canonicalPlayersByName = useMemo(() => new Map(dynastyPlayers.map((player) => [normalizeSearchText(player.name), player])), [dynastyPlayers])
   const allLeaguePlayers = useMemo<SearchPlayer[]>(() => {
     const rosterOwners = new Map<string, string>()
-    roster.forEach((player) => rosterOwners.set(normalizeSearchText(player.name), "You"))
+    roster.forEach((player) => rosterOwners.set(rosterOwnerKey(player), "You"))
     allRosters.forEach((teamRoster) => {
       teamRoster.players.forEach((player) => {
-        const key = normalizeSearchText(player.name)
+        const key = rosterOwnerKey(player)
         if (!rosterOwners.has(key)) rosterOwners.set(key, teamRoster.teamName)
       })
     })
     return dynastyPlayers.map((player) => {
-      const stats = getSyncedPlayerStats(player)
-      const owner = rosterOwners.get(normalizeSearchText(player.name)) ?? "FA"
+      const stats = getPlayerStatsForHorizon(player, horizon)
+      const owner = rosterOwners.get(rosterOwnerKey(player)) ?? "FA"
       return {
         ...player,
         id: `nhl-${player.nhlId ?? normalizeSearchText(player.name).replace(/\s+/g, "-")}`,
@@ -125,7 +133,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         projPts: player.projection,
       }
     })
-  }, [roster, allRosters, dynastyPlayers])
+  }, [roster, allRosters, dynastyPlayers, horizon])
 
   const filteredSearchResults = useMemo(() => {
     const query = normalizeSearchText(searchQuery.trim())
@@ -167,7 +175,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
       .map((player) => {
         const projectionGames = horizonMode === "projections" ? horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28
           : undefined
-        const stat = getLeaderStat(player, leaderCategory, leaderMode, projectionGames)
+        const stat = getLeaderStat(player, leaderCategory, leaderMode, projectionGames, horizon)
         return { player, rawValue: stat.numeric, displayValue: stat.display }
       })
       .sort((a, b) => b.rawValue - a.rawValue)
@@ -212,9 +220,8 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
       </Sheet>
       {searchQuery.length > 0 && filteredSearchResults.length === 0 ? <div className="rounded-lg border border-[#172338] bg-[#0d1424] px-4 py-10 text-center text-sm text-[#8ba0c7]">No players found matching '{searchQuery}'</div> : <div className="rounded-lg border border-[#172338] bg-[#0d1424]">{filteredSearchResults.slice(0, 50).map((player) => {
         const available = player.owner === "FA" || player.owner.startsWith("W")
-        const points = horizonMode === "projections"
-          ? ("projPts" in player ? player.projPts : player.projection)
-          : "stats" in player && player.stats ? calculatePlayerFPTS(player) : Number("fpts" in player ? player.fpts : player.todayPts ?? 0)
+        const projectionGames = horizonMode === "projections" ? (horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : undefined
+        const points = getLeaderStat(player, "FPTS", leaderMode, projectionGames, horizon).numeric
         return <button type="button" key={player.id} onClick={() => onSelect(toTarget(player))} className="flex w-full items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors hover:bg-[#0f1828]/80">
           <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-black", positionClass(player.position))}>{player.position}</span>
           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-white">{player.name}</span><span className="block truncate text-[13px] text-[#8ba0c7]">{player.team} · {"opponent" in player ? player.opponent : (player.schedule?.opponent ?? "—")}</span></span>
@@ -249,7 +256,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
   const tradeBlockPlayers = tradeBlock.map((entry) => {
     const player = entry.teamName === teamName ? roster.find((item) => item.id === entry.playerId) : (Array.isArray(allRosters) ? allRosters : []).flatMap((team) => team.players).find((item) => item.id === entry.playerId)
     if (!player) return null
-    const databasePlayer = dynastyPlayers.find((candidate) => normalizeSearchText(candidate.name) === normalizeSearchText(player.name))
+    const databasePlayer = dynastyPlayers.find((candidate) => rosterOwnerKey(candidate) === rosterOwnerKey(player))
     return { player: databasePlayer ? { ...player, ...databasePlayer, id: player.id, slot: player.slot, status: databasePlayer.injuryStatus ?? null, opponent: player.opponent, gameTime: player.gameTime } : player, entry }
   }).filter((item): item is { player: Player; entry: TradeBlockEntry } => item !== null)
   const displayedTrades = tradeOffers.filter((trade) => activeTradeFilter === "ALL" || trade.status === activeTradeFilter)

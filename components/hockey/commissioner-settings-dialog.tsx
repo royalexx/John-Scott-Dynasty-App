@@ -192,24 +192,24 @@ export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boole
           {tab === "Roster" && <>
             {structureLocked && <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100">Roster shape and scoring locked after week 1. Waiver hold, the trade deadline, and pick trading can still change.</p>}
             <Section title="Lineup slots" hint="Starters score every week; bench players do not.">
-              {["C", "W", "F", "D", "G", "BN"].map((key) => <Stepper key={key} label={key} hint={SLOT_LABELS[key]} value={settings.rosterPositions[key] ?? 0} max={20} disabled={structureLocked} onChange={(value) => updateRecord("rosterPositions", key, value)} />)}
+              {["C", "W", "F", "D", "G", "BN"].map((key) => <Stepper key={key} label={key} hint={SLOT_LABELS[key]} value={settings.rosterPositions[key] ?? 0} max={20} onChange={(value) => updateRecord("rosterPositions", key, value)} />)}
             </Section>
             <Section title="Lineup lock" hint="Decides when starting slots (C/W/F/D/G) freeze. Bench, IR and taxi stay movable.">
               <Segmented label="Lock starters" value={settings.lineupLockMode} options={[{ value: "WEEKLY", label: "Weekly (first game)" }, { value: "DAILY", label: "Daily (each game)" }]} onChange={(value) => update({ lineupLockMode: value })} />
               <p className="px-1 text-xs text-[#5e7090]">{settings.lineupLockMode === "WEEKLY" ? "Starters lock when the first NHL game of the fantasy week begins and unlock Monday." : "A player locks only once their own team's game today has started."}</p>
             </Section>
             <Section title="Reserve spots" hint="IR is pure IR only (DTD / IR+ are not eligible).">
-              <Stepper label="Taxi squad slots" value={settings.taxiSlots} max={10} disabled={structureLocked} onChange={(value) => update({ taxiSlots: value })} />
-              <Stepper label="Taxi NHL games cap" hint="Eligible while career NHL GP is below this" value={settings.taxiMaxGames} max={400} step={5} disabled={structureLocked} onChange={(value) => update({ taxiMaxGames: value })} />
-              <Stepper label="IR slots" value={settings.irSlots} max={10} disabled={structureLocked} onChange={(value) => update({ irSlots: value })} />
+              <Stepper label="Taxi squad slots" value={settings.taxiSlots} max={10} onChange={(value) => update({ taxiSlots: value })} />
+              <Stepper label="Taxi NHL games cap" hint="Eligible while career NHL GP is below this" value={settings.taxiMaxGames} max={400} step={5} onChange={(value) => update({ taxiMaxGames: value })} />
+              <Stepper label="IR slots" value={settings.irSlots} max={10} onChange={(value) => update({ irSlots: value })} />
             </Section>
             <div className="rounded-xl bg-[#172338] p-3 text-xs"><p className="font-black text-[#19ffff]">Roster capacity: {capacity}</p><p className="mt-0.5 text-xs text-[#8ba0c7]">{starters} starters + {settings.rosterPositions.BN ?? 0} bench. Waiver drops are optional while a team is below {capacity}.</p></div>
           </>}
 
           {tab === "Scoring" && <>
             {structureLocked && <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs leading-relaxed text-amber-100">Scoring locked after week 1 so finished weeks keep the weights they were played under.</p>}
-            <Section title="Skaters">{SKATER_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} disabled={structureLocked} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
-            <Section title="Goalies">{GOALIE_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} disabled={structureLocked} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
+            <Section title="Skaters">{SKATER_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
+            <Section title="Goalies">{GOALIE_SCORING.map(([label, key]) => <Stepper key={key} label={label} value={Number(scoring[key] ?? 0)} min={-20} max={50} step={0.1} onChange={(value) => updateRecord("scoringSettings", key, value)} />)}</Section>
             <button type="button" disabled={structureLocked} onClick={() => update({ scoringSettings: { ...defaultLeagueSettings.scoringSettings } })} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#263858] py-2.5 text-xs font-bold text-[#8ba0c7] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"><RotateCcw className="size-3.5" />Reset scoring to default</button>
           </>}
 

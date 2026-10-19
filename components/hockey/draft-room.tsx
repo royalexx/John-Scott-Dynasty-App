@@ -18,8 +18,11 @@ type DraftSlotView = {
   nhlTeam: string | null
 }
 
+type DraftOrder = "LINEAR" | "SNAKE"
+
 type DraftView = {
   id: string
+  type: DraftOrder
   status: "SCHEDULED" | "LIVE" | "COMPLETE"
   rounds: number
   timerSeconds: number
@@ -34,7 +37,7 @@ type DraftView = {
 }
 
 type DraftPayload = {
-  scheduled: { startAt: string; rounds: number; timerSeconds: number } | null
+  scheduled: { startAt: string; rounds: number; timerSeconds: number; type: DraftOrder } | null
   draft: DraftView | null
 }
 
@@ -93,6 +96,7 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
   const live = draft?.status === "LIVE"
   const startAt = draft?.startAt ?? scheduled?.startAt
   const rounds = draft?.rounds ?? scheduled?.rounds ?? 0
+  const draftType = draft?.type ?? scheduled?.type
   const elapsed = Math.floor((now - receivedAt) / 1000)
   const remaining = draft && live && !draft.paused ? Math.max(0, draft.remainingSeconds - elapsed) : draft?.remainingSeconds ?? 0
 
@@ -108,7 +112,7 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
           ) : (
             <p className="mt-1 truncate text-sm font-bold text-white">{startAt ? whenLabel(startAt) : "Scheduled"}</p>
           )}
-          <p className="text-xs text-[#8ba0c7]">Snake · {rounds} rounds</p>
+          <p className="text-xs text-[#8ba0c7]">{draftType === "LINEAR" ? "Linear" : "Snake"} · {rounds} rounds</p>
         </div>
         <button type="button" onClick={() => { setOpen(true); void load(true) }} className={cn("shrink-0 rounded-full px-4 py-2 text-sm font-bold", live ? "bg-[#19ffff] text-[#080c14]" : "border border-[#19ffff] text-[#19ffff]")}>Draft room</button>
       </div>
@@ -143,10 +147,10 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
     }
   }
 
-  const drafted = useMemo(() => new Set(draft?.slots.map((slot) => slot.playerId).filter((id): id is number => id != null) ?? []), [draft])
-  const current = draft?.slots.find((slot) => slot.playerId == null) ?? null
+  const drafted = useMemo(() => new Set((draft?.slots ?? []).map((slot) => slot.playerId).filter((id): id is number => id != null)), [draft])
+  const current = draft?.slots?.find((slot) => slot.playerId == null) ?? null
   const round = current?.round ?? draft?.rounds ?? 1
-  const roundSlots = draft?.slots.filter((slot) => slot.round === round).sort((a, b) => a.pickNumber - b.pickNumber) ?? []
+  const roundSlots = (draft?.slots ?? []).filter((slot) => slot.round === round).sort((a, b) => a.pickNumber - b.pickNumber)
   const available = players.filter((player) => {
     if (player.nhlId == null || drafted.has(player.nhlId)) return false
     const matchesPosition = position === "ALL" || player.position === position || (position === "W" && (player.position === "LW" || player.position === "RW"))

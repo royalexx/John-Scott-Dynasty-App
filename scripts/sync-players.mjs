@@ -157,8 +157,23 @@ async function enrichPlayer(player) {
       }))
     const nhlGamesPlayed = detail.careerTotals?.regularSeason?.gamesPlayed ??
       historicalSeasons.reduce((total, season) => total + season.gamesPlayed, 0)
+    const hits = gameLog.reduce((total, game) => total + (game.hits ?? 0), 0)
+    const blocks = gameLog.reduce((total, game) => total + (game.blocks ?? 0), 0)
+    const saves = gameLog.reduce((total, game) => total + ((game.shotsAgainst ?? 0) - (game.goalsAgainst ?? 0)), 0)
+    const goalsAgainst = gameLog.reduce((total, game) => total + (game.goalsAgainst ?? 0), 0)
+    const wins = gameLog.reduce((total, game) => total + (game.decision === "W" ? 1 : 0), 0)
+    const shutouts = gameLog.reduce((total, game) => total + (game.shutouts ?? 0), 0)
+    const shotsAgainst = gameLog.reduce((total, game) => total + (game.shotsAgainst ?? 0), 0)
+    const savePct = shotsAgainst > 0 ? Number((saves / shotsAgainst).toFixed(3)) : 0
     return {
       ...player,
+      hits,
+      blocks,
+      wins,
+      saves,
+      goalsAgainst,
+      shutouts,
+      savePct,
       team: detail.currentTeamAbbrev || player.team,
       position,
       slot: position === "LW" || position === "RW"
@@ -188,6 +203,13 @@ async function enrichPlayer(player) {
         gameWinningGoals: stats.gameWinningGoals ?? 0,
         pim: stats.pim ?? 0,
         plusMinus: stats.plusMinus ?? 0,
+        hits,
+        blocks,
+        wins,
+        saves,
+        goalsAgainst,
+        shutouts,
+        savePct,
       } : null,
       gameLog,
       historicalSeasons,

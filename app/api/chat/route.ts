@@ -4,7 +4,7 @@ import { getManagerSession } from "@/lib/auth-session"
 
 function formatMessage(message: { id: string; body: string; createdAt: Date; sender: { name: string; handle: string; managedTeams: { name: string }[] } }) {
   const teamName = message.sender.managedTeams[0]?.name ?? ""
-  return { id: message.id, author: message.sender.name, avatarInitials: message.sender.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), message: message.body, time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(message.createdAt), teamName, teamAbbreviation: teamName.slice(0, 3).toUpperCase() }
+  return { id: message.id, author: message.sender.name, avatarInitials: message.sender.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), message: message.body, time: new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(message.createdAt), teamName, teamAbbreviation: teamName.slice(0, 3).toUpperCase() }
 }
 
 const senderSelect = { name: true, handle: true, managedTeams: { select: { name: true }, take: 1 } } as const

@@ -174,7 +174,7 @@ export function TradeBuilderDialog({
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You send: ${proposal.faabFrom ?? 0} FAAB</div><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You receive: ${proposal.faabTo ?? 0} FAAB</div></div>
               <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note to the manager (optional)" className="mt-3 min-h-16 w-full rounded-lg border border-[#263858] bg-[#101829] p-3 text-xs text-white outline-none placeholder:text-[#5e7090]" />
-              <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">⚠️ You will have {team.players.length - proposal.offering.filter((asset) => asset.kind === "player").length + proposal.receiving.filter((asset) => asset.kind === "player").length}/27 players if accepted.</div>
+              <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">⚠️ You will have {team.players.filter((player) => !["IR", "IR_PLUS", "TAXI"].includes(player.slot)).length - proposal.offering.filter((asset) => asset.kind === "player" && !["IR", "IR_PLUS", "TAXI"].includes(asset.player.slot)).length + proposal.receiving.filter((asset) => asset.kind === "player" && !["IR", "IR_PLUS", "TAXI"].includes(asset.player.slot)).length}/27 players if accepted.</div>
               {!proposal.offering.length && !proposal.receiving.length && <div className="mt-3 flex gap-2 rounded-lg bg-[#172338] p-3 text-xs text-[#8ba0c7]"><CircleHelp className="size-4 shrink-0 text-[#19ffff]" />Add at least one asset to make a trade.</div>}
             </section>
           )}

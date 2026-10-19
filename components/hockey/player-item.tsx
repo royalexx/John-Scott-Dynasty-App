@@ -1,7 +1,8 @@
 ﻿import React from "react"
 import { cn } from "@/lib/utils"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
-import { TAXI_MAX_NHL_GAMES, getWeekActualPoints, type Player } from "@/lib/hockey-data"
+import { TAXI_MAX_NHL_GAMES, getWeekActualPoints, isStarterSlot, type Player } from "@/lib/hockey-data"
+import { positionFitsSlot } from "@/lib/roster-eligibility"
 
 export const slotBadgeColors: Record<string, string> = {
   C: "bg-[#1d4ed8] text-white", W: "bg-[#0d9488] text-white", F: "bg-[#7c3aed] text-white", D: "bg-[#b45309] text-white", G: "bg-[#0284c7] text-white", BN: "bg-[#1e293b] text-[#94a3b8]", TAXI: "bg-[#451a03] text-[#f59e0b] border border-[#78350f]", IR: "bg-[#4c0519] text-[#f43f5e] border border-[#881337]",
@@ -10,8 +11,9 @@ export const slotBadgeColors: Record<string, string> = {
 function isInvalidRosterPlacement(player: Player): boolean {
   const injured = player.status === "IR" || player.status === "O" || player.status === "DTD"
   if (player.slot === "BN") return false
-  if (player.slot === "TAXI") return player.nhlGamesPlayed == null || player.nhlGamesPlayed >= TAXI_MAX_NHL_GAMES
+  if (player.slot === "TAXI") return (player.nhlGamesPlayed ?? 0) >= TAXI_MAX_NHL_GAMES
   if (player.slot === "IR") return player.status !== "IR"
+  if (isStarterSlot(player.slot) && !positionFitsSlot(player.slot, player.position)) return true
   return injured
 }
 export const PlayerItem = React.memo(function PlayerItem({
@@ -52,7 +54,7 @@ export const PlayerItem = React.memo(function PlayerItem({
           {player.slot}
         </button>
 
-        <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-11 items-center gap-2.5 cursor-pointer text-left">
+        <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left">
           <PlayerPortrait player={player} name={player.name} className="size-8 border border-[#1b263b]" />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -64,16 +66,19 @@ export const PlayerItem = React.memo(function PlayerItem({
               )}
             </div>
             {nickname && <p className="truncate text-xs italic text-[#5e7090]">{nickname}</p>}
-            <p className="truncate text-xs text-[#5e7090] leading-tight">
-              <span className="font-semibold text-zinc-300">{player.position}</span> - {player.team} • {player.schedule ? `${player.schedule.day} ${player.schedule.time}` : "No game this week"} 
+            <p className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-[#5e7090]">
+              <span className="truncate">
+                <span className="font-semibold text-zinc-300">{player.position}</span> - {player.team} • {player.schedule ? (player.schedule.opponent && player.schedule.opponent !== "—" ? `${player.schedule.day} ${player.schedule.time} ${player.schedule.opponent}` : `${player.schedule.day} ${player.schedule.time}`) : "No game this week"}
+              </span>
+              <span className="shrink-0 font-semibold tabular-nums">{player.schedule?.weekGamesScheduled ?? 0} GP</span>
             </p>
           </div>
         </button>
       </div>
 
-      <button type="button" onClick={() => onSelect(player)} className="min-h-11 min-w-11 shrink-0 cursor-pointer pl-2 text-right">
-        <p className="text-xs font-black text-white tabular-nums leading-tight">{getWeekActualPoints(player).toFixed(1)}</p>
-        <p className="text-xs font-semibold text-[#5e7090] tabular-nums leading-tight">{player.schedule ? `${player.schedule.weekGamesPlayed} GP` : "week"}</p>
+      <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-11 shrink-0 cursor-pointer flex-col items-end justify-center pl-2 text-right">
+        <p className="text-sm font-black tabular-nums leading-none text-white">{getWeekActualPoints(player).toFixed(1)}</p>
+        <p className="mt-0.5 text-[11px] font-semibold tabular-nums leading-none text-[#8ba0c7]">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
       </button>
     </div>
   )

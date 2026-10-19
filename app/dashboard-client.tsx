@@ -844,7 +844,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 <span className="text-xs text-amber-400 font-bold">&lt; {initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES} NHL GP</span>
               </div>
               {taxi.map((player) => (
-                <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", (player.nhlGamesPlayed == null || player.nhlGamesPlayed >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
+                <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", ((player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
                   <div className="flex items-center gap-2.5">
                     <button type="button" onClick={() => setEditingPlayer(player)} className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.TAXI)}>
                       TX

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(date)
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(date)
 }
 
 async function caller() {
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       timestamp: formatTime(message.createdAt), isMe: message.senderId === user.id,
     })))
   }
-  const [partners, allMessages, unreadGroups] = await Promise.all([
+  const [partners, latestByPair, unreadGroups] = await Promise.all([
     prisma.user.findMany({
       where: { id: { not: user.id }, managedTeams: { some: {} } },
       include: { managedTeams: { select: { name: true }, take: 1 } },
@@ -40,6 +40,7 @@ export async function GET(request: Request) {
     }),
     prisma.directMessage.findMany({
       where: { OR: [{ senderId: user.id }, { recipientId: user.id }] },
+      distinct: ["senderId", "recipientId"],
       orderBy: { createdAt: "desc" },
     }),
     prisma.directMessage.groupBy({
@@ -50,7 +51,9 @@ export async function GET(request: Request) {
   ])
   const unreadBySender = new Map(unreadGroups.map((group) => [group.senderId, group._count._all]))
   const summaries = partners.map((partner) => {
-    const latest = allMessages.find((msg) => msg.senderId === partner.id || msg.recipientId === partner.id)
+    const sent = latestByPair.find((message) => message.senderId === user.id && message.recipientId === partner.id)
+    const received = latestByPair.find((message) => message.senderId === partner.id && message.recipientId === user.id)
+    const latest = sent && received ? (sent.createdAt >= received.createdAt ? sent : received) : sent ?? received
     return {
       managerId: partner.id, name: partner.name, handle: `@${partner.handle}`, teamName: partner.managedTeams[0]?.name ?? "Unassigned",
       lastMessage: latest?.body ?? "Start a conversation", timestamp: latest ? formatTime(latest.createdAt) : "", unreadCount: unreadBySender.get(partner.id) ?? 0,

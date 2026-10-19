@@ -1,4 +1,5 @@
 import type { ActivityItem } from "@/lib/hockey-data"
+import { getEasternDate } from "@/lib/season-calendar"
 
 type ActivityRecord = {
   id: string
@@ -8,15 +9,19 @@ type ActivityRecord = {
   team: { name: string; manager: { name: string; handle: string } } | null
 }
 
+function previousEasternDay(now: Date) {
+  const [year, month, day] = getEasternDate(now).split("-").map(Number)
+  return getEasternDate(new Date(Date.UTC(year, month - 1, day - 1, 17)))
+}
+
 function relativeTime(createdAt: Date) {
   const now = new Date()
-  const sameDay = createdAt.toDateString() === now.toDateString()
-  const yesterday = new Date(now)
-  yesterday.setDate(now.getDate() - 1)
-  if (createdAt.toDateString() === yesterday.toDateString()) return "Yesterday"
+  const createdDay = getEasternDate(createdAt)
+  const sameDay = createdDay === getEasternDate(now)
+  if (createdDay === previousEasternDay(now)) return "Yesterday"
   if (sameDay && now.getTime() - createdAt.getTime() < 60_000) return "Just now"
-  if (sameDay) return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }).format(createdAt)
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(createdAt)
+  if (sameDay) return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" }).format(createdAt)
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" }).format(createdAt)
 }
 
 export function formatActivity(record: ActivityRecord): ActivityItem {

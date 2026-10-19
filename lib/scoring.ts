@@ -16,27 +16,6 @@ export interface FantasyStats {
 
 const value = (number: number | null | undefined) => number ?? 0
 
-export function calculateFantasyPoints(stats: FantasyStats): number {
-  const skaterPoints =
-    value(stats.goals) * 3 +
-    value(stats.assists) * 2 +
-    value(stats.shots) * 0.4 +
-    value(stats.hits) * 0.2 +
-    value(stats.blocks) * 0.5 +
-    value(stats.powerPlayPoints) +
-    value(stats.shorthandedGoals) * 2 +
-    value(stats.gameWinningGoals)
-
-  const goaliePoints =
-    value(stats.wins) * 4 +
-    value(stats.saves) * 0.2 -
-    value(stats.goalsAgainst) +
-    value(stats.shutouts) * 3 +
-    value(stats.otLosses)
-
-  return skaterPoints + goaliePoints
-}
-
 /** League-configurable scoring (keys match the commissioner rulebook). */
 export type LeagueScoring = Partial<Record<
   "goal" | "assist" | "shot" | "hit" | "block" | "ppp" | "shg" | "gwg" | "plusMinus" | "win" | "save" | "goalsAgainst" | "shutout" | "overtimeLoss",
@@ -46,6 +25,25 @@ export type LeagueScoring = Partial<Record<
 export const DEFAULT_LEAGUE_SCORING: Required<LeagueScoring> = {
   goal: 3, assist: 2, shot: 0.2, hit: 0.2, block: 0.2, ppp: 0, shg: 0, gwg: 0, plusMinus: 0,
   win: 4, save: 0.2, goalsAgainst: -1, shutout: 3, overtimeLoss: 0,
+}
+
+export function calculateFantasyPoints(stats: FantasyStats): number {
+  const scoring = DEFAULT_LEAGUE_SCORING
+  const total =
+    value(stats.goals) * scoring.goal +
+    value(stats.assists) * scoring.assist +
+    value(stats.shots) * scoring.shot +
+    value(stats.hits) * scoring.hit +
+    value(stats.blocks) * scoring.block +
+    value(stats.powerPlayPoints) * scoring.ppp +
+    value(stats.shorthandedGoals) * scoring.shg +
+    value(stats.gameWinningGoals) * scoring.gwg +
+    value(stats.wins) * scoring.win +
+    value(stats.saves) * scoring.save +
+    value(stats.goalsAgainst) * scoring.goalsAgainst +
+    value(stats.shutouts) * scoring.shutout +
+    value(stats.otLosses) * scoring.overtimeLoss
+  return Math.round(total * 100) / 100
 }
 
 export interface RawGameStat {

@@ -1,3 +1,4 @@
+import { DEFAULT_LEAGUE_SCORING } from "@/lib/scoring"
 import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
@@ -32,7 +33,10 @@ export interface PlayerSchedule {
   score?: string
   weekFantasyPoints: number
   weekProjectedFantasyPoints: number
+  /** Games this player has already logged during the fantasy week. */
   weekGamesPlayed: number
+  /** Games the player's team has on the NHL schedule during the fantasy week. */
+  weekGamesScheduled: number
   todayFantasyPoints: number | null
   isToday: boolean
 }
@@ -128,6 +132,7 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
     weekFantasyPoints: Number(weekFantasyPoints.toFixed(1)),
     weekProjectedFantasyPoints: Number(weekProjection.toFixed(1)),
     weekGamesPlayed: weekGames.length,
+    weekGamesScheduled: weekTeamGames.length,
     todayFantasyPoints: todayGame ? calculateGame(todayGame) : null,
     isToday: currentNhlGame !== undefined,
   }
@@ -228,11 +233,27 @@ export interface GoalieStats {
 }
 
 export function calculateSkaterFPTS(s: SkaterStats): number {
-  return Number(((s.goals * 3) + (s.assists * 2) + (s.sog * 0.3) + (s.hits * 0.25) + (s.blocks * 0.35) + ((s.ppp ?? 0) * 1) + ((s.shg ?? 0) * 2) + ((s.gwg ?? 0) * 1)).toFixed(1))
+  const scoring = DEFAULT_LEAGUE_SCORING
+  const total =
+    s.goals * scoring.goal +
+    s.assists * scoring.assist +
+    s.sog * scoring.shot +
+    s.hits * scoring.hit +
+    s.blocks * scoring.block +
+    (s.ppp ?? 0) * scoring.ppp +
+    (s.shg ?? 0) * scoring.shg +
+    (s.gwg ?? 0) * scoring.gwg
+  return Number((Math.round(total * 100) / 100).toFixed(1))
 }
 
 export function calculateGoalieFPTS(g: GoalieStats): number {
-  return Number(((g.wins * 4) + (g.saves * 0.2) - g.goalsAgainst + (g.shutouts * 3)).toFixed(1))
+  const scoring = DEFAULT_LEAGUE_SCORING
+  const total =
+    g.wins * scoring.win +
+    g.saves * scoring.save +
+    g.goalsAgainst * scoring.goalsAgainst +
+    g.shutouts * scoring.shutout
+  return Number((Math.round(total * 100) / 100).toFixed(1))
 }
 
 export function createPlayerSeasonStats(player: Pick<Player, "id" | "name" | "position">): SkaterStats | GoalieStats {

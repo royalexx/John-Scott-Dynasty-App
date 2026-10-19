@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Lock } from "lucide-react"
-import { isStarterSlot, type Player } from "@/lib/hockey-data"
+import { TAXI_MAX_NHL_GAMES, isStarterSlot, type Player } from "@/lib/hockey-data"
+import { positionFitsSlot } from "@/lib/roster-eligibility"
 
 type Props = {
   roster: Player[]
@@ -17,10 +18,14 @@ export function LineupAlerts({ roster, capacities, irSlots, lock }: Props) {
   const emptyStarters = Object.entries(capacities).reduce((sum, [slot, capacity]) => isStarterSlot(slot as Player["slot"]) ? sum + Math.max(0, capacity - starters.filter((player) => player.slot === slot).length) : sum, 0)
   const irParked = roster.filter((player) => player.status === "IR" && player.slot !== "IR")
   const irOpen = Math.max(0, irSlots - roster.filter((player) => player.slot === "IR").length)
+  const taxiViolations = roster.filter((player) => player.slot === "TAXI" && (player.nhlGamesPlayed ?? 0) >= TAXI_MAX_NHL_GAMES)
+  const outOfPosition = starters.filter((player) => !positionFitsSlot(player.slot, player.position))
 
   if (emptyStarters > 0) issues.push(`${emptyStarters} empty starting slot${emptyStarters === 1 ? "" : "s"}`)
   if (injured.length > 0) issues.push(`${injured.map((player) => player.name).slice(0, 2).join(", ")}${injured.length > 2 ? ` +${injured.length - 2}` : ""} injured in your lineup`)
   if (dtd.length > 0) issues.push(`${dtd.length} day-to-day starter${dtd.length === 1 ? "" : "s"}`)
+  if (outOfPosition.length > 0) issues.push(`${outOfPosition.map((player) => player.name).slice(0, 2).join(", ")}${outOfPosition.length > 2 ? ` +${outOfPosition.length - 2}` : ""} out of position`)
+  if (taxiViolations.length > 0) issues.push(`${taxiViolations.map((player) => player.name).slice(0, 2).join(", ")}${taxiViolations.length > 2 ? ` +${taxiViolations.length - 2}` : ""} ineligible for the taxi squad (${TAXI_MAX_NHL_GAMES}+ NHL GP)`)
   if (irParked.length > 0 && irOpen > 0) issues.push(`${irParked[0].name} can move to IR`)
 
   const lockBanner = lock?.locked

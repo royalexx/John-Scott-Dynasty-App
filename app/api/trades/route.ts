@@ -7,8 +7,15 @@ import { createTradeOffer, executeTrade, type TradeAssetInput } from "@/lib/serv
 export const runtime = "nodejs"
 
 export async function GET(request: NextRequest) {
+  const session = await getManagerSession()
+  if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
   const leagueId = request.nextUrl.searchParams.get("leagueId")
   if (!leagueId) return NextResponse.json({ error: "leagueId is required" }, { status: 400 })
+  const membership = await prisma.team.findFirst({
+    where: { id: session.teamId, managerId: session.managerId, leagueId },
+    select: { id: true },
+  })
+  if (!membership) return NextResponse.json({ error: "You do not belong to this league" }, { status: 403 })
   const offers = await prisma.tradeOffer.findMany({
     where: { leagueId, status: { in: [TradeStatus.PENDING, TradeStatus.ACCEPTED, TradeStatus.PROCESSED, TradeStatus.REJECTED] } },
     include: { assets: { include: { player: true, draftPick: true } }, proposingTeam: true, receivingTeam: true },
@@ -56,11 +63,13 @@ export async function PATCH(request: NextRequest) {
     if (!["ACCEPT", "REJECT", "CANCEL"].includes(body.action)) return NextResponse.json({ error: "Invalid action" }, { status: 400 })
     const offer = await prisma.tradeOffer.findUnique({ where: { id: body.tradeOfferId }, select: { proposingTeamId: true, receivingTeamId: true } })
     if (!offer) return NextResponse.json({ error: "Trade offer not found" }, { status: 404 })
+    // The proposer cancels through onDeclineTrade, which sends REJECT. Treat that as CANCEL.
+    const action = body.action === "REJECT" && session.teamId === offer.proposingTeamId ? "CANCEL" : body.action
     // Only the receiving team may accept/reject; only the proposer may cancel. Commissioners can act on any offer.
-    const allowedTeam = body.action === "CANCEL" ? offer.proposingTeamId : offer.receivingTeamId
+    const allowedTeam = action === "CANCEL" ? offer.proposingTeamId : offer.receivingTeamId
     if (session.teamId !== allowedTeam && !session.isCommissioner) return NextResponse.json({ error: "You are not allowed to do that with this trade" }, { status: 403 })
-    if (body.action === "ACCEPT") return NextResponse.json({ offer: await executeTrade(body.tradeOfferId) })
-    const status = body.action === "REJECT" ? TradeStatus.REJECTED : TradeStatus.CANCELLED
+    if (action === "ACCEPT") return NextResponse.json({ offer: await executeTrade(body.tradeOfferId) })
+    const status = action === "REJECT" ? TradeStatus.REJECTED : TradeStatus.CANCELLED
     const result = await prisma.tradeOffer.updateMany({ where: { id: body.tradeOfferId, status: TradeStatus.PENDING }, data: { status } })
     if (result.count !== 1) return NextResponse.json({ error: "Pending trade offer not found" }, { status: 404 })
     return NextResponse.json({ success: true, status })

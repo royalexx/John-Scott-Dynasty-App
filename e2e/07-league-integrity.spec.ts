@@ -4,6 +4,7 @@ import { getFantasyWeekDates, getCurrentFantasyWeek } from "../lib/season-calend
 import { computeStandings } from "../lib/standings"
 import { scoreTeams } from "../lib/matchup-scoring"
 import type { LeagueScoring } from "../lib/scoring"
+import { scoringSlotsForWeek } from "../lib/services/week-lineups"
 
 // Read-only checks against the live league database (nothing here writes).
 process.loadEnvFile?.(".env")
@@ -105,8 +106,8 @@ test.describe("retroactive matchup scores and standings", () => {
 
   test("stored scores match a fresh calculation from boxscores and the league scoring rules", async () => {
     const league = await prisma.league.findFirstOrThrow()
-    const slots = await prisma.rosterSlot.findMany({ where: { team: { leagueId: league.id } }, select: { teamId: true, playerId: true, slot: true } })
     for (const week of [1, 2]) {
+      const slots = await scoringSlotsForWeek(league.id, SEASON, week)
       const { dates } = getFantasyWeekDates(week, SEASON)
       const stats = await prisma.playerGameStat.findMany({ where: { game: { gameDate: { in: dates } } } })
       const totals = scoreTeams(slots, stats, league.scoringSettings as LeagueScoring)

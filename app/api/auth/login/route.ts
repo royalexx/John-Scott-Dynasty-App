@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { signManagerSession } from "@/lib/auth-session"
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { managerId?: unknown; pin?: unknown } | null
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   })
   if (!team) return NextResponse.json({ error: "No team is assigned to this manager." }, { status: 404 })
 
-  const session = JSON.stringify({
+  const session = signManagerSession({
     managerId: user.id,
     teamId: team.id,
     handle: user.handle,

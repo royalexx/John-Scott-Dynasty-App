@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import { PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
+import { DEFAULT_LEAGUE_SCORING } from "../lib/scoring"
 
 type RegistryPlayer = {
   nhlId: number
@@ -67,6 +68,7 @@ async function main() {
       waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
       tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },
       draftSettings: { type: "LINEAR", rounds: 5, timerSeconds: 120, scheduledDate: "2027-08-15T18:00:00Z", orderType: "REVERSE_STANDINGS" },
+      scoringSettings: { ...DEFAULT_LEAGUE_SCORING },
     },
     create: {
       id: "00000000-0000-0000-0000-000000000001",
@@ -77,10 +79,7 @@ async function main() {
       taxiSlots: 2,
       irSlots: 1,
       taxiMaxGames: 50,
-      scoringSettings: {
-        format: "head-to-head-points",
-        points: { goal: 3, assist: 2, shot: 0.2, hit: 0.2, block: 0.2, win: 4, save: 0.2 },
-      },
+      scoringSettings: { ...DEFAULT_LEAGUE_SCORING },
       rosterPositions: { C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7 },
       waiverSettings: { type: "FAAB", faabBudget: 100, minBid: 0, holdHours: 48 },
       tradeSettings: { reviewType: "COMMISSIONER", reviewHours: 24, deadlineWeek: 18, allowPickTrading: true },

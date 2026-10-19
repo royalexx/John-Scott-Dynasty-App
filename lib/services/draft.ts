@@ -1,8 +1,15 @@
-import { DraftStatus, Prisma } from "@prisma/client"
+import { ActivityAction, DraftStatus, Prisma, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLeagueStandings } from "@/lib/db/leagues"
 
-type DraftConfig = { startAt: Date; rounds: number; timerSeconds: number }
+export type DraftOrder = "LINEAR" | "SNAKE"
+
+type DraftConfig = { startAt: Date; rounds: number; timerSeconds: number; type: DraftOrder }
+
+export function draftOrderType(raw: unknown): DraftOrder {
+  const settings = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}
+  return settings.type === "LINEAR" ? "LINEAR" : "SNAKE"
+}
 
 export function draftConfig(raw: unknown): DraftConfig | null {
   const settings = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}
@@ -10,7 +17,7 @@ export function draftConfig(raw: unknown): DraftConfig | null {
   if (Number.isNaN(startAt.getTime())) return null
   const rounds = Math.max(1, Math.min(30, Math.floor(Number(settings.rounds ?? 5)) || 5))
   const timerSeconds = Math.max(30, Math.min(600, Math.floor(Number(settings.timerSeconds ?? 120)) || 120))
-  return { startAt, rounds, timerSeconds }
+  return { startAt, rounds, timerSeconds, type: draftOrderType(settings) }
 }
 
 export function snakeSlots(teamIds: string[], rounds: number) {
@@ -24,6 +31,33 @@ export function snakeSlots(teamIds: string[], rounds: number) {
     }
   }
   return slots
+}
+
+/** Same team order every round. Even rounds stay in `teamIds` order. */
+export function linearSlots(teamIds: string[], rounds: number) {
+  const slots: { pickNumber: number; round: number; slot: number; teamId: string }[] = []
+  let pickNumber = 1
+  for (let round = 1; round <= rounds; round += 1) {
+    for (const teamId of teamIds) {
+      slots.push({ pickNumber, round, slot: teamIds.indexOf(teamId), teamId })
+      pickNumber += 1
+    }
+  }
+  return slots
+}
+
+/** `slot.teamId` starts as the original team. A traded `DraftPick` moves that slot to `currentTeamId`. */
+export async function buildDraftSlots(leagueId: string, season: number, teamIds: string[], rounds: number, type: DraftOrder) {
+  const picks = await prisma.draftPick.findMany({ where: { leagueId, season, round: { lte: rounds } } })
+  return (type === "LINEAR" ? linearSlots : snakeSlots)(teamIds, rounds).map((slot) => {
+    const pick = picks.find((item) => item.round === slot.round && item.originalTeamId === slot.teamId)
+    return pick ? { ...slot, teamId: pick.currentTeamId } : slot
+  })
+}
+
+async function draftTeamIds(leagueId: string) {
+  const standings = await getLeagueStandings(leagueId)
+  return [...(standings ?? [])].reverse().map((row) => row.team.id)
 }
 
 function queuesOf(value: Prisma.JsonValue): Record<string, number[]> {
@@ -55,12 +89,18 @@ const draftInclude = {
 
 type LoadedDraft = Prisma.DraftGetPayload<{ include: typeof draftInclude }>
 
-function present(draft: LoadedDraft, teamId: string) {
+async function draftOrderFor(leagueId: string) {
+  const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { draftSettings: true } })
+  return draftOrderType(league?.draftSettings)
+}
+
+async function present(draft: LoadedDraft, teamId: string, type?: DraftOrder) {
   const queues = queuesOf(draft.queues)
   const current = draft.slots.find((slot) => slot.playerId == null) ?? null
   const teams = [...new Map(draft.slots.filter((slot) => slot.round === 1).sort((a, b) => a.slot - b.slot).map((slot) => [slot.teamId, { id: slot.team.id, name: slot.team.name, slot: slot.slot }])).values()]
   return {
     id: draft.id,
+    type: type ?? await draftOrderFor(draft.leagueId),
     status: draft.status,
     rounds: draft.rounds,
     timerSeconds: draft.timerSeconds,
@@ -103,13 +143,14 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { draftSettings: true } })
   const config = draftConfig(league?.draftSettings)
   if (!config) return { scheduled: null, draft: null }
+  const scheduled = { startAt: config.startAt.toISOString(), rounds: config.rounds, timerSeconds: config.timerSeconds, type: config.type }
+  const season = config.startAt.getUTCFullYear()
 
   let draft = await prisma.draft.findUnique({ where: { leagueId }, include: draftInclude })
   const due = config.startAt.getTime() <= Date.now()
   if (!draft && (due || createBeforeStart)) {
-    const standings = await getLeagueStandings(leagueId)
-    const teamIds = [...(standings ?? [])].reverse().map((row) => row.team.id)
-    if (teamIds.length < 2) return { scheduled: { startAt: config.startAt.toISOString(), rounds: config.rounds, timerSeconds: config.timerSeconds }, draft: null }
+    const teamIds = await draftTeamIds(leagueId)
+    if (teamIds.length < 2) return { scheduled, draft: null }
     try {
       draft = await prisma.draft.create({
         data: {
@@ -119,7 +160,7 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
           timerSeconds: config.timerSeconds,
           startAt: config.startAt,
           clockStartedAt: due ? new Date() : null,
-          slots: { create: snakeSlots(teamIds, config.rounds) },
+          slots: { create: await buildDraftSlots(leagueId, season, teamIds, config.rounds, config.type) },
         },
         include: draftInclude,
       })
@@ -127,10 +168,35 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
       draft = await prisma.draft.findUnique({ where: { leagueId }, include: draftInclude })
     }
   }
+  if (
+    draft &&
+    draft.status === DraftStatus.SCHEDULED &&
+    draft.slots.every((slot) => slot.playerId == null) &&
+    (draft.rounds !== config.rounds || draft.timerSeconds !== config.timerSeconds || draft.startAt.getTime() !== config.startAt.getTime())
+  ) {
+    const teamIds = await draftTeamIds(leagueId)
+    if (teamIds.length >= 2) {
+      const draftId = draft.id
+      const slots = await buildDraftSlots(leagueId, season, teamIds, config.rounds, config.type)
+      draft = await prisma.$transaction(async (tx) => {
+        await tx.draftSlot.deleteMany({ where: { draftId } })
+        return tx.draft.update({
+          where: { id: draftId },
+          data: {
+            rounds: config.rounds,
+            timerSeconds: config.timerSeconds,
+            startAt: config.startAt,
+            slots: { create: slots },
+          },
+          include: draftInclude,
+        })
+      })
+    }
+  }
   if (draft) draft = await promoteIfDue(draft)
   return {
-    scheduled: { startAt: config.startAt.toISOString(), rounds: config.rounds, timerSeconds: config.timerSeconds },
-    draft: draft ? present(draft, teamId) : null,
+    scheduled,
+    draft: draft ? await present(draft, teamId, config.type) : null,
   }
 }
 
@@ -201,9 +267,36 @@ export async function makeDraftPick(leagueId: string, teamId: string, playerId: 
     if (slot.teamId !== teamId && !commissioner) throw new Error("It is not your pick.")
     const taken = draft.slots.some((item) => item.playerId === playerId)
     if (taken) throw new Error("That player is already drafted.")
-    const player = await tx.player.findUnique({ where: { id: playerId }, select: { id: true } })
+    const player = await tx.player.findUnique({ where: { id: playerId }, select: { id: true, name: true, nhlGamesPlayed: true } })
     if (!player) throw new Error("Player not found.")
     await tx.draftSlot.update({ where: { id: slot.id }, data: { playerId, pickedAt: new Date() } })
+    const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId, team: { leagueId } } })
+    if (!alreadyRostered) {
+      const [league, rosterSlots] = await Promise.all([
+        tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true, taxiSlots: true, taxiMaxGames: true } }),
+        tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
+      ])
+      if (league) {
+        const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
+        const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
+        const placement = player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
+          ? SlotType.TAXI
+          : rosterCount < league.rosterSize
+            ? SlotType.BN
+            : null
+        if (placement) {
+          await tx.rosterSlot.create({ data: { teamId: slot.teamId, playerId, slot: placement } })
+          await tx.activityLog.create({
+            data: {
+              leagueId,
+              teamId: slot.teamId,
+              action: ActivityAction.ADD,
+              details: { playerId, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
+            },
+          })
+        }
+      }
+    }
     const remaining = draft.slots.filter((item) => item.playerId == null && item.id !== slot.id)
     await tx.draft.update({
       where: { id },
