@@ -10,8 +10,24 @@ export type ManagerSession = {
   isCommissioner: boolean
 }
 
+const DEV_SESSION_SECRET = "john-scott-dynasty-default-secret"
+
 function sessionSecret() {
-  return process.env.CRON_SECRET ?? "john-scott-dynasty-default-secret"
+  const secret = process.env.SESSION_SECRET ?? process.env.CRON_SECRET
+  if (secret) return secret
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET or CRON_SECRET must be set in production")
+  }
+  return DEV_SESSION_SECRET
+}
+
+export function verifyCronSecret(provided: string | null | undefined): boolean {
+  const secret = process.env.CRON_SECRET
+  if (!secret || !provided) return false
+  const providedBytes = Buffer.from(provided)
+  const secretBytes = Buffer.from(secret)
+  if (providedBytes.length !== secretBytes.length) return false
+  return timingSafeEqual(providedBytes, secretBytes)
 }
 
 export function signManagerSession(payload: ManagerSession): string {

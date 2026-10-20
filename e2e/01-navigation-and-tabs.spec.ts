@@ -21,9 +21,12 @@ test("dashboard loads and all primary tabs render without runtime errors", async
   await expect(page.getByText(/proj \d+\.\d/).first()).toBeVisible()
 
   await page.getByRole("button", { name: "PLAYERS", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "Available", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Filters", exact: true }).click()
   for (const label of ["ALL", "C", "W", "D", "G"]) {
     await expect(page.getByRole("button", { name: label, exact: true }).first()).toBeVisible()
   }
+  await page.keyboard.press("Escape")
   await expect(page.getByRole("heading", { name: "Available", exact: true })).toBeVisible()
   await expect(page.locator("button").filter({ hasText: "FA" }).first()).toBeVisible()
 

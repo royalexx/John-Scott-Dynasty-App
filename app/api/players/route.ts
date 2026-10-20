@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import fs from "node:fs"
 import path from "node:path"
 import { prisma } from "@/lib/prisma"
-import { calculateGoalieFPTS, calculateSkaterFPTS, type PlayerGameLog } from "@/lib/hockey-data"
+import { type PlayerGameLog } from "@/lib/hockey-data"
+import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type LeagueScoring, type RawGameStat } from "@/lib/scoring"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -49,7 +50,7 @@ function normalizePlayer(player: Record<string, unknown>) {
     opponent: String(player.opponent ?? "—"),
     profile: player.profile,
     currentSeasonStats: player.currentSeasonStats,
-    gameLog: player.gameLog,
+    gameLog: Array.isArray(player.gameLog) ? staticGameLogs(player.gameLog) : undefined,
     historicalSeasons: player.historicalSeasons,
     nhlGamesPlayed: typeof player.nhlGamesPlayed === "number" ? player.nhlGamesPlayed : undefined,
     injuryStatus,
@@ -101,10 +102,57 @@ type LiveStat = {
 type MergedGame = PlayerGameLog & { saves: number; fantasyPoints?: number }
 
 let cachedPlayers: { mtimeMs: number; payload: RegistryPlayer[] } | null = null
+const PLAYER_POOL_CACHE_TTL_MS = 15_000
+let overlaidPlayerCache: { mtimeMs: number; expiresAt: number; payload: RegistryPlayer[] } | null = null
+let overlaidPlayerInFlight: Promise<RegistryPlayer[] | null> | null = null
 
 function finite(value: unknown): number {
   const number = typeof value === "number" ? value : Number(value)
   return Number.isFinite(number) ? number : 0
+}
+
+function leagueScoring(value: unknown): LeagueScoring {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return DEFAULT_LEAGUE_SCORING
+  return value as LeagueScoring
+}
+
+function usesDefaultScoring(scoring: LeagueScoring): boolean {
+  for (const [key, points] of Object.entries(DEFAULT_LEAGUE_SCORING) as [keyof LeagueScoring, number][]) {
+    if ((scoring[key] ?? points) !== points) return false
+  }
+  return true
+}
+
+function rawStat(game: {
+  goals: number
+  assists: number
+  shots: number
+  hits: number
+  blocks: number
+  plusMinus: number
+  powerPlayPoints: number
+  shorthandedGoals: number
+  gameWinningGoals: number
+  saves: number
+  goalsAgainst: number
+  shutouts: number
+  decision?: string | null
+}): RawGameStat {
+  return {
+    goals: game.goals,
+    assists: game.assists,
+    shots: game.shots,
+    hits: game.hits,
+    blocks: game.blocks,
+    plusMinus: game.plusMinus,
+    powerPlayPoints: game.powerPlayPoints,
+    shorthandedGoals: game.shorthandedGoals,
+    gameWinningGoals: game.gameWinningGoals,
+    saves: game.saves,
+    goalsAgainst: game.goalsAgainst,
+    shutouts: game.shutouts,
+    decision: game.decision ?? null,
+  }
 }
 
 function isPosition(value: string): value is Position {
@@ -125,6 +173,14 @@ function readSeason(stats: unknown): number | undefined {
   if (typeof stats !== "object" || stats === null || !("season" in stats)) return undefined
   const season = (stats as { season: unknown }).season
   return typeof season === "number" && Number.isFinite(season) ? season : undefined
+}
+
+function nhlPlayersMtimeMs(): number {
+  try {
+    return fs.statSync(path.join(process.cwd(), "public", "data", "nhl-players.json")).mtimeMs
+  } catch {
+    return 0
+  }
 }
 
 function readCachedPlayers(): RegistryPlayer[] | null {
@@ -164,7 +220,7 @@ async function readSearchFallback(): Promise<RegistryPlayer[] | null> {
   }
 }
 
-function staticGameLogs(value: unknown): MergedGame[] {
+function staticGameLogs(value: unknown, scoring: LeagueScoring = DEFAULT_LEAGUE_SCORING): MergedGame[] {
   if (!Array.isArray(value)) return []
   const logs: MergedGame[] = []
   for (const entry of value) {
@@ -185,7 +241,9 @@ function staticGameLogs(value: unknown): MergedGame[] {
     const gameWinningGoals = finite(game.gameWinningGoals)
     const shutouts = finite(game.shutouts)
     const saves = typeof game.saves === "number" && Number.isFinite(game.saves) ? game.saves : shotsAgainst - goalsAgainst
-    logs.push({
+    const plusMinus = finite(game.plusMinus)
+    const decision = typeof game.decision === "string" ? game.decision : null
+    const row: MergedGame = {
       gameId,
       gameDate,
       teamAbbrev: typeof game.teamAbbrev === "string" ? game.teamAbbrev : undefined,
@@ -198,12 +256,12 @@ function staticGameLogs(value: unknown): MergedGame[] {
       hits,
       blocks,
       pim: finite(game.pim),
-      plusMinus: finite(game.plusMinus),
+      plusMinus,
       powerPlayPoints,
       shorthandedGoals,
       gameWinningGoals,
       toi: typeof game.toi === "string" ? game.toi : "0:00",
-      decision: typeof game.decision === "string" ? game.decision : null,
+      decision,
       shotsAgainst,
       goalsAgainst,
       saves,
@@ -211,8 +269,9 @@ function staticGameLogs(value: unknown): MergedGame[] {
       shutouts,
       powerPlayToi: typeof game.powerPlayToi === "string" ? game.powerPlayToi : undefined,
       penaltyKillToi: typeof game.penaltyKillToi === "string" ? game.penaltyKillToi : undefined,
-      fantasyPoints: typeof game.fantasyPoints === "number" && Number.isFinite(game.fantasyPoints) ? game.fantasyPoints : undefined,
-    })
+    }
+    row.fantasyPoints = scoreGameStat(rawStat(row), scoring)
+    logs.push(row)
   }
   return logs
 }
@@ -227,12 +286,18 @@ function playedStat(stat: LiveStat): boolean {
     + stat.shorthandedGoals + stat.gameWinningGoals > 0
 }
 
-function liveGameLog(stat: LiveStat, team: string): MergedGame {
-  const home = stat.homeTeamAbbrev === team
+function liveGameLog(stat: LiveStat, team: string, priorTeam?: string): MergedGame {
+  // A traded player's current club is not in older games. The static log still names the club that dressed them.
+  const playedFor = team === stat.homeTeamAbbrev || team === stat.awayTeamAbbrev
+    ? team
+    : priorTeam === stat.homeTeamAbbrev || priorTeam === stat.awayTeamAbbrev
+      ? priorTeam
+      : team
+  const home = stat.homeTeamAbbrev === playedFor
   return {
     gameId: stat.gameId,
     gameDate: stat.gameDate,
-    teamAbbrev: team,
+    teamAbbrev: playedFor,
     opponentAbbrev: home ? stat.awayTeamAbbrev : stat.homeTeamAbbrev,
     homeRoadFlag: home ? "H" : "R",
     goals: stat.goals,
@@ -257,14 +322,14 @@ function liveGameLog(stat: LiveStat, team: string): MergedGame {
   }
 }
 
-function mergeGameLogs(dbLogs: LiveStat[], staticLogs: MergedGame[], team: string): MergedGame[] {
+function mergeGameLogs(dbLogs: LiveStat[], staticLogs: MergedGame[], team: string, scoring: LeagueScoring): MergedGame[] {
   const staticById = new Map(staticLogs.map((game) => [game.gameId, game]))
   const live = dbLogs.filter(playedStat).map((stat) => {
-    const row = liveGameLog(stat, team)
     const prior = staticById.get(stat.gameId)
+    const row = liveGameLog(stat, team, prior?.teamAbbrev)
     if (!prior) return row
     // The boxscore sync stored shots/special-teams as 0 (`sog` was unread). Keep the static count until a non-zero live value exists.
-    return {
+    const merged: MergedGame = {
       ...row,
       shots: row.shots || prior.shots,
       powerPlayPoints: row.powerPlayPoints || prior.powerPlayPoints,
@@ -273,13 +338,21 @@ function mergeGameLogs(dbLogs: LiveStat[], staticLogs: MergedGame[], team: strin
       powerPlayToi: prior.powerPlayToi,
       penaltyKillToi: prior.penaltyKillToi,
     }
+    const countingChanged = merged.shots !== row.shots
+      || merged.powerPlayPoints !== row.powerPlayPoints
+      || merged.shorthandedGoals !== row.shorthandedGoals
+      || merged.gameWinningGoals !== row.gameWinningGoals
+    if (countingChanged || typeof merged.fantasyPoints !== "number" || !Number.isFinite(merged.fantasyPoints)) {
+      merged.fantasyPoints = scoreGameStat(rawStat(merged), scoring)
+    }
+    return merged
   })
   const seen = new Set(live.map((game) => game.gameId))
   const older = staticLogs.filter((game) => !seen.has(game.gameId))
   return [...live, ...older].sort((a, b) => b.gameDate.localeCompare(a.gameDate))
 }
 
-function sumGameLog(games: MergedGame[], position: Position, season: number | undefined, player: { projPts?: number } = {}) {
+function sumGameLog(games: MergedGame[], season: number | undefined, player: { projPts?: number } = {}, scoring: LeagueScoring = DEFAULT_LEAGUE_SCORING) {
   const sum = (read: (game: MergedGame) => number) => games.reduce((total, game) => total + read(game), 0)
   const goals = sum((game) => game.goals)
   const assists = sum((game) => game.assists)
@@ -297,11 +370,8 @@ function sumGameLog(games: MergedGame[], position: Position, season: number | un
   const gp = games.length
   const savePct = shotsAgainst > 0 ? Number((saves / shotsAgainst).toFixed(3)) : 0
   const loggedFantasyPoints = games.every((game) => typeof game.fantasyPoints === "number" && Number.isFinite(game.fantasyPoints))
-    ? Number(games.reduce((total, game) => total + Number(game.fantasyPoints), 0).toFixed(1))
-    : undefined
-  const fpts = loggedFantasyPoints ?? (position === "G"
-    ? calculateGoalieFPTS({ gp, wins, saves, goalsAgainst, shutouts, savePct })
-    : calculateSkaterFPTS({ gp, goals, assists, sog: shots, hits, blocks, ppp: powerPlayPoints, shg: shorthandedGoals, gwg: gameWinningGoals }))
+  const totalPoints = games.reduce((total, game) => total + (loggedFantasyPoints ? Number(game.fantasyPoints) : scoreGameStat(rawStat(game), scoring)), 0)
+  const fpts = Number(totalPoints.toFixed(1))
   const currentSeasonStats: Record<string, number> = {
     gamesPlayed: gp,
     goals,
@@ -347,7 +417,13 @@ function registryPlayerFromDatabase(dbPlayer: DatabasePlayer): RegistryPlayer {
   })
 }
 
-function applyLiveStats(player: RegistryPlayer, dbPlayer: DatabasePlayer | undefined, dbLogs: LiveStat[]): RegistryPlayer {
+function preparedStaticLogs(gameLog: MergedGame[] | undefined, scoring: LeagueScoring): MergedGame[] {
+  if (!gameLog || gameLog.length === 0) return []
+  if (usesDefaultScoring(scoring)) return gameLog
+  return gameLog.map((game) => ({ ...game, fantasyPoints: scoreGameStat(rawStat(game), scoring) }))
+}
+
+function applyLiveStats(player: RegistryPlayer, dbPlayer: DatabasePlayer | undefined, dbLogs: LiveStat[], scoring: LeagueScoring): RegistryPlayer {
   const team = dbPlayer && dbPlayer.teamAbbrev && dbPlayer.teamAbbrev !== "FA" && dbPlayer.teamAbbrev !== "NHL"
     ? dbPlayer.teamAbbrev
     : player.team
@@ -359,7 +435,7 @@ function applyLiveStats(player: RegistryPlayer, dbPlayer: DatabasePlayer | undef
   const injuryStatus = dbPlayer
     ? dbPlayer.injuryStatus === "HEALTHY" ? player.injuryStatus : (listedInjury(dbPlayer.injuryStatus) ?? player.injuryStatus)
     : player.injuryStatus
-  const gameLog = mergeGameLogs(dbLogs, staticGameLogs(player.gameLog), team)
+  const gameLog = mergeGameLogs(dbLogs, preparedStaticLogs(player.gameLog, scoring), team, scoring)
   if (gameLog.length === 0) {
     return { ...player, team, position, nhlGamesPlayed, injuryStatus }
   }
@@ -371,11 +447,11 @@ function applyLiveStats(player: RegistryPlayer, dbPlayer: DatabasePlayer | undef
     nhlGamesPlayed,
     injuryStatus,
     gameLog,
-    ...sumGameLog(gameLog, position, season, player),
+    ...sumGameLog(gameLog, season, player, scoring),
   }
 }
 
-function overlayLiveStats(basePlayers: RegistryPlayer[], dbPlayers: DatabasePlayer[], gameStats: LiveStat[]): RegistryPlayer[] {
+function overlayLiveStats(basePlayers: RegistryPlayer[], dbPlayers: DatabasePlayer[], gameStats: LiveStat[], scoring: LeagueScoring): RegistryPlayer[] {
   const logsByPlayerId = new Map<number, LiveStat[]>()
   for (const stat of gameStats) {
     const rows = logsByPlayerId.get(stat.playerId)
@@ -388,31 +464,34 @@ function overlayLiveStats(basePlayers: RegistryPlayer[], dbPlayers: DatabasePlay
     const nhlId = playerNhlId(player)
     const dbPlayer = nhlId == null ? undefined : dbById.get(nhlId)
     if (nhlId != null) seen.add(nhlId)
-    return applyLiveStats(player, dbPlayer, nhlId == null ? [] : logsByPlayerId.get(nhlId) ?? [])
+    return applyLiveStats(player, dbPlayer, nhlId == null ? [] : logsByPlayerId.get(nhlId) ?? [], scoring)
   })
   const extras = dbPlayers
     .filter((player) => !seen.has(player.id))
-    .map((player) => applyLiveStats(registryPlayerFromDatabase(player), player, logsByPlayerId.get(player.id) ?? []))
+    .map((player) => applyLiveStats(registryPlayerFromDatabase(player), player, logsByPlayerId.get(player.id) ?? [], scoring))
   return [...overlaid, ...extras]
 }
 
-export async function GET() {
+async function buildOverlaidPlayers(): Promise<RegistryPlayer[] | null> {
+  const mtimeMs = nhlPlayersMtimeMs()
   const basePlayers = readCachedPlayers() ?? await readSearchFallback()
-  if (!basePlayers) {
-    return NextResponse.json({ error: "Failed to load players" }, { status: 500 })
-  }
+  if (!basePlayers) return null
 
   let dbPlayers: DatabasePlayer[] = []
   let gameStats: LiveStat[] = []
+  let scoring: LeagueScoring = DEFAULT_LEAGUE_SCORING
+  let cacheable = true
   try {
-    const [players, stats] = await Promise.all([
+    const [players, stats, league] = await Promise.all([
       prisma.player.findMany({ select: { id: true, name: true, teamAbbrev: true, position: true, injuryStatus: true, nhlGamesPlayed: true } }),
       prisma.playerGameStat.findMany({
         where: { game: { gameState: { in: ["LIVE", "CRIT", "FINAL", "OFF"] } } },
         include: { game: { select: { id: true, season: true, gameDate: true, homeTeamAbbrev: true, awayTeamAbbrev: true, startTimeUTC: true } } },
         orderBy: { game: { gameDate: "desc" } },
       }),
+      prisma.league.findFirst({ select: { scoringSettings: true } }),
     ])
+    scoring = leagueScoring(league?.scoringSettings)
     dbPlayers = players
     gameStats = stats.map((stat) => ({
       playerId: stat.playerId,
@@ -442,9 +521,29 @@ export async function GET() {
     }))
   } catch (error) {
     console.error("Failed to read live player stats", error)
+    cacheable = false
   }
 
-  return NextResponse.json(overlayLiveStats(basePlayers, dbPlayers, gameStats), {
-    headers: { "Cache-Control": "no-store" },
-  })
+  const payload = overlayLiveStats(basePlayers, dbPlayers, gameStats, scoring)
+  if (cacheable) {
+    overlaidPlayerCache = { mtimeMs, expiresAt: Date.now() + PLAYER_POOL_CACHE_TTL_MS, payload }
+  }
+  return payload
+}
+
+export async function GET() {
+  const mtimeMs = nhlPlayersMtimeMs()
+  if (overlaidPlayerCache && overlaidPlayerCache.mtimeMs === mtimeMs && overlaidPlayerCache.expiresAt > Date.now()) {
+    return NextResponse.json(overlaidPlayerCache.payload, { headers: { "Cache-Control": "no-store" } })
+  }
+
+  if (!overlaidPlayerInFlight) {
+    const flight = buildOverlaidPlayers().finally(() => {
+      if (overlaidPlayerInFlight === flight) overlaidPlayerInFlight = null
+    })
+    overlaidPlayerInFlight = flight
+  }
+  const players = await overlaidPlayerInFlight
+  if (!players) return NextResponse.json({ error: "Failed to load players" }, { status: 500 })
+  return NextResponse.json(players, { headers: { "Cache-Control": "no-store" } })
 }

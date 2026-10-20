@@ -36,7 +36,6 @@ export function PlayerGridSettingsDialog({
     if (!valid) setDraft({ ...draft, period: draft.viewType === "Projections" ? "Next 14 Days" : "Last 14 Days" })
   }, [draft.viewType, draft.period, periods])
   const years = ["2026", "2025", "2024", "2023"]
-  if (!open) return null
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="mx-auto max-w-[430px] rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-4 text-white">

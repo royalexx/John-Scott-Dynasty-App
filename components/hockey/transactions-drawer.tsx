@@ -17,7 +17,12 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
 }) {
   const [selected, setSelected] = useState<ShownClaim | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
   const [liveClaims, setLiveClaims] = useState<ShownClaim[]>(claims)
+  useEffect(() => {
+    if (!teamId) setLiveClaims(claims)
+  }, [claims, teamId])
   useEffect(() => {
     if (!open || !teamId) return
     fetch(`/api/waivers?teamId=${encodeURIComponent(teamId)}`, { cache: "no-store" })
@@ -28,8 +33,37 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
   const displayedClaims = teamId ? liveClaims : claims
   const pending = displayedClaims.filter((claim) => claim.status !== "won" && claim.status !== "failed")
   const results = displayedClaims.filter((claim) => claim.status === "won" || claim.status === "failed")
-  const close = () => { setSelected(null); setConfirming(false); onOpenChange(false) }
-  if (!open) return null
+  const close = () => { setSelected(null); setConfirming(false); setCancelError(null); onOpenChange(false) }
+  const confirmCancel = async () => {
+    if (!selected || cancelling) return
+    if (!teamId) {
+      onCancel(selected)
+      setSelected(null)
+      setConfirming(false)
+      setCancelError(null)
+      return
+    }
+    setCancelling(true)
+    setCancelError(null)
+    try {
+      const response = await fetch("/api/waivers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId, claimId: selected.id }) })
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null) as { error?: string } | null
+        setCancelError(failure?.error ?? "Could not cancel waiver.")
+        return
+      }
+      setLiveClaims((current) => current.filter((claim) => claim.id !== selected.id))
+      onCancel(selected)
+      setSelected(null)
+      setConfirming(false)
+      setCancelError(null)
+    } catch (error: unknown) {
+      console.error("Could not cancel waiver", error)
+      setCancelError("Could not cancel waiver.")
+    } finally {
+      setCancelling(false)
+    }
+  }
   return (
     <Sheet open={open} onOpenChange={(value) => !value && close()}>
       <SheetContent side="bottom" spring="gentle" className="mx-auto max-h-[82vh] max-w-[430px] overflow-y-auto rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
@@ -45,7 +79,7 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
           {pending.length > 0 && (
             <div className="mt-2 space-y-2">
               {pending.map((claim, index) => (
-                <button key={claim.id} type="button" onClick={() => setSelected(claim)} className="flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left">
+                <button key={claim.id} type="button" onClick={() => { setSelected(claim); setConfirming(false); setCancelError(null) }} className="flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left">
                   <span className="text-lg font-black text-[#5e7090]">{index + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-bold text-[#19ffff]">+ ADD {claim.playerToAdd.name}</p>
@@ -90,19 +124,12 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
             <p className="text-sm font-black text-white">{confirming ? "Cancel Waiver - Please confirm you want to do this!" : `Manage waiver for ${selected.playerToAdd.name}`}</p>
             <p className="mt-1 text-xs text-[#8ba0c7]">This add is for next week&apos;s lineup. It processes Monday at midnight, after the final game.</p>
             {confirming ? (
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={() => setConfirming(false)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">No</button>
-                <button type="button" onClick={() => {
-                  if (teamId) {
-                    void fetch("/api/waivers", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teamId, claimId: selected.id }) })
-                      .then((response) => { if (!response.ok) throw new Error("Could not cancel waiver"); setLiveClaims((current) => current.filter((claim) => claim.id !== selected.id)); onCancel(selected) })
-                      .catch((error: unknown) => console.error("Could not cancel waiver", error))
-                  } else {
-                    onCancel(selected)
-                  }
-                  setSelected(null)
-                  setConfirming(false)
-                }} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white">Yes</button>
+              <div className="mt-3">
+                {cancelError && <p role="alert" className="mb-2 text-xs font-bold text-rose-400">{cancelError}</p>}
+                <div className="flex gap-2">
+                  <button type="button" disabled={cancelling} onClick={() => { setConfirming(false); setCancelError(null) }} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white disabled:opacity-40">No</button>
+                  <button type="button" disabled={cancelling} onClick={() => void confirmCancel()} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white disabled:opacity-40">{cancelling ? "Cancelling..." : "Yes"}</button>
+                </div>
               </div>
             ) : (
               <div className="mt-3 flex gap-2">

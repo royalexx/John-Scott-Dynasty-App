@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { prisma } from "@/lib/prisma"
 import { processWaiversForLeague } from "@/lib/services/transactions"
-import { getManagerSession } from "@/lib/auth-session"
+import { getManagerSession, verifyCronSecret } from "@/lib/auth-session"
 import { runInstantForProcessDate, waiverRunReadyForWeek } from "@/lib/waiver-run"
 import { getFantasyWeekDates } from "@/lib/season-calendar"
 import { ClaimStatus } from "@prisma/client"
@@ -10,14 +10,14 @@ import { ClaimStatus } from "@prisma/client"
 export const runtime = "nodejs"
 
 async function run(request: NextRequest) {
-  const configuredSecret = process.env.CRON_SECRET
   const session = await getManagerSession()
   const commissioner = session
     ? await prisma.user.findUnique({ where: { id: session.managerId }, select: { isCommissioner: true } })
     : null
   const commissionerAuthorized = commissioner?.isCommissioner === true
   const authorization = (await headers()).get("authorization")
-  const authorized = authorization === `Bearer ${configuredSecret}` || request.nextUrl.searchParams.get("secret") === configuredSecret
+  const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null
+  const authorized = verifyCronSecret(bearerToken) || verifyCronSecret(request.nextUrl.searchParams.get("secret"))
   if (!authorized && !commissionerAuthorized) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const now = new Date()

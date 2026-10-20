@@ -14,10 +14,15 @@ export async function isSeasonStructureLocked(season: number, lineupLockMode: un
   return lock.weekStarted
 }
 
-const leagueId = "00000000-0000-0000-0000-000000000001"
+const DEFAULT_LEAGUE_ID = "00000000-0000-0000-0000-000000000001"
 const jsonFields = ["rosterPositions", "scoringSettings", "waiverSettings", "tradeSettings", "draftSettings"] as const
 
-async function getLeague() {
+async function resolveLeagueId(teamId: string) {
+  const team = await prisma.team.findUnique({ where: { id: teamId }, select: { leagueId: true } })
+  return team?.leagueId ?? DEFAULT_LEAGUE_ID
+}
+
+async function getLeague(leagueId: string) {
   return prisma.league.findUnique({
     where: { id: leagueId },
     select: {
@@ -37,14 +42,15 @@ async function commissionerSession() {
 export async function GET() {
   const session = await getManagerSession()
   if (!session) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
-  const league = await getLeague()
+  const league = await getLeague(await resolveLeagueId(session.teamId))
   if (!league) return NextResponse.json({ error: "League not found." }, { status: 404 })
   const structureLocked = await isSeasonStructureLocked(league.currentSeason, league.lineupLockMode)
   return NextResponse.json({ ...league, structureLocked })
 }
 
 export async function PATCH(request: Request) {
-  if (!await commissionerSession()) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  const session = await commissionerSession()
+  if (!session) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   const body = await request.json().catch(() => null) as Record<string, unknown> | null
   if (!body) return NextResponse.json({ error: "Invalid settings payload." }, { status: 400 })
   const data: Record<string, unknown> = {}
@@ -71,7 +77,8 @@ export async function PATCH(request: Request) {
     }
     data.lineupLockMode = body.lineupLockMode
   }
-  const existing = await getLeague()
+  const leagueId = await resolveLeagueId(session.teamId)
+  const existing = await getLeague(leagueId)
   if (!existing) return NextResponse.json({ error: "League not found." }, { status: 404 })
   if (await isSeasonStructureLocked(existing.currentSeason, existing.lineupLockMode)) {
     delete data.rosterPositions

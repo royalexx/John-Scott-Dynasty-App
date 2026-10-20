@@ -111,9 +111,12 @@ test.describe("week sync in the UI", () => {
 
   test("previous weeks show their final scores from the database", async ({ page }) => {
     const matchup = await prisma.matchup.findFirstOrThrow({ where: { week: 2, season: 2026 }, include: { homeTeam: true, awayTeam: true } })
+    const stepsBack = Math.max(0, getCurrentFantasyWeek(2026) - 2)
     await page.goto("/")
     await page.getByRole("button", { name: "LEAGUE", exact: true }).click()
-    await page.getByRole("button", { name: "Previous league week" }).click()
+    for (let step = 0; step < stepsBack; step += 1) {
+      await page.getByRole("button", { name: "Previous league week" }).click()
+    }
     await expect(page.getByText("Week 2").first()).toBeVisible()
     await expect(page.getByText(Number(matchup.homeScore).toFixed(2)).first()).toBeVisible()
     await expect(page.getByText(Number(matchup.awayScore).toFixed(2)).first()).toBeVisible()

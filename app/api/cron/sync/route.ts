@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { headers } from "next/headers"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { prisma } from "@/lib/prisma"
-import { getManagerSession } from "@/lib/auth-session"
+import { getManagerSession, verifyCronSecret } from "@/lib/auth-session"
 import {
   enforceRosterLocks,
   syncActiveGameBoxscores,
@@ -17,14 +17,15 @@ export const dynamic = "force-dynamic"
 async function runSync(request: NextRequest) {
   const startedAt = Date.now()
   const requestHeaders = await headers()
-  const configuredSecret = process.env.CRON_SECRET
   const session = await getManagerSession()
   const commissioner = session
     ? await prisma.user.findUnique({ where: { id: session.managerId }, select: { isCommissioner: true } })
     : null
   const commissionerAuthorized = commissioner?.isCommissioner === true
-  const bearerAuthorized = requestHeaders.get("authorization") === `Bearer ${configuredSecret}`
-  const queryAuthorized = request.nextUrl.searchParams.get("secret") === configuredSecret
+  const authorization = requestHeaders.get("authorization")
+  const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null
+  const bearerAuthorized = verifyCronSecret(bearerToken)
+  const queryAuthorized = verifyCronSecret(request.nextUrl.searchParams.get("secret"))
   if (!bearerAuthorized && !queryAuthorized && !commissionerAuthorized) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }

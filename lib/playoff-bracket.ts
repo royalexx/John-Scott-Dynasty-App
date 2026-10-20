@@ -63,7 +63,7 @@ function rankedTeams(standings: PlayoffStanding[], results: PlayoffResult[], cur
     for (const [team, score, opponent] of sides) {
       const row = table.get(team)
       if (!row) continue
-      row.pointsFor += score
+      row.pointsFor = Math.round((row.pointsFor + score) * 100) / 100
       if (score > opponent) row.wins += 1
       else if (score < opponent) row.losses += 1
     }

@@ -13,18 +13,25 @@ export interface WeekAssignment {
 
 /** Copies the live roster into the week snapshot once. Later trades do not rewrite it. */
 export async function freezeWeekLineup(db: Db, leagueId: string, season: number, week: number) {
-  const existing = await db.weekLineup.findFirst({
-    where: { season, week, team: { leagueId } },
-    select: { id: true },
-  })
-  if (existing) return
+  const [teamCount, frozenTeams] = await Promise.all([
+    db.team.count({ where: { leagueId } }),
+    db.weekLineup.findMany({
+      where: { season, week, team: { leagueId } },
+      distinct: ["teamId"],
+      select: { teamId: true },
+    }),
+  ])
+  if (frozenTeams.length >= teamCount) return
+
+  const covered = new Set(frozenTeams.map((row) => row.teamId))
   const slots = await db.rosterSlot.findMany({
     where: { team: { leagueId } },
     select: { teamId: true, playerId: true, slot: true },
   })
-  if (slots.length === 0) return
+  const missing = slots.filter((slot) => !covered.has(slot.teamId))
+  if (missing.length === 0) return
   await db.weekLineup.createMany({
-    data: slots.map((slot) => ({ teamId: slot.teamId, season, week, playerId: slot.playerId, slot: slot.slot })),
+    data: missing.map((slot) => ({ teamId: slot.teamId, season, week, playerId: slot.playerId, slot: slot.slot })),
     skipDuplicates: true,
   })
 }

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { getCurrentFantasyWeek } from "../lib/season-calendar"
 
 test.describe("audit regressions", () => {
   test("players market: F/W/G filters and goalie sort controls", async ({ page }) => {
@@ -86,7 +87,9 @@ test.describe("audit regressions", () => {
     const session = await (await request.get("/api/auth/session")).json() as { user?: { teamId: string } }
     const teamId = session.user!.teamId
     type Row = { playerId: number; slot: string }
-    const move = (playerId: number, targetSlot: string) => request.post("/api/roster/move", { data: { teamId, playerId, targetSlot } })
+    // The current week locks starters once the first game starts. Arrange next week so the IR swap can still run.
+    const openWeek = getCurrentFantasyWeek() + 1
+    const move = (playerId: number, targetSlot: string) => request.post("/api/roster/move", { data: { teamId, playerId, targetSlot, week: openWeek } })
     const slotsOf = async (response: Awaited<ReturnType<typeof move>>) => {
       expect(response.ok(), await response.text()).toBe(true)
       return new Map(((await response.json()) as { roster: Row[] }).roster.map((row) => [row.playerId, row.slot]))

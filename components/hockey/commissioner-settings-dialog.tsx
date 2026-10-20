@@ -40,6 +40,17 @@ export function mergeLeagueSettings(base: LeagueSettings, data: Partial<LeagueSe
   }
 }
 
+function lockedRosterOrScoringChanged(previous: LeagueSettings, next: LeagueSettings) {
+  const snapshot = (value: LeagueSettings) => ({
+    rosterPositions: value.rosterPositions,
+    scoringSettings: value.scoringSettings,
+    taxiSlots: value.taxiSlots,
+    taxiMaxGames: value.taxiMaxGames,
+    irSlots: value.irSlots,
+  })
+  return JSON.stringify(snapshot(previous)) !== JSON.stringify(snapshot(next))
+}
+
 const tabs = ["Roster", "Scoring", "Waivers", "Trades", "Draft", "Tools"] as const
 type Tab = typeof tabs[number]
 type RecordField = "rosterPositions" | "scoringSettings" | "waiverSettings" | "tradeSettings" | "draftSettings"
@@ -150,7 +161,18 @@ export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boole
         setSaving(false)
         return
       }
-      setSaved(settings)
+      const payload = await response.json() as Partial<LeagueSettings> & { structureLocked?: boolean }
+      const locked = payload.structureLocked === true
+      const rejectedLockedEdits = locked && lockedRosterOrScoringChanged(saved, settings)
+      setStructureLocked(locked)
+      const merged = mergeLeagueSettings(defaultLeagueSettings, payload)
+      setSettings(merged)
+      setSaved(merged)
+      if (rejectedLockedEdits) {
+        setStatus({ tone: "info", text: "Week 1 has already started, so only unlocked settings (lock mode, waivers, trades, draft) were persisted. Roster shape and scoring were left unchanged." })
+        setSaving(false)
+        return
+      }
       setStatus({ tone: "ok", text: "Saved. Applying the new rules..." })
       // Server components hydrate slots/rules, so a reload applies them everywhere at once.
       window.setTimeout(() => window.location.reload(), 600)

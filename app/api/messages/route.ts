@@ -50,10 +50,18 @@ export async function GET(request: Request) {
     }),
   ])
   const unreadBySender = new Map(unreadGroups.map((group) => [group.senderId, group._count._all]))
+  const latestByPartner = new Map<string, typeof latestByPair[number]>()
+  for (const message of latestByPair) {
+    const partnerId = message.senderId === user.id ? message.recipientId : message.senderId
+    const current = latestByPartner.get(partnerId)
+    const messageTime = message.createdAt.getTime()
+    const currentTime = current?.createdAt.getTime()
+    if (currentTime == null || messageTime > currentTime || (messageTime === currentTime && message.senderId === user.id)) {
+      latestByPartner.set(partnerId, message)
+    }
+  }
   const summaries = partners.map((partner) => {
-    const sent = latestByPair.find((message) => message.senderId === user.id && message.recipientId === partner.id)
-    const received = latestByPair.find((message) => message.senderId === partner.id && message.recipientId === user.id)
-    const latest = sent && received ? (sent.createdAt >= received.createdAt ? sent : received) : sent ?? received
+    const latest = latestByPartner.get(partner.id)
     return {
       managerId: partner.id, name: partner.name, handle: `@${partner.handle}`, teamName: partner.managedTeams[0]?.name ?? "Unassigned",
       lastMessage: latest?.body ?? "Start a conversation", timestamp: latest ? formatTime(latest.createdAt) : "", unreadCount: unreadBySender.get(partner.id) ?? 0,

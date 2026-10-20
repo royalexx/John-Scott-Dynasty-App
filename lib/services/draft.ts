@@ -55,9 +55,59 @@ export async function buildDraftSlots(leagueId: string, season: number, teamIds:
   })
 }
 
-async function draftTeamIds(leagueId: string) {
+async function draftTeams(leagueId: string) {
   const standings = await getLeagueStandings(leagueId)
-  return [...(standings ?? [])].reverse().map((row) => row.team.id)
+  return [...(standings ?? [])].reverse().map((row) => ({ id: row.team.id, name: row.team.name }))
+}
+
+async function draftTeamIds(leagueId: string) {
+  return (await draftTeams(leagueId)).map((team) => team.id)
+}
+
+type PickOwner = { round: number; currentTeamId: string; originalTeam: { id: string; name: string } }
+
+/** Original team for a column, using a round whose current owner holds only that pick. */
+function originalTeamForColumn(column: LoadedDraft["slots"], picks: PickOwner[]) {
+  for (const slot of column) {
+    const matches = picks.filter((pick) => pick.round === slot.round && pick.currentTeamId === slot.teamId)
+    if (matches.length === 1) return { id: matches[0].originalTeam.id, name: matches[0].originalTeam.name }
+  }
+  if (picks.length === 0 && column[0]) return { id: column[0].team.id, name: column[0].team.name }
+  return null
+}
+
+/** Columns are original draft slots 0..N-1, even when a team traded away its round-1 pick. */
+async function columnTeams(draft: LoadedDraft) {
+  const count = draft.slots.reduce((max, slot) => Math.max(max, slot.slot + 1), 0)
+  if (count === 0) return []
+  const picks = await prisma.draftPick.findMany({
+    where: { leagueId: draft.leagueId, season: draft.startAt.getUTCFullYear(), round: { lte: draft.rounds } },
+    select: { round: true, currentTeamId: true, originalTeam: { select: { id: true, name: true } } },
+  })
+  const resolved = new Map<number, { id: string; name: string }>()
+  for (let slot = 0; slot < count; slot += 1) {
+    const original = originalTeamForColumn(draft.slots.filter((item) => item.slot === slot), picks)
+    if (original) resolved.set(slot, original)
+  }
+  if (resolved.size < count) {
+    const used = new Set([...resolved.values()].map((team) => team.id))
+    const ordered = await draftTeams(draft.leagueId)
+    for (let slot = 0; slot < count; slot += 1) {
+      if (resolved.has(slot)) continue
+      const team = ordered[slot]
+      if (!team || used.has(team.id)) continue
+      resolved.set(slot, team)
+      used.add(team.id)
+    }
+  }
+  for (const item of draft.slots.filter((slot) => slot.round === 1)) {
+    if (!resolved.has(item.slot)) resolved.set(item.slot, { id: item.team.id, name: item.team.name })
+  }
+  return Array.from({ length: count }, (_, slot) => ({
+    id: resolved.get(slot)?.id ?? `slot-${slot}`,
+    name: resolved.get(slot)?.name ?? "Team",
+    slot,
+  }))
 }
 
 function queuesOf(value: Prisma.JsonValue): Record<string, number[]> {
@@ -97,7 +147,7 @@ async function draftOrderFor(leagueId: string) {
 async function present(draft: LoadedDraft, teamId: string, type?: DraftOrder) {
   const queues = queuesOf(draft.queues)
   const current = draft.slots.find((slot) => slot.playerId == null) ?? null
-  const teams = [...new Map(draft.slots.filter((slot) => slot.round === 1).sort((a, b) => a.slot - b.slot).map((slot) => [slot.teamId, { id: slot.team.id, name: slot.team.name, slot: slot.slot }])).values()]
+  const teams = await columnTeams(draft)
   return {
     id: draft.id,
     type: type ?? await draftOrderFor(draft.leagueId),
@@ -126,8 +176,93 @@ async function present(draft: LoadedDraft, teamId: string, type?: DraftOrder) {
   }
 }
 
+async function presentCurrent(draft: LoadedDraft, teamId: string, type?: DraftOrder) {
+  return present(await autopickIfExpired(draft), teamId, type)
+}
+
 async function load(draftId: string) {
   return prisma.draft.findUniqueOrThrow({ where: { id: draftId }, include: draftInclude })
+}
+
+function clockExpired(draft: LoadedDraft) {
+  return draft.status === DraftStatus.LIVE && !draft.paused && remainingSeconds(draft) <= 0
+}
+
+function takenPlayerIds(draft: LoadedDraft) {
+  return new Set(draft.slots.flatMap((slot) => (slot.playerId == null ? [] : [slot.playerId])))
+}
+
+/** Queue order is priority. The first id still undrafted is the highest-ranked available player. */
+async function firstQueuedPlayer(tx: Prisma.TransactionClient, draft: LoadedDraft, teamId: string) {
+  const taken = takenPlayerIds(draft)
+  for (const playerId of queuesOf(draft.queues)[teamId] ?? []) {
+    if (taken.has(playerId)) continue
+    const player = await tx.player.findUnique({ where: { id: playerId }, select: { id: true, name: true, nhlGamesPlayed: true } })
+    if (player) return player
+  }
+  return null
+}
+
+async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot: LoadedDraft["slots"][number], player: { id: number; name: string; nhlGamesPlayed: number }) {
+  const claimed = await tx.draftSlot.updateMany({
+    where: { id: slot.id, playerId: null },
+    data: { playerId: player.id, pickedAt: new Date() },
+  })
+  if (claimed.count !== 1) return false
+  const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: player.id, team: { leagueId: draft.leagueId } } })
+  if (!alreadyRostered) {
+    const [league, rosterSlots] = await Promise.all([
+      tx.league.findUnique({ where: { id: draft.leagueId }, select: { rosterSize: true, taxiSlots: true, taxiMaxGames: true } }),
+      tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
+    ])
+    if (league) {
+      const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
+      const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
+      const placement = player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
+        ? SlotType.TAXI
+        : rosterCount < league.rosterSize
+          ? SlotType.BN
+          : null
+      if (placement) {
+        await tx.rosterSlot.create({ data: { teamId: slot.teamId, playerId: player.id, slot: placement } })
+        await tx.activityLog.create({
+          data: {
+            leagueId: draft.leagueId,
+            teamId: slot.teamId,
+            action: ActivityAction.ADD,
+            details: { playerId: player.id, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
+          },
+        })
+      }
+    }
+  }
+  const remaining = draft.slots.filter((item) => item.playerId == null && item.id !== slot.id)
+  await tx.draft.update({
+    where: { id: draft.id },
+    data: remaining.length === 0
+      ? { status: DraftStatus.COMPLETE, onClock: slot.pickNumber, clockStartedAt: null, paused: false }
+      : { onClock: slot.pickNumber, clockStartedAt: new Date() },
+  })
+  return true
+}
+
+async function autopickIfExpired(draft: LoadedDraft) {
+  if (!clockExpired(draft)) return draft
+  const open = draft.slots.find((slot) => slot.playerId == null)
+  const taken = open ? takenPlayerIds(draft) : null
+  const queued = open ? (queuesOf(draft.queues)[open.teamId] ?? []).some((playerId) => !taken?.has(playerId)) : false
+  if (!open || !queued) return draft
+  return prisma.$transaction(async (tx) => {
+    const fresh = await tx.draft.findUniqueOrThrow({ where: { id: draft.id }, include: draftInclude })
+    if (!clockExpired(fresh)) return fresh
+    const slot = fresh.slots.find((item) => item.playerId == null)
+    if (!slot) return fresh
+    const player = await firstQueuedPlayer(tx, fresh, slot.teamId)
+    if (!player || !(await commitPick(tx, fresh, slot, player))) {
+      return tx.draft.findUniqueOrThrow({ where: { id: draft.id }, include: draftInclude })
+    }
+    return tx.draft.findUniqueOrThrow({ where: { id: draft.id }, include: draftInclude })
+  })
 }
 
 async function promoteIfDue(draft: LoadedDraft) {
@@ -196,7 +331,7 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
   if (draft) draft = await promoteIfDue(draft)
   return {
     scheduled,
-    draft: draft ? await present(draft, teamId, config.type) : null,
+    draft: draft ? await presentCurrent(draft, teamId, config.type) : null,
   }
 }
 
@@ -210,12 +345,12 @@ export async function startDraft(leagueId: string, teamId: string) {
   const id = await requireDraft(leagueId, teamId)
   const draft = await load(id)
   if (draft.status === DraftStatus.COMPLETE) throw new Error("The draft is complete.")
-  if (draft.status === DraftStatus.LIVE && !draft.paused) return present(draft, teamId)
+  if (draft.status === DraftStatus.LIVE && !draft.paused) return presentCurrent(draft, teamId)
   await prisma.draft.update({
     where: { id },
     data: { status: DraftStatus.LIVE, paused: false, pausedRemaining: null, clockStartedAt: new Date() },
   })
-  return present(await load(id), teamId)
+  return presentCurrent(await load(id), teamId)
 }
 
 export async function pauseDraft(leagueId: string, teamId: string) {
@@ -226,7 +361,7 @@ export async function pauseDraft(leagueId: string, teamId: string) {
     where: { id },
     data: { paused: true, pausedRemaining: remainingSeconds(draft), clockStartedAt: null },
   })
-  return present(await load(id), teamId)
+  return presentCurrent(await load(id), teamId)
 }
 
 export async function resumeDraft(leagueId: string, teamId: string) {
@@ -239,7 +374,7 @@ export async function resumeDraft(leagueId: string, teamId: string) {
     where: { id },
     data: { paused: false, pausedRemaining: null, status: DraftStatus.LIVE, clockStartedAt: new Date(Date.now() - elapsed * 1000) },
   })
-  return present(await load(id), teamId)
+  return presentCurrent(await load(id), teamId)
 }
 
 export async function setDraftTimer(leagueId: string, teamId: string, timerSeconds: number) {
@@ -254,7 +389,7 @@ export async function setDraftTimer(leagueId: string, teamId: string, timerSecon
       clockStartedAt: draft.status === DraftStatus.LIVE && !draft.paused ? new Date() : draft.clockStartedAt,
     },
   })
-  return present(await load(id), teamId)
+  return presentCurrent(await load(id), teamId)
 }
 
 export async function makeDraftPick(leagueId: string, teamId: string, playerId: number, commissioner: boolean) {
@@ -269,41 +404,7 @@ export async function makeDraftPick(leagueId: string, teamId: string, playerId: 
     if (taken) throw new Error("That player is already drafted.")
     const player = await tx.player.findUnique({ where: { id: playerId }, select: { id: true, name: true, nhlGamesPlayed: true } })
     if (!player) throw new Error("Player not found.")
-    await tx.draftSlot.update({ where: { id: slot.id }, data: { playerId, pickedAt: new Date() } })
-    const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId, team: { leagueId } } })
-    if (!alreadyRostered) {
-      const [league, rosterSlots] = await Promise.all([
-        tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true, taxiSlots: true, taxiMaxGames: true } }),
-        tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
-      ])
-      if (league) {
-        const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
-        const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
-        const placement = player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
-          ? SlotType.TAXI
-          : rosterCount < league.rosterSize
-            ? SlotType.BN
-            : null
-        if (placement) {
-          await tx.rosterSlot.create({ data: { teamId: slot.teamId, playerId, slot: placement } })
-          await tx.activityLog.create({
-            data: {
-              leagueId,
-              teamId: slot.teamId,
-              action: ActivityAction.ADD,
-              details: { playerId, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
-            },
-          })
-        }
-      }
-    }
-    const remaining = draft.slots.filter((item) => item.playerId == null && item.id !== slot.id)
-    await tx.draft.update({
-      where: { id },
-      data: remaining.length === 0
-        ? { status: DraftStatus.COMPLETE, onClock: slot.pickNumber, clockStartedAt: null, paused: false }
-        : { onClock: slot.pickNumber, clockStartedAt: new Date() },
-    })
+    if (!(await commitPick(tx, draft, slot, player))) throw new Error("That pick was already made.")
     return present(await tx.draft.findUniqueOrThrow({ where: { id }, include: draftInclude }), teamId)
   })
 }
@@ -315,5 +416,5 @@ export async function updateDraftQueue(leagueId: string, teamId: string, playerI
   const current = queues[teamId] ?? []
   queues[teamId] = add ? [...current.filter((id) => id !== playerId), playerId] : current.filter((id) => id !== playerId)
   await prisma.draft.update({ where: { id }, data: { queues } })
-  return present(await load(id), teamId)
+  return presentCurrent(await load(id), teamId)
 }

@@ -59,11 +59,11 @@ export function TeamDrawer({
     if (type !== "news") return
     fetch("/api/news", { cache: "no-store" }).then((response) => response.json()).then((data: { articles?: typeof news }) => setNews(data.articles ?? [])).catch((error) => console.error("Failed to load ESPN news:", error))
   }, [type])
-  if (!type) return null
-  if (type === "transactions") return <TransactionsDrawer open teamId={teamId} claims={pendingClaims} activities={activities} onOpenChange={(open) => !open && onClose()} onCancel={onCancelClaim} />
   const title = type === "schedule" ? "Schedule" : type === "team-settings" ? "Team Settings" : type === "settings" ? "League Settings" : "Player News"
   return (
-    <Sheet open={type !== null} onOpenChange={(open) => !open && onClose()}>
+    <>
+    <TransactionsDrawer open={type === "transactions"} teamId={teamId} claims={pendingClaims} activities={activities} onOpenChange={(open) => !open && onClose()} onCancel={onCancelClaim} />
+    {type && type !== "transactions" && <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="bottom" spring="gentle" className="mx-auto max-h-[82vh] max-w-[430px] overflow-y-auto rounded-t-2xl border-t border-[#1a263d] bg-[#0d1424] p-0 text-white">
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#5e7090]" />
         <div className="flex items-center justify-between border-b border-[#172338] px-4 pb-3 pt-2"><h2 className="text-lg font-black">{title}</h2><button type="button" onClick={onClose} aria-label="Close drawer" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><X className="size-5" /></button></div>
@@ -72,6 +72,7 @@ export function TeamDrawer({
         {type === "settings" && <LeagueSettingsPanel managerHandle={managerHandle} isCommissioner={isCommissioner} teamName={teamName} rank={rank ?? 0} faab={faab} waiverPriority={waiverPriority} />}
         {type === "news" && <div className="space-y-2 p-4">{news.map((item) => <article key={item.id} className="rounded-lg border border-[#172338] bg-[#111c30] p-3"><p className="text-xs font-black uppercase text-[#5e7090]">ESPN NHL News</p><h3 className="mt-1 text-xs font-bold text-[#19ffff]">{item.headline}</h3><p className="mt-1 text-xs leading-relaxed text-[#8ba0c7]">{item.description}</p>{item.url && <a href={item.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-black text-white underline">Read on ESPN</a>}</article>)}</div>}
       </SheetContent>
-    </Sheet>
+    </Sheet>}
+    </>
   )
 }

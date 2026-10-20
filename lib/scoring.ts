@@ -62,12 +62,60 @@ export interface RawGameStat {
   decision?: string | null
 }
 
-export function scoreGameStat(stat: RawGameStat, settings: LeagueScoring | null | undefined): number {
+export interface CountingLine {
+  goals?: number | null
+  assists?: number | null
+  shots?: number | null
+  hits?: number | null
+  blocks?: number | null
+  plusMinus?: number | null
+  powerPlayPoints?: number | null
+  shorthandedGoals?: number | null
+  gameWinningGoals?: number | null
+  wins?: number | null
+  overtimeLosses?: number | null
+  saves?: number | null
+  goalsAgainst?: number | null
+  shutouts?: number | null
+}
+
+/** Same weights as `scoreGameStat`, for a season total or any other counting line. */
+export function scoreCountingLine(counts: CountingLine, settings: LeagueScoring | null | undefined): number {
   const s = { ...DEFAULT_LEAGUE_SCORING, ...(settings ?? {}) }
+  const n = (number: number | null | undefined) => number ?? 0
   const total =
-    stat.goals * s.goal + stat.assists * s.assist + stat.shots * s.shot + stat.hits * s.hit + stat.blocks * s.block +
-    stat.powerPlayPoints * s.ppp + stat.shorthandedGoals * s.shg + stat.gameWinningGoals * s.gwg + stat.plusMinus * s.plusMinus +
-    (stat.decision === "W" ? s.win : 0) + (stat.decision === "OTL" || stat.decision === "OT" ? s.overtimeLoss : 0) +
-    stat.saves * s.save + stat.goalsAgainst * s.goalsAgainst + stat.shutouts * s.shutout
+    n(counts.goals) * s.goal +
+    n(counts.assists) * s.assist +
+    n(counts.shots) * s.shot +
+    n(counts.hits) * s.hit +
+    n(counts.blocks) * s.block +
+    n(counts.powerPlayPoints) * s.ppp +
+    n(counts.shorthandedGoals) * s.shg +
+    n(counts.gameWinningGoals) * s.gwg +
+    n(counts.plusMinus) * s.plusMinus +
+    n(counts.wins) * s.win +
+    n(counts.overtimeLosses) * s.overtimeLoss +
+    n(counts.saves) * s.save +
+    n(counts.goalsAgainst) * s.goalsAgainst +
+    n(counts.shutouts) * s.shutout
   return Math.round(total * 100) / 100
+}
+
+export function scoreGameStat(stat: RawGameStat, settings: LeagueScoring | null | undefined): number {
+  return scoreCountingLine({
+    goals: stat.goals,
+    assists: stat.assists,
+    shots: stat.shots,
+    hits: stat.hits,
+    blocks: stat.blocks,
+    plusMinus: stat.plusMinus,
+    powerPlayPoints: stat.powerPlayPoints,
+    shorthandedGoals: stat.shorthandedGoals,
+    gameWinningGoals: stat.gameWinningGoals,
+    wins: stat.decision === "W" ? 1 : 0,
+    overtimeLosses: stat.decision === "OTL" || stat.decision === "OT" ? 1 : 0,
+    saves: stat.saves,
+    goalsAgainst: stat.goalsAgainst,
+    shutouts: stat.shutouts,
+  }, settings)
 }

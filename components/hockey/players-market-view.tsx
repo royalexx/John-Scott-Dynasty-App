@@ -33,11 +33,11 @@ function marketStat(player: MarketPlayer, stat: "gp" | "goals" | "assists" | "so
   if (stat === "goalsAgainst") return "goalsAgainst" in stats ? stats.goalsAgainst : 0
   if (stat === "shutouts") return "shutouts" in stats ? stats.shutouts : 0
   if (stat === "savePct") return "savePct" in stats ? stats.savePct ?? 0 : 0
-  if (stat === "goals") return "goals" in stats ? stats.goals : 0
-  if (stat === "assists") return "assists" in stats ? stats.assists : 0
-  if (stat === "sog") return "sog" in stats ? stats.sog : 0
-  if (stat === "hits") return "hits" in stats ? stats.hits : 0
-  if (stat === "blocks") return "blocks" in stats ? stats.blocks : 0
+  if (stat === "goals") return "goals" in stats ? stats.goals ?? 0 : 0
+  if (stat === "assists") return "assists" in stats ? stats.assists ?? 0 : 0
+  if (stat === "sog") return "sog" in stats ? stats.sog ?? 0 : 0
+  if (stat === "hits") return "hits" in stats ? stats.hits ?? 0 : 0
+  if (stat === "blocks") return "blocks" in stats ? stats.blocks ?? 0 : 0
   if (stat === "ppp") return "ppp" in stats ? stats.ppp ?? 0 : 0
   return player.currentSeasonStats?.plusMinus ?? 0
 }

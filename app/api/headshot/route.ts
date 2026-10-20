@@ -4,25 +4,28 @@ import path from "node:path"
 
 export const runtime = "nodejs"
 
-// In-memory cache so we only search each player once per server lifecycle
+// Resolved headshots, including NHL search misses that are not in the local file.
 const idCache = new Map<string, string>()
-type IndexedPlayer = { name: string; nhlId: number }
-let indexedPlayers: IndexedPlayer[] | null = null
+let nhlIdByName: Map<string, number> | null = null
 
 function normalizeName(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
 }
 
-function getIndexedPlayer(name: string): IndexedPlayer | undefined {
-  if (indexedPlayers) {
-    const normalizedName = normalizeName(name)
-    return indexedPlayers.find((player) => normalizeName(player.name) === normalizedName)
-  }
+function loadNhlIdByName(): Map<string, number> | null {
+  if (nhlIdByName) return nhlIdByName
   const filePath = path.join(process.cwd(), "public", "data", "nhl-players.json")
-  if (!fs.existsSync(filePath)) return undefined
-  indexedPlayers = JSON.parse(fs.readFileSync(filePath, "utf-8")) as IndexedPlayer[]
-  const normalizedName = normalizeName(name)
-  return indexedPlayers.find((player) => normalizeName(player.name) === normalizedName)
+  if (!fs.existsSync(filePath)) return null
+  const players = JSON.parse(fs.readFileSync(filePath, "utf-8")) as Array<{ name?: string; nhlId?: number }>
+  const index = new Map<string, number>()
+  for (const player of players) {
+    const nhlId = player.nhlId
+    if (!player.name || nhlId == null || !Number.isFinite(nhlId)) continue
+    const key = normalizeName(player.name)
+    if (!index.has(key)) index.set(key, nhlId)
+  }
+  nhlIdByName = index
+  return index
 }
 
 export async function GET(req: NextRequest) {
@@ -42,9 +45,9 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const indexedPlayer = getIndexedPlayer(name)
-  if (indexedPlayer) {
-    const playerId = String(indexedPlayer.nhlId)
+  const indexedId = loadNhlIdByName()?.get(cleanName)
+  if (indexedId != null) {
+    const playerId = String(indexedId)
     idCache.set(cleanName, playerId)
     return NextResponse.redirect(`https://assets.nhle.com/mugs/nhl/latest/${playerId}.png`, {
       headers: { "Cache-Control": "public, max-age=604800, stale-while-revalidate=86400" },

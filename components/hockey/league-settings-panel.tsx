@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronRight, Crown, LogOut, RefreshCw, Shield, Swords } from "lucide-react"
+import { ChevronRight, Crown, LockKeyhole, LogOut, RefreshCw, Shield, Swords } from "lucide-react"
 import { CommissionerSettingsDialog, defaultLeagueSettings, mergeLeagueSettings, type LeagueSettings } from "@/components/hockey/commissioner-settings-dialog"
 import { cn } from "@/lib/utils"
 
@@ -9,6 +9,10 @@ type Manager = { id: string; name: string; handle: string; isCommissioner: boole
 type LeagueInfo = LeagueSettings & { name?: string; rosterSize?: number }
 
 const SCORING_LABELS: Array<[string, string]> = [["goal", "G"], ["assist", "A"], ["shot", "SOG"], ["hit", "HIT"], ["block", "BLK"], ["ppp", "PPP"], ["shg", "SHG"], ["gwg", "GWG"], ["plusMinus", "+/-"], ["win", "W"], ["save", "SV"], ["goalsAgainst", "GA"], ["shutout", "SO"], ["overtimeLoss", "OTL"]]
+
+function pinDigits(value: string) {
+  return value.replace(/\D/g, "").slice(0, 4)
+}
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return <div className="flex items-center justify-between gap-3 py-1.5 text-xs"><span className="text-[#8ba0c7]">{label}</span><span className="text-right font-bold text-white">{value}</span></div>
@@ -25,6 +29,12 @@ export function LeagueSettingsPanel({ managerHandle, isCommissioner, teamName, r
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [rulebookOpen, setRulebookOpen] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+  const [currentPin, setCurrentPin] = useState("")
+  const [newPin, setNewPin] = useState("")
+  const [confirmPin, setConfirmPin] = useState("")
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinStatus, setPinStatus] = useState<{ ok: boolean; text: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -75,6 +85,40 @@ export function LeagueSettingsPanel({ managerHandle, isCommissioner, teamName, r
     }
   }
 
+  const changePin = async () => {
+    if (!/^\d{4}$/.test(currentPin) || !/^\d{4}$/.test(newPin)) {
+      setPinStatus({ ok: false, text: "Current PIN and new PIN must be 4 digits." })
+      return
+    }
+    if (newPin !== confirmPin) {
+      setPinStatus({ ok: false, text: "New PIN and confirmation do not match." })
+      return
+    }
+    setPinBusy(true)
+    setPinStatus(null)
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPin, newPin }),
+      })
+      const data = await response.json().catch(() => null) as { error?: string } | null
+      if (!response.ok) {
+        setPinStatus({ ok: false, text: data?.error ?? "Could not change PIN." })
+        return
+      }
+      setCurrentPin("")
+      setNewPin("")
+      setConfirmPin("")
+      setPinStatus({ ok: true, text: "PIN updated." })
+    } catch (error: unknown) {
+      console.error("PIN update failed", error)
+      setPinStatus({ ok: false, text: "Could not change PIN." })
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
   const positions = league.rosterPositions
   const capacity = league.rosterSize ?? Object.values(positions).reduce((sum, value) => sum + value, 0)
   const waiverType = String(league.waiverSettings.type ?? "FAAB")
@@ -91,6 +135,24 @@ export function LeagueSettingsPanel({ managerHandle, isCommissioner, teamName, r
           {[["Rank", rank > 0 ? `#${rank}` : "-"], ["FAAB", `$${faab ?? 0}`], ["Waiver", waiverPriority ? `#${waiverPriority}` : "-"]].map(([label, value]) => <div key={label} className="rounded-lg bg-[#0a1120] py-2"><p className="text-sm font-black tabular-nums text-[#19ffff]">{value}</p><p className="text-xs font-bold uppercase text-[#5e7090]">{label}</p></div>)}
         </div>
       </div>
+
+      <section className="rounded-xl border border-[#172338] bg-[#0f1829] p-3">
+        <button type="button" aria-expanded={pinOpen} onClick={() => setPinOpen((open) => !open)} className="flex w-full items-center justify-between text-left">
+          <span className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-[#5e7090]"><LockKeyhole className="size-3.5" />Change PIN</span>
+          <ChevronRight className={cn("size-4 text-[#5e7090] transition", pinOpen && "rotate-90")} />
+        </button>
+        {pinOpen && (
+          <form className="mt-3 space-y-2" onSubmit={(event) => { event.preventDefault(); void changePin() }}>
+            {([["current-pin", "Current PIN", currentPin, setCurrentPin, "current-password"], ["new-pin", "New PIN", newPin, setNewPin, "new-password"], ["confirm-pin", "Confirm PIN", confirmPin, setConfirmPin, "new-password"]] as const).map(([id, label, value, setValue, autoComplete]) => (
+              <label key={id} htmlFor={id} className="block text-xs font-bold text-[#8ba0c7]">{label}
+                <input id={id} type="password" inputMode="numeric" autoComplete={autoComplete} maxLength={4} pattern="[0-9]{4}" value={value} disabled={pinBusy} onChange={(event) => { setValue(pinDigits(event.target.value)); setPinStatus(null) }} className="mt-1 w-full rounded-lg border border-[#263858] bg-[#0a1120] px-3 py-2 text-sm font-bold tracking-[0.3em] text-white outline-none focus:border-[#19ffff] disabled:opacity-50" />
+              </label>
+            ))}
+            <button type="submit" disabled={pinBusy} className="w-full rounded-lg bg-[#19ffff]/15 py-2 text-xs font-black text-[#19ffff] transition hover:bg-[#19ffff]/25 disabled:opacity-50">Update PIN</button>
+            {pinStatus && <p role="status" className={cn("text-xs font-bold", pinStatus.ok ? "text-emerald-400" : "text-rose-400")}>{pinStatus.text}</p>}
+          </form>
+        )}
+      </section>
 
       {isCommissioner && (
         <section className="space-y-2 rounded-xl border border-amber-500/30 bg-[#161a29] p-3">

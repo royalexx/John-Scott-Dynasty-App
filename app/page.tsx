@@ -108,6 +108,8 @@ export default async function Page() {
           goalsAgainst: stat.goalsAgainst,
           savePctg: stat.savePct,
           shutouts: stat.shutouts,
+          saves: stat.saves,
+          fantasyPoints: stat.fantasyPoints,
         })
         logsByPlayer.set(stat.playerId, logs)
     }

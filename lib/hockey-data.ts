@@ -1,4 +1,4 @@
-import { DEFAULT_LEAGUE_SCORING } from "@/lib/scoring"
+import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "@/lib/scoring"
 import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
@@ -68,14 +68,15 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
   const weekGames = gameLog.filter((game) => {
     return game.gameDate >= startDate && game.gameDate <= endDate
   })
-  const calculateGame = (game: PlayerGameLog) => position === "G"
-      ? calculateGoalieFPTS({ gp: 1, wins: game.decision === "W" ? 1 : 0, saves: game.shotsAgainst - game.goalsAgainst, goalsAgainst: game.goalsAgainst, shutouts: game.shutouts, savePct: game.savePctg ?? 0 })
-      : calculateSkaterFPTS({ gp: 1, goals: game.goals, assists: game.assists, sog: game.shots, hits: game.hits, blocks: game.blocks, ppp: game.powerPlayPoints, shg: game.shorthandedGoals, gwg: game.gameWinningGoals })
+  const calculateGame = (game: PlayerGameLog) => pointsForGameLog(game, position)
   const weekFantasyPoints = weekGames.reduce((total, game) => total + calculateGame(game), 0)
   const sumLog = (key: keyof PlayerGameLog) => gameLog.reduce((total, game) => total + (Number(game[key]) || 0), 0)
   const statTotal = (key: string, logKey: keyof PlayerGameLog) => seasonStats?.[key] ?? sumLog(logKey)
   const goalieWins = seasonStats?.wins ?? gameLog.filter((game) => game.decision === "W").length
-  const goalieSaves = seasonStats?.saves ?? sumLog("shotsAgainst") - sumLog("goalsAgainst")
+  const goalieOtLosses = typeof seasonStats?.otLosses === "number"
+    ? seasonStats.otLosses
+    : gameLog.filter((game) => game.decision === "OT" || game.decision === "OTL").length
+  const goalieSaves = seasonStats?.saves ?? gameLog.reduce((total, game) => total + loggedSaves(game), 0)
   const goalieGoalsAgainst = seasonStats?.goalsAgainst ?? sumLog("goalsAgainst")
   const goalieSavePct = seasonStats?.savePct ?? (sumLog("shotsAgainst") > 0 ? goalieSaves / sumLog("shotsAgainst") : 0)
   const gamesPlayed = Math.max(1, seasonStats?.gamesPlayed ?? gameLog.length)
@@ -83,10 +84,20 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
     ? calculateGoalieFPTS({
         gp: 1,
         wins: goalieWins / gamesPlayed,
+        otLosses: goalieOtLosses / gamesPlayed,
         saves: goalieSaves / gamesPlayed,
         goalsAgainst: goalieGoalsAgainst / gamesPlayed,
         shutouts: statTotal("shutouts", "shutouts") / gamesPlayed,
         savePct: goalieSavePct,
+        goals: statTotal("goals", "goals") / gamesPlayed,
+        assists: statTotal("assists", "assists") / gamesPlayed,
+        sog: statTotal("shots", "shots") / gamesPlayed,
+        hits: statTotal("hits", "hits") / gamesPlayed,
+        blocks: statTotal("blocks", "blocks") / gamesPlayed,
+        ppp: statTotal("powerPlayPoints", "powerPlayPoints") / gamesPlayed,
+        shg: statTotal("shorthandedGoals", "shorthandedGoals") / gamesPlayed,
+        gwg: statTotal("gameWinningGoals", "gameWinningGoals") / gamesPlayed,
+        plusMinus: statTotal("plusMinus", "plusMinus") / gamesPlayed,
       })
     : calculateSkaterFPTS({
         gp: 1,
@@ -98,6 +109,7 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
         ppp: statTotal("powerPlayPoints", "powerPlayPoints") / gamesPlayed,
         shg: statTotal("shorthandedGoals", "shorthandedGoals") / gamesPlayed,
         gwg: statTotal("gameWinningGoals", "gameWinningGoals") / gamesPlayed,
+        plusMinus: statTotal("plusMinus", "plusMinus") / gamesPlayed,
       })
   const recentGames = gameLog
     .filter((game) => game.gameDate <= today)
@@ -133,7 +145,7 @@ export function getPlayerSchedule(team: string, games: NhlScheduleGame[], gameLo
     weekProjectedFantasyPoints: Number(weekProjection.toFixed(1)),
     weekGamesPlayed: weekGames.length,
     weekGamesScheduled: weekTeamGames.length,
-    todayFantasyPoints: todayGame ? calculateGame(todayGame) : null,
+    todayFantasyPoints: todayGame ? Number(calculateGame(todayGame).toFixed(1)) : null,
     isToday: currentNhlGame !== undefined,
   }
 }
@@ -174,6 +186,8 @@ export interface PlayerGameLog {
   goalsAgainst: number
   savePctg?: number | null
   shutouts: number
+  saves?: number
+  fantasyPoints?: number
   powerPlayToi?: string
   penaltyKillToi?: string
 }
@@ -221,6 +235,7 @@ export interface SkaterStats {
   ppp?: number
   shg?: number
   gwg?: number
+  plusMinus?: number
 }
 
 export interface GoalieStats {
@@ -230,30 +245,93 @@ export interface GoalieStats {
   goalsAgainst: number
   shutouts: number
   savePct?: number
+  otLosses?: number
+  goals?: number
+  assists?: number
+  sog?: number
+  hits?: number
+  blocks?: number
+  ppp?: number
+  shg?: number
+  gwg?: number
+  plusMinus?: number
+}
+
+function displayFpts(total: number): number {
+  return Number(total.toFixed(1))
 }
 
 export function calculateSkaterFPTS(s: SkaterStats): number {
-  const scoring = DEFAULT_LEAGUE_SCORING
-  const total =
-    s.goals * scoring.goal +
-    s.assists * scoring.assist +
-    s.sog * scoring.shot +
-    s.hits * scoring.hit +
-    s.blocks * scoring.block +
-    (s.ppp ?? 0) * scoring.ppp +
-    (s.shg ?? 0) * scoring.shg +
-    (s.gwg ?? 0) * scoring.gwg
-  return Number((Math.round(total * 100) / 100).toFixed(1))
+  return displayFpts(scoreCountingLine({
+    goals: s.goals,
+    assists: s.assists,
+    shots: s.sog,
+    hits: s.hits,
+    blocks: s.blocks,
+    plusMinus: s.plusMinus,
+    powerPlayPoints: s.ppp,
+    shorthandedGoals: s.shg,
+    gameWinningGoals: s.gwg,
+  }, DEFAULT_LEAGUE_SCORING))
 }
 
 export function calculateGoalieFPTS(g: GoalieStats): number {
-  const scoring = DEFAULT_LEAGUE_SCORING
-  const total =
-    g.wins * scoring.win +
-    g.saves * scoring.save +
-    g.goalsAgainst * scoring.goalsAgainst +
-    g.shutouts * scoring.shutout
-  return Number((Math.round(total * 100) / 100).toFixed(1))
+  return displayFpts(scoreCountingLine({
+    goals: g.goals,
+    assists: g.assists,
+    shots: g.sog,
+    hits: g.hits,
+    blocks: g.blocks,
+    plusMinus: g.plusMinus,
+    powerPlayPoints: g.ppp,
+    shorthandedGoals: g.shg,
+    gameWinningGoals: g.gwg,
+    wins: g.wins,
+    overtimeLosses: g.otLosses,
+    saves: g.saves,
+    goalsAgainst: g.goalsAgainst,
+    shutouts: g.shutouts,
+  }, DEFAULT_LEAGUE_SCORING))
+}
+
+function loggedSaves(game: PlayerGameLog): number {
+  return typeof game.saves === "number" && Number.isFinite(game.saves) ? game.saves : game.shotsAgainst - game.goalsAgainst
+}
+
+function pointsForGameLog(game: PlayerGameLog, position: Player["position"]): number {
+  if (typeof game.fantasyPoints === "number" && Number.isFinite(game.fantasyPoints)) return game.fantasyPoints
+  if (position === "G") {
+    return calculateGoalieFPTS({
+      gp: 1,
+      wins: game.decision === "W" ? 1 : 0,
+      otLosses: game.decision === "OT" || game.decision === "OTL" ? 1 : 0,
+      saves: loggedSaves(game),
+      goalsAgainst: game.goalsAgainst,
+      shutouts: game.shutouts,
+      savePct: game.savePctg ?? 0,
+      goals: game.goals,
+      assists: game.assists,
+      sog: game.shots,
+      hits: game.hits,
+      blocks: game.blocks,
+      ppp: game.powerPlayPoints,
+      shg: game.shorthandedGoals,
+      gwg: game.gameWinningGoals,
+      plusMinus: game.plusMinus,
+    })
+  }
+  return calculateSkaterFPTS({
+    gp: 1,
+    goals: game.goals,
+    assists: game.assists,
+    sog: game.shots,
+    hits: game.hits,
+    blocks: game.blocks,
+    ppp: game.powerPlayPoints,
+    shg: game.shorthandedGoals,
+    gwg: game.gameWinningGoals,
+    plusMinus: game.plusMinus,
+  })
 }
 
 export function createPlayerSeasonStats(player: Pick<Player, "id" | "name" | "position">): SkaterStats | GoalieStats {
@@ -767,10 +845,9 @@ export const chatMessages: ChatMessage[] = [
 export function getPlayerDetail(player: { name: string; position: Player["position"]; team: string; projPts: number; profile?: PlayerProfile; currentSeasonStats?: Record<string, number>; marketPlayer?: MarketPlayer; gameLog?: PlayerGameLog[]; historicalSeasons?: PlayerSeasonSummary[] }, scheduleGames: NhlScheduleGame[] = []) {
   const profile = player.profile ?? player.marketPlayer?.profile
   const seasonStats = player.currentSeasonStats ?? player.marketPlayer?.currentSeasonStats
-  const syncedGameLog = (player.gameLog ?? player.marketPlayer?.gameLog ?? []).map((game) => {
-    const fpts = player.position === "G"
-      ? calculateGoalieFPTS({ gp: 1, wins: game.decision === "W" ? 1 : 0, saves: game.shotsAgainst - game.goalsAgainst, goalsAgainst: game.goalsAgainst, shutouts: game.shutouts, savePct: game.savePctg ?? 0 })
-      : calculateSkaterFPTS({ gp: 1, goals: game.goals, assists: game.assists, sog: game.shots, hits: game.hits, blocks: game.blocks, ppp: game.powerPlayPoints, shg: game.shorthandedGoals, gwg: game.gameWinningGoals })
+  const sourceLog = player.gameLog ?? player.marketPlayer?.gameLog ?? []
+  const syncedGameLog = sourceLog.map((game) => {
+    const fpts = pointsForGameLog(game, player.position)
     return {
       date: game.gameDate,
       opp: `${game.homeRoadFlag === "H" ? "vs" : "@"} ${game.opponentAbbrev ?? "—"}`,
@@ -785,7 +862,7 @@ export function getPlayerDetail(player: { name: string; position: Player["positi
       gwg: game.gameWinningGoals,
       shg: game.shorthandedGoals,
       wins: game.decision === "W" ? 1 : 0,
-      saves: game.shotsAgainst - game.goalsAgainst,
+      saves: loggedSaves(game),
       shotsAgainst: game.shotsAgainst,
       ga: game.goalsAgainst,
       shutout: game.shutouts > 0,
@@ -815,8 +892,8 @@ export function getPlayerDetail(player: { name: string; position: Player["positi
     })
   const syncedHistory = (player.historicalSeasons ?? player.marketPlayer?.historicalSeasons ?? []).map((season) => {
     const stats = player.position === "G"
-      ? calculateGoalieFPTS({ gp: season.gamesPlayed, wins: season.wins, saves: season.saves, goalsAgainst: season.goalsAgainst, shutouts: season.shutouts, savePct: season.savePctg ?? 0 })
-      : calculateSkaterFPTS({ gp: season.gamesPlayed, goals: season.goals, assists: season.assists, sog: season.shots, hits: 0, blocks: 0 })
+      ? calculateGoalieFPTS({ gp: season.gamesPlayed, wins: season.wins, saves: season.saves, goalsAgainst: season.goalsAgainst, shutouts: season.shutouts, savePct: season.savePctg ?? 0, goals: season.goals, assists: season.assists, sog: season.shots, plusMinus: season.plusMinus })
+      : calculateSkaterFPTS({ gp: season.gamesPlayed, goals: season.goals, assists: season.assists, sog: season.shots, hits: 0, blocks: 0, plusMinus: season.plusMinus })
     return {
       season: `${String(season.season).slice(0, 4)}-${String(season.season).slice(4)}`,
       team: season.team,
@@ -837,9 +914,12 @@ export function getPlayerDetail(player: { name: string; position: Player["positi
     }
   })
   const currentGames = seasonStats?.gamesPlayed ?? 0
-  const syncedSeasonFpts = player.position === "G"
-    ? calculateGoalieFPTS({ gp: currentGames, wins: seasonStats?.wins ?? 0, saves: seasonStats?.saves ?? 0, goalsAgainst: seasonStats?.goalsAgainst ?? 0, shutouts: seasonStats?.shutouts ?? 0, savePct: seasonStats?.savePct ?? 0 })
-    : calculateSkaterFPTS({ gp: currentGames, goals: seasonStats?.goals ?? 0, assists: seasonStats?.assists ?? 0, sog: seasonStats?.shots ?? 0, hits: seasonStats?.hits ?? 0, blocks: seasonStats?.blocks ?? 0, ppp: seasonStats?.powerPlayPoints ?? 0, shg: seasonStats?.shorthandedGoals ?? 0, gwg: seasonStats?.gameWinningGoals ?? 0 })
+  const loggedSeasonPoints = sourceLog.length > 0 && (currentGames === 0 || currentGames === sourceLog.length)
+    ? Number(sourceLog.reduce((total, game) => total + pointsForGameLog(game, player.position), 0).toFixed(1))
+    : null
+  const syncedSeasonFpts = loggedSeasonPoints ?? (player.position === "G"
+    ? calculateGoalieFPTS({ gp: currentGames, wins: seasonStats?.wins ?? 0, otLosses: seasonStats?.otLosses ?? 0, saves: seasonStats?.saves ?? 0, goalsAgainst: seasonStats?.goalsAgainst ?? 0, shutouts: seasonStats?.shutouts ?? 0, savePct: seasonStats?.savePct ?? 0, goals: seasonStats?.goals ?? 0, assists: seasonStats?.assists ?? 0, sog: seasonStats?.shots ?? 0, hits: seasonStats?.hits ?? 0, blocks: seasonStats?.blocks ?? 0, ppp: seasonStats?.powerPlayPoints ?? 0, shg: seasonStats?.shorthandedGoals ?? 0, gwg: seasonStats?.gameWinningGoals ?? 0, plusMinus: seasonStats?.plusMinus ?? 0 })
+    : calculateSkaterFPTS({ gp: currentGames, goals: seasonStats?.goals ?? 0, assists: seasonStats?.assists ?? 0, sog: seasonStats?.shots ?? 0, hits: seasonStats?.hits ?? 0, blocks: seasonStats?.blocks ?? 0, ppp: seasonStats?.powerPlayPoints ?? 0, shg: seasonStats?.shorthandedGoals ?? 0, gwg: seasonStats?.gameWinningGoals ?? 0, plusMinus: seasonStats?.plusMinus ?? 0 }))
   return {
     bio: {
       age: profile?.age ?? "—",

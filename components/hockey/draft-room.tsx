@@ -268,18 +268,19 @@ function DraftBoard({ draft, currentPick }: { draft: DraftView; currentPick: num
     <div className="overflow-x-auto p-3">
       <div className="flex gap-1">
         <div className="w-8 shrink-0" />
-        {columns.map((team) => <div key={team.id} className="w-[4.75rem] shrink-0 truncate px-1 text-center text-xs font-bold text-[#8ba0c7]">{shortName(team.name)}</div>)}
+        {columns.map((team) => <div key={team.slot} className="w-[4.75rem] shrink-0 truncate px-1 text-center text-xs font-bold text-[#8ba0c7]">{shortName(team.name)}</div>)}
       </div>
       {rounds.map((round) => (
         <div key={round} className="mt-1 flex gap-1">
           <div className="flex w-8 shrink-0 items-center justify-center text-xs font-bold text-[#5e7090]">{round}</div>
           {columns.map((team) => {
             const cell = draft.slots.find((slot) => slot.round === round && slot.slot === team.slot)
-            if (!cell) return <div key={team.id} className="h-14 w-[4.75rem]" />
+            if (!cell) return <div key={team.slot} className="h-14 w-[4.75rem]" />
             return (
-              <div key={team.id} className={cn("relative flex h-14 w-[4.75rem] items-center rounded-md bg-[#101829] px-2", cell.pickNumber === currentPick && "ring-2 ring-[#19ffff]")}>
+              <div key={team.slot} className={cn("relative flex h-14 w-[4.75rem] flex-col justify-center rounded-md bg-[#101829] px-2", cell.pickNumber === currentPick && "ring-2 ring-[#19ffff]")}>
                 {cell.position && <span className={cn("absolute inset-y-1 left-1 w-1 rounded-full", positionBar[cell.position] ?? "bg-[#5e7090]")} />}
                 <span className={cn("truncate pl-2 text-xs font-bold", cell.playerName ? "text-white" : "text-[#5e7090]")}>{cell.playerName ? shortName(cell.playerName) : cell.pickNumber}</span>
+                {cell.teamId !== team.id && <span className="truncate pl-2 text-[10px] font-bold leading-tight text-[#19ffff]">{shortName(cell.teamName)}</span>}
               </div>
             )
           })}
