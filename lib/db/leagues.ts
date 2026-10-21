@@ -36,13 +36,11 @@ export async function getLeagueStandings(leagueId: string, season?: number) {
     }),
   ])
 
-  const records = new Map(computeStandings(teams.map((team) => team.id), matchups, currentWeek).map((record) => [record.teamId, record]))
-  return teams
-    .map((team) => {
-      const record = records.get(team.id)!
-      return { team, wins: record.wins, losses: record.losses, ties: record.ties, pointsFor: record.pointsFor, pointsAgainst: record.pointsAgainst, streak: record.streak }
-    })
-    .sort((a, b) => b.wins - a.wins || a.losses - b.losses || b.pointsFor - a.pointsFor)
+  const teamsById = new Map(teams.map((team) => [team.id, team]))
+  return computeStandings(teams.map((team) => team.id), matchups, currentWeek).map((record) => {
+    const team = teamsById.get(record.teamId)!
+    return { team, wins: record.wins, losses: record.losses, ties: record.ties, pointsFor: record.pointsFor, pointsAgainst: record.pointsAgainst, streak: record.streak }
+  })
 }
 
 export async function getWeeklyMatchups(leagueId: string, season: number, week: number) {

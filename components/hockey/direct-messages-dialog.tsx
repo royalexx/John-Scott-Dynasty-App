@@ -43,6 +43,7 @@ export function DirectMessagesDialog({ open, onOpenChange, onTrade, onUnreadChan
   const [draft, setDraft] = useState("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const readConversationIds = useRef(new Set<string>())
+  const pendingReadReceipts = useRef(new Map<string, Promise<void>>())
   const conversationLoadRef = useRef(0)
   const activeIdRef = useRef(activeId)
   activeIdRef.current = activeId
@@ -52,6 +53,9 @@ export function DirectMessagesDialog({ open, onOpenChange, onTrade, onUnreadChan
 
   const loadConversations = async () => {
     const requestId = ++conversationLoadRef.current
+    const receipts = [...pendingReadReceipts.current.values()]
+    if (receipts.length > 0) await Promise.all(receipts)
+    if (requestId !== conversationLoadRef.current) return
     const response = await fetch("/api/messages", { cache: "no-store" })
     if (!response.ok || requestId !== conversationLoadRef.current) return
     const data = await response.json() as ConversationResponse[]
@@ -71,6 +75,7 @@ export function DirectMessagesDialog({ open, onOpenChange, onTrade, onUnreadChan
     if (!open) return
     void loadConversations()
     const timer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return
       void loadConversations()
       const partnerId = activeIdRef.current
       if (partnerId) void loadThread(partnerId)
@@ -82,9 +87,12 @@ export function DirectMessagesDialog({ open, onOpenChange, onTrade, onUnreadChan
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [activeId, thread.length])
 
   const markConversationRead = async (partnerId: string) => {
+    const receipt = fetch("/api/messages", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationPartnerId: partnerId }) }).then(() => undefined)
+    pendingReadReceipts.current.set(partnerId, receipt)
     try {
-      await fetch("/api/messages", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationPartnerId: partnerId }) })
+      await receipt
     } finally {
+      pendingReadReceipts.current.delete(partnerId)
       readConversationIds.current.delete(partnerId)
       await loadConversations()
     }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { SlidersHorizontal, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -70,6 +70,8 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
   const [open, setOpen] = useState(false)
   const [receivedAt, setReceivedAt] = useState(Date.now())
   const [now, setNow] = useState(Date.now())
+  const [clockError, setClockError] = useState<string | null>(null)
+  const autopickFor = useRef<string | null>(null)
 
   const load = (ensure: boolean) => {
     const query = ensure ? "?ensure=1" : ""
@@ -83,22 +85,49 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
       .catch(() => undefined)
   }
 
+  useEffect(() => { void load(false) }, [])
   useEffect(() => {
-    void load(false)
-    const poll = setInterval(() => void load(open), open ? 3000 : 15000)
+    const poll = setInterval(() => void load(false), open ? 3000 : 15000)
     const tick = setInterval(() => setNow(Date.now()), 1000)
     return () => { clearInterval(poll); clearInterval(tick) }
   }, [open])
 
   const scheduled = payload?.scheduled
   const draft = payload?.draft ?? null
-  if (!scheduled && !draft) return null
   const live = draft?.status === "LIVE"
   const startAt = draft?.startAt ?? scheduled?.startAt
   const rounds = draft?.rounds ?? scheduled?.rounds ?? 0
   const draftType = draft?.type ?? scheduled?.type
   const elapsed = Math.floor((now - receivedAt) / 1000)
   const remaining = draft && live && !draft.paused ? Math.max(0, draft.remainingSeconds - elapsed) : draft?.remainingSeconds ?? 0
+
+  useEffect(() => {
+    if (!draft || draft.status !== "LIVE" || draft.paused || remaining > 0) {
+      if (remaining > 0) autopickFor.current = null
+      return
+    }
+    const openPick = draft.slots.find((slot) => slot.playerId == null)?.pickNumber ?? 0
+    const key = `${draft.id}:${openPick}`
+    if (autopickFor.current === key) return
+    autopickFor.current = key
+    void fetch("/api/draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "autopick" }) })
+      .then(async (response) => {
+        const body = await response.json() as { draft?: DraftView; error?: string }
+        if (!response.ok || !body.draft) {
+          setClockError(body.error ?? "Could not auto-pick.")
+          return
+        }
+        setClockError(null)
+        setPayload((current) => ({ scheduled: current?.scheduled ?? null, draft: body.draft ?? null }))
+        setReceivedAt(Date.now())
+      })
+      .catch(() => {
+        autopickFor.current = null
+        setClockError("Could not auto-pick.")
+      })
+  }, [draft, remaining])
+
+  if (!scheduled && !draft) return null
 
   return (
     <>
@@ -116,12 +145,12 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
         </div>
         <button type="button" onClick={() => { setOpen(true); void load(true) }} className={cn("shrink-0 rounded-full px-4 py-2 text-sm font-bold", live ? "bg-[#19ffff] text-[#080c14]" : "border border-[#19ffff] text-[#19ffff]")}>Draft room</button>
       </div>
-      <DraftRoom open={open} onOpenChange={setOpen} draft={draft} players={players} isCommissioner={isCommissioner} remaining={remaining} onChange={(next) => { setPayload((current) => ({ scheduled: current?.scheduled ?? null, draft: next })); setReceivedAt(Date.now()) }} />
+      <DraftRoom open={open} onOpenChange={setOpen} draft={draft} players={players} isCommissioner={isCommissioner} remaining={remaining} clockError={clockError} onChange={(next) => { setClockError(null); setPayload((current) => ({ scheduled: current?.scheduled ?? null, draft: next })); setReceivedAt(Date.now()) }} />
     </>
   )
 }
 
-function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaining, onChange }: { open: boolean; onOpenChange: (open: boolean) => void; draft: DraftView | null; players: MarketPlayer[]; isCommissioner: boolean; remaining: number; onChange: (draft: DraftView) => void }) {
+function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaining, clockError, onChange }: { open: boolean; onOpenChange: (open: boolean) => void; draft: DraftView | null; players: MarketPlayer[]; isCommissioner: boolean; remaining: number; clockError: string | null; onChange: (draft: DraftView) => void }) {
   const [tab, setTab] = useState<"board" | "players" | "queue">("board")
   const [query, setQuery] = useState("")
   const [position, setPosition] = useState("ALL")
@@ -166,6 +195,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
           <div className="min-w-0 text-center">
             <p className="text-sm font-black">{draft?.status === "COMPLETE" ? "Draft complete" : current ? `Round ${current.round} · Pick ${current.pickNumber}` : "Draft"}</p>
             {draft?.status === "LIVE" && <p className="text-xs font-bold tabular-nums text-[#19ffff]">{draft.paused ? "Paused" : clockLabel(remaining)}</p>}
+            {clockError && <p className="text-xs font-bold text-rose-300">{clockError}</p>}
             {draft?.status === "SCHEDULED" && <p className="text-xs text-[#8ba0c7]">Not started</p>}
           </div>
           {isCommissioner ? (

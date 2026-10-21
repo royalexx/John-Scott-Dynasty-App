@@ -40,12 +40,22 @@ export function getFantasyWeekDates(week: number, season = 2026): {
   return { startDate: dates[0], endDate: dates[6], dates }
 }
 
-/** Fantasy week containing the given Eastern calendar date (weeks before the season start clamp to week 1). */
-export function getFantasyWeekForDate(date: string, season = 2026): number {
+/** Unclamped fantasy week for an Eastern calendar date. Values below 1 are before week 1; values above MAX_FANTASY_WEEK are after the season. */
+function elapsedFantasyWeek(date: string, season: number): number {
   const elapsedDays = Math.floor((new Date(`${date}T00:00:00Z`).getTime() - weekOneStart(season).getTime()) / DAY_MS)
-  return Math.max(1, Math.floor(elapsedDays / 7) + 1)
+  return Math.floor(elapsedDays / 7) + 1
+}
+
+/** Fantasy week containing the given Eastern calendar date, clamped to [1, MAX_FANTASY_WEEK]. */
+export function getFantasyWeekForDate(date: string, season = 2026): number {
+  return Math.min(MAX_FANTASY_WEEK, Math.max(1, elapsedFantasyWeek(date, season)))
 }
 
 export function getCurrentFantasyWeek(season = 2026, now: Date = new Date()): number {
   return getFantasyWeekForDate(getEasternDate(now), season)
+}
+
+/** True when the raw elapsed week is past the last fantasy week of the season. */
+export function isSeasonComplete(season = 2026, now: Date = new Date()): boolean {
+  return elapsedFantasyWeek(getEasternDate(now), season) > MAX_FANTASY_WEEK
 }

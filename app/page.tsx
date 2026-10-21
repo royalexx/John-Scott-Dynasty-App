@@ -146,6 +146,7 @@ export default async function Page() {
         opponent: schedule?.opponent ?? "—",
         gameTime: schedule ? `${schedule.day} ${schedule.time}` : "—",
         status,
+        injuryStatus: slot.player.injuryStatus,
         todayPts: schedule.todayFantasyPoints,
         projPts: schedule.weekProjectedFantasyPoints,
         schedule,

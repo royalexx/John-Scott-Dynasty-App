@@ -12,20 +12,28 @@ export async function GET(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Authentication required" }, { status: 401 })
   const teamId = request.nextUrl.searchParams.get("teamId") ?? session.teamId
   if (teamId !== session.teamId) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  const team = await prisma.team.findUnique({ where: { id: teamId }, select: { league: { select: { currentSeason: true } } } })
-  const openedAt = currentWeekOpenedAt(team?.league.currentSeason ?? 2026)
-  const claims = await prisma.waiverClaim.findMany({
-    where: {
-      teamId,
-      OR: [
-        { status: ClaimStatus.PENDING },
-        { status: { in: [ClaimStatus.SUCCESSFUL, ClaimStatus.FAILED] }, processDate: { gte: openedAt } },
-      ],
-    },
-    include: { playerToAdd: { select: { name: true } }, playerToDrop: { select: { name: true } } },
-    orderBy: [{ status: "asc" }, { processDate: "asc" }, { bidAmount: "desc" }],
-  })
-  const presented = claims.map((claim) => ({
+  const team = await prisma.team.findUnique({ where: { id: teamId }, select: { faabBalance: true, league: { select: { currentSeason: true } } } })
+  if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 })
+  const openedAt = currentWeekOpenedAt(team.league.currentSeason)
+  const historyCutoff = new Date(openedAt.getTime() - 28 * 86_400_000)
+  const include = { playerToAdd: { select: { name: true } }, playerToDrop: { select: { name: true } } } as const
+  const [pendingClaims, resolvedClaims, committed] = await Promise.all([
+    prisma.waiverClaim.findMany({
+      where: { teamId, status: ClaimStatus.PENDING },
+      include,
+      orderBy: { bidAmount: "desc" },
+    }),
+    prisma.waiverClaim.findMany({
+      where: { teamId, status: { in: [ClaimStatus.SUCCESSFUL, ClaimStatus.FAILED] }, processDate: { gte: historyCutoff } },
+      include,
+      orderBy: { processDate: "desc" },
+    }),
+    prisma.waiverClaim.aggregate({
+      where: { teamId, status: ClaimStatus.PENDING },
+      _sum: { bidAmount: true },
+    }),
+  ])
+  const presented = [...pendingClaims, ...resolvedClaims].map((claim) => ({
     id: claim.id,
     bidAmount: claim.bidAmount,
     status: claim.status === ClaimStatus.SUCCESSFUL ? "won" as const : claim.status === ClaimStatus.FAILED ? "failed" as const : "pending" as const,
@@ -35,8 +43,17 @@ export async function GET(request: NextRequest) {
     playerToDrop: claim.playerToDrop,
   }))
   const rank = { pending: 0, won: 1, failed: 2 }
-  presented.sort((left, right) => rank[left.status] - rank[right.status])
-  return NextResponse.json({ claims: presented })
+  presented.sort((left, right) => {
+    const byStatus = rank[left.status] - rank[right.status]
+    if (byStatus !== 0) return byStatus
+    if (left.status === "pending") return right.bidAmount - left.bidAmount
+    return Date.parse(right.processDate) - Date.parse(left.processDate)
+  })
+  return NextResponse.json({
+    claims: presented,
+    faabBalance: team.faabBalance,
+    committedFaab: committed._sum.bidAmount ?? 0,
+  })
 }
 
 export async function POST(request: NextRequest) {

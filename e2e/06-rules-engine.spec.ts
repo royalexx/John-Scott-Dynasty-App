@@ -48,6 +48,10 @@ test.describe("season calendar (Monday to Sunday NHL weeks)", () => {
     // 2026-10-12 02:30 UTC is still Sunday evening 22:30 in New York, i.e. week 2.
     expect(getCurrentFantasyWeek(2026, new Date("2026-10-12T02:30:00Z"))).toBe(2)
   })
+
+  test("dates after the last fantasy week clamp to week 24", () => {
+    expect(getCurrentFantasyWeek(2026, new Date("2027-04-15T12:00:00Z"))).toBe(24)
+  })
 })
 
 test.describe("league scoring", () => {

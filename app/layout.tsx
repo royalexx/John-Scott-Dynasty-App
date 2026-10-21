@@ -6,8 +6,6 @@ export const viewport: Viewport = {
   themeColor: '#070a12',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   viewportFit: 'cover', // Ensures the app flows beneath the iPhone notch & Dynamic Island
 }
 
@@ -22,7 +20,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: '/icon.svg',
-    apple: '/icon.svg',
+    apple: '/apple-icon.png',
   },
 }
 

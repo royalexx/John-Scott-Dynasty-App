@@ -33,6 +33,7 @@ import {
   getMatchupsForWeek,
   getTeamRoster,
   applyWeekLineup,
+  weekAssignmentsReplaceLiveRoster,
   setLeagueContext,
   calculatePlayerFPTS,
   calculateSkaterFPTS,
@@ -60,6 +61,7 @@ import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { useStableCallback } from "@/lib/use-stable-callback"
 import { MatchupPanel } from "@/components/hockey/matchup-panel"
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
+import type { WeekLineupView } from "@/lib/services/week-lineups"
 import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
 import { DirectMessagesDialog } from "@/components/hockey/direct-messages-dialog"
 import { LeagueChatDrawer } from "@/components/hockey/league-chat-drawer"
@@ -152,7 +154,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   })
 
   const [week, setWeek] = useState(getCurrentFantasyWeek())
-  const [weekView, setWeekView] = useState<{ frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null>(null)
+  const [weekView, setWeekView] = useState<WeekLineupView | null>(null)
   const weekRef = useRef(week)
   weekRef.current = week
   const [roster, setRoster] = useState<Player[]>(initialRoster)
@@ -280,15 +282,60 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [teamName, setTeamName] = useState(initialData.teamName)
   const [teamLogo, setTeamLogo] = useState(initialData.teamLogo ?? "")
   const [pendingClaims, setPendingClaims] = useState<WaiverClaim[]>([])
+  const pendingClaimsRef = useRef(pendingClaims)
+  pendingClaimsRef.current = pendingClaims
+  const [committedFaab, setCommittedFaab] = useState(0)
+  const waiverBudgetSync = useRef(0)
   useEffect(() => {
     let cancelled = false
     fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<{ frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> }> : null)
+      .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
       .then((data) => { if (!cancelled) setWeekView(data) })
       .catch((error: unknown) => console.error("Could not load the week lineup", error))
     return () => { cancelled = true }
   }, [week])
   const [userFaab, setUserFaab] = useState(initialData.userFaab ?? fallbackFaabBudget)
+  const refreshWaiverBudget = useCallback(async () => {
+    if (!initialData.teamId) return
+    const requestId = ++waiverBudgetSync.current
+    try {
+      const response = await fetch(`/api/waivers?teamId=${encodeURIComponent(initialData.teamId)}`, { cache: "no-store" })
+      if (!response.ok) return
+      const data = await response.json() as {
+        faabBalance?: number
+        committedFaab?: number
+        claims?: Array<{
+          id: string
+          bidAmount: number
+          status: "pending" | "won" | "failed"
+          outcome?: string | null
+          playerToAdd: { name: string }
+          playerToDrop: { name: string } | null
+        }>
+      }
+      if (requestId !== waiverBudgetSync.current) return
+      if (typeof data.faabBalance === "number") setUserFaab(data.faabBalance)
+      const serverPending = (data.claims ?? []).filter((claim) => claim.status === "pending").map((claim) => ({
+        id: claim.id,
+        bidAmount: claim.bidAmount,
+        status: "pending" as const,
+        outcome: claim.outcome ?? null,
+        playerToAdd: claim.playerToAdd,
+        playerToDrop: claim.playerToDrop,
+        runTime: "Monday midnight",
+      }))
+      const serverIds = new Set(serverPending.map((claim) => claim.id))
+      const localOnly = pendingClaimsRef.current.filter((claim) => !serverIds.has(claim.id))
+      const serverCommitted = typeof data.committedFaab === "number" ? data.committedFaab : serverPending.reduce((sum, claim) => sum + claim.bidAmount, 0)
+      setCommittedFaab(serverCommitted + localOnly.reduce((sum, claim) => sum + claim.bidAmount, 0))
+      setPendingClaims([...serverPending, ...localOnly])
+    } catch (error: unknown) {
+      console.error("Could not load waiver budget", error)
+    }
+  }, [initialData.teamId])
+  useEffect(() => {
+    void refreshWaiverBudget()
+  }, [refreshWaiverBudget])
   const [claimPlayer, setClaimPlayer] = useState<MarketPlayer | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   useEffect(() => {
@@ -441,11 +488,12 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   }
 
   function handleRosterMove(playerId: string, destSlot: Player["slot"], targetPlayerId?: string) {
+    const resolvedTargetId = targetPlayerId === playerId ? undefined : targetPlayerId
     const visibleRoster = lineupRef.current.length ? lineupRef.current : roster
     const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
-    const target = targetPlayerId ? visibleRoster.find((player) => player.id === targetPlayerId) ?? roster.find((player) => player.id === targetPlayerId) : undefined
+    const target = resolvedTargetId ? visibleRoster.find((player) => player.id === resolvedTargetId) ?? roster.find((player) => player.id === resolvedTargetId) : undefined
     if (!source) return
-    if (weekView?.frozen) {
+    if (weekView?.locked ?? weekView?.frozen) {
       setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
       window.setTimeout(() => setToast(null), 4000)
       return
@@ -469,7 +517,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
       return player
     }))
     setWeekView((current) => {
-      if (!current || current.frozen) return current
+      if (!current || (current.locked ?? current.frozen)) return current
       return {
         ...current,
         assignments: current.assignments.map((entry) => {
@@ -510,14 +558,16 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   }
   function submitClaim(claim: WaiverClaim) {
     setPendingClaims((current) => [...current, claim])
-    setUserFaab((current) => current - claim.bidAmount)
+    setCommittedFaab((current) => current + claim.bidAmount)
     setToast(`${claim.playerToAdd.name} has been added to your waivers`)
     window.setTimeout(() => setToast(null), 3000)
+    void refreshWaiverBudget()
   }
 
   function cancelClaim(claim: WaiverClaim) {
     setPendingClaims((current) => current.filter((item) => item.id !== claim.id))
-    setUserFaab((current) => current + claim.bidAmount)
+    setCommittedFaab((current) => Math.max(0, current - claim.bidAmount))
+    void refreshWaiverBudget()
   }
 
   function toggleTradeBlock(player: PlayerDialogTarget) {
@@ -653,7 +703,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     const match = pick.match(/^(\d{4})\s+(\d+)(?:st|nd|rd|th)?(?:\s+Rd)?$/)
     return match ? `${match[1]} ${getOrdinal(Number(match[2]))} Round` : pick
   }
-  const userTradeTeam: TradeTeam = { id: initialData.teamId ?? "team", name: teamName, abbreviation: teamName.slice(0, 3).toUpperCase(), players: roster, faabAvailable: userFaab, draftPicks: initialData.draftPickAssets ?? draftPicks.map((pick, index) => ({ id: `pick-${index}`, label: `${formatPickLabel(pick)} (${teamName.slice(0, 3).toUpperCase()})`, detail: "Future dynasty pick" })) }
+  const userTradeTeam: TradeTeam = { id: initialData.teamId ?? "team", name: teamName, abbreviation: teamName.slice(0, 3).toUpperCase(), players: roster, faabAvailable: userFaab, committedFaab, draftPicks: initialData.draftPickAssets ?? draftPicks.map((pick, index) => ({ id: `pick-${index}`, label: `${formatPickLabel(pick)} (${teamName.slice(0, 3).toUpperCase()})`, detail: "Future dynasty pick" })) }
   // Pass the full player database so partner players resolve to real `nhl-<id>` identifiers for trade proposals.
   const tradePartners: TradeTeam[] = useMemo(() => leagueTeams.filter((team) => team.id !== initialData.teamId).map((team) => ({
     id: team.id,
@@ -666,8 +716,8 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
 
   const lineupRef = useRef(roster)
   const lineupRoster = useMemo(
-    () => applyWeekLineup(teamName, roster, allDynastyPlayers, weekView?.assignments ?? null, weekView != null),
-    [allDynastyPlayers, roster, teamName, weekView],
+    () => applyWeekLineup(teamName, roster, allDynastyPlayers, weekView?.assignments ?? null, weekAssignmentsReplaceLiveRoster(week, weekView)),
+    [allDynastyPlayers, roster, teamName, week, weekView],
   )
   lineupRef.current = lineupRoster
   const { rosterForDisplay, startersCount, bench, taxi, ir, orderedStarters } = useMemo(() => {
@@ -796,13 +846,13 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                     <ChevronLeft className="size-3.5" />
                   </button>
                   <span>Week {week}</span>
-                  {weekView?.frozen && <span className="ml-1 text-xs font-black uppercase text-[#5e7090]">Locked</span>}
+                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-xs font-black uppercase text-[#5e7090]">Locked</span>}
                   <button type="button" onClick={() => shiftWeek(1)} aria-label="Next team week" className="rounded p-1 hover:bg-[#172338]">
                     <ChevronRight className="size-3.5" />
                   </button>
                 </SwipeSurface>
               </div>
-              {weekView?.frozen ? (
+              {(weekView?.locked ?? weekView?.frozen) ? (
                 <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
               ) : week > (initialData.lineupLock?.week ?? week) ? (
                 <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
@@ -913,6 +963,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           type={teamDrawer}
           rank={standings.findIndex((row) => row.team === teamName) + 1}
           faab={userFaab}
+          committedFaab={committedFaab}
+          onBudgetChange={(budget) => {
+            setUserFaab(budget.faabBalance)
+            setCommittedFaab(budget.committedFaab)
+          }}
           waiverPriority={initialData.waiverPriority}
           roster={roster}
           playerNicknames={playerNicknames}
@@ -930,7 +985,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           onCancelClaim={cancelClaim}
           onSaveSettings={saveTeamSettings}
         />
-        <WaiverClaimDialog player={claimPlayer} roster={roster} rosterSize={rosterSize} userFaab={userFaab} teamName={teamName} teamId={initialData.teamId} weekLocked={initialData.lineupLock?.locked === true && initialData.lineupLock.mode !== "DAILY"} open={claimPlayer !== null} onOpenChange={(open) => !open && setClaimPlayer(null)} onConfirm={submitClaim} />
+        <WaiverClaimDialog player={claimPlayer} roster={roster} rosterSize={rosterSize} userFaab={userFaab} committedFaab={committedFaab} teamName={teamName} teamId={initialData.teamId} weekLocked={initialData.lineupLock?.locked === true && initialData.lineupLock.mode !== "DAILY"} open={claimPlayer !== null} onOpenChange={(open) => !open && setClaimPlayer(null)} onConfirm={submitClaim} />
         {toast && <div className="absolute inset-x-4 top-3 z-[60] flex items-center gap-2 rounded-full border border-[#19ffff]/50 bg-[#10283a] px-4 py-3 text-xs font-bold text-white shadow-lg"><Check className="size-4 text-[#19ffff]" />{toast}</div>}
       </main>
     </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
-import { makeDraftPick, pauseDraft, readDraft, resumeDraft, setDraftTimer, startDraft, updateDraftQueue } from "@/lib/services/draft"
+import { autopickDraft, makeDraftPick, pauseDraft, readDraft, resumeDraft, setDraftTimer, startDraft, updateDraftQueue } from "@/lib/services/draft"
 
 export const runtime = "nodejs"
 
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       if (!Number.isInteger(body.timerSeconds)) return NextResponse.json({ error: "timerSeconds is required" }, { status: 400 })
       return NextResponse.json({ draft: await setDraftTimer(leagueId, session.teamId, body.timerSeconds as number) })
     }
+    if (body.action === "autopick") return NextResponse.json({ draft: await autopickDraft(leagueId, session.teamId) })
     if (body.action === "pick") {
       if (!Number.isInteger(body.playerId)) return NextResponse.json({ error: "playerId is required" }, { status: 400 })
       return NextResponse.json({ draft: await makeDraftPick(leagueId, session.teamId, body.playerId as number, session.isCommissioner) })

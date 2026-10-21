@@ -6,7 +6,9 @@ import { getManagerSession, verifyCronSecret } from "@/lib/auth-session"
 import {
   enforceRosterLocks,
   syncActiveGameBoxscores,
+  recomputeActiveMatchups,
   recomputeMatchupsThroughWeek,
+  syncEspnInjuries,
   syncLeagueWeek,
   syncScheduleForWeeks,
 } from "@/lib/services/nhl-sync"
@@ -42,15 +44,19 @@ async function runSync(request: NextRequest) {
     scheduledGames += await syncScheduleForWeeks(league.currentSeason, weeks)
   }
   const processedGames = await syncActiveGameBoxscores(backfill ? 400 : 40)
+  if (!backfill) await syncEspnInjuries()
   await enforceRosterLocks()
 
   for (const league of leagues) {
     const week = (await syncLeagueWeek(league.id)) ?? 1
-    await recomputeMatchupsThroughWeek(league.id, week)
+    if (backfill) await recomputeMatchupsThroughWeek(league.id, week)
+    else await recomputeActiveMatchups(league.id, week)
   }
 
   return NextResponse.json({
     success: true,
+    scheduledGames,
+    processedBoxscores: processedGames,
     processedGames: Math.max(scheduledGames, processedGames),
     durationMs: Date.now() - startedAt,
   })

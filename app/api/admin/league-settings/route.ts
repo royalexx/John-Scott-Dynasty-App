@@ -16,6 +16,17 @@ export async function isSeasonStructureLocked(season: number, lineupLockMode: un
 
 const DEFAULT_LEAGUE_ID = "00000000-0000-0000-0000-000000000001"
 const jsonFields = ["rosterPositions", "scoringSettings", "waiverSettings", "tradeSettings", "draftSettings"] as const
+const ROSTER_POSITION_KEYS = new Set(["C", "W", "F", "D", "G", "BN"])
+
+function scoringChanged(previous: unknown, next: unknown) {
+  const before = previous && typeof previous === "object" && !Array.isArray(previous) ? previous as Record<string, unknown> : {}
+  const after = next && typeof next === "object" && !Array.isArray(next) ? next as Record<string, unknown> : {}
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+  for (const key of keys) {
+    if (before[key] !== after[key]) return true
+  }
+  return false
+}
 
 async function resolveLeagueId(teamId: string) {
   const team = await prisma.team.findUnique({ where: { id: teamId }, select: { leagueId: true } })
@@ -89,21 +100,32 @@ export async function PATCH(request: Request) {
   }
   // Roster capacity always follows the configured slots, independent of which other fields were sent.
   if (data.rosterPositions) {
-    const positions = Object.values(data.rosterPositions as Record<string, unknown>)
-    if (positions.some((value) => typeof value !== "number" || !Number.isInteger(value) || value < 0)) {
+    const positions = data.rosterPositions as Record<string, unknown>
+    if (Object.keys(positions).some((key) => !ROSTER_POSITION_KEYS.has(key))) {
+      return NextResponse.json({ error: "rosterPositions keys must be C, W, F, D, G, or BN." }, { status: 400 })
+    }
+    const values = Object.values(positions)
+    if (values.some((value) => typeof value !== "number" || !Number.isInteger(value) || value < 0)) {
       return NextResponse.json({ error: "rosterPositions values must be non-negative integers." }, { status: 400 })
     }
-    data.rosterSize = (positions as number[]).reduce((total, value) => total + value, 0)
+    data.rosterSize = (values as number[]).reduce((total, value) => total + value, 0)
   }
+  if (data.scoringSettings) {
+    const scoring = Object.values(data.scoringSettings as Record<string, unknown>)
+    if (scoring.some((value) => typeof value !== "number" || !Number.isFinite(value))) {
+      return NextResponse.json({ error: "scoringSettings values must be finite numbers." }, { status: 400 })
+    }
+  }
+  const scoringUpdated = Boolean(data.scoringSettings) && scoringChanged(existing.scoringSettings, data.scoringSettings)
   const league = await prisma.league.update({ where: { id: leagueId }, data, select: {
     id: true, name: true, currentSeason: true, currentWeek: true, rosterSize: true, taxiSlots: true, taxiMaxGames: true, irSlots: true, lineupLockMode: true,
     scoringSettings: true, rosterPositions: true, waiverSettings: true, tradeSettings: true, draftSettings: true,
   } })
   const structureLocked = await isSeasonStructureLocked(league.currentSeason, league.lineupLockMode)
-  if (data.scoringSettings) {
+  if (scoringUpdated && data.scoringSettings) {
     // Scoring changed: re-price every stat line and rebuild all matchup totals and standings from history.
     await rescoreAllStats(data.scoringSettings as LeagueScoring)
-    await recomputeMatchupsThroughWeek(leagueId, getCurrentFantasyWeek())
+    await recomputeMatchupsThroughWeek(leagueId, getCurrentFantasyWeek(league.currentSeason))
   }
   return NextResponse.json({ ...league, structureLocked })
 }

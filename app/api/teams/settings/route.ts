@@ -19,8 +19,16 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.name !== "string" || !body.name.trim()) {
       return NextResponse.json({ error: "Team name is required" }, { status: 400 })
     }
+    const name = body.name.trim()
+    if (name.length > 40) {
+      return NextResponse.json({ error: "Team name must be 40 characters or fewer." }, { status: 400 })
+    }
     if (body.logoUrl !== undefined && typeof body.logoUrl !== "string") {
       return NextResponse.json({ error: "logoUrl must be a string" }, { status: 400 })
+    }
+    const logoUrl = typeof body.logoUrl === "string" ? body.logoUrl.trim() : ""
+    if (logoUrl && !logoUrl.startsWith("https://") && !logoUrl.startsWith("/")) {
+      return NextResponse.json({ error: "logoUrl must start with https:// or /." }, { status: 400 })
     }
     if (body.teamId !== session.teamId && !session.isCommissioner) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -29,8 +37,8 @@ export async function PATCH(request: NextRequest) {
     const team = await prisma.team.update({
       where: { id: body.teamId },
       data: {
-        name: body.name.trim(),
-        logoUrl: typeof body.logoUrl === "string" && body.logoUrl.trim() ? body.logoUrl.trim() : null,
+        name,
+        logoUrl: logoUrl || null,
       },
       select: { id: true, name: true, logoUrl: true },
     })

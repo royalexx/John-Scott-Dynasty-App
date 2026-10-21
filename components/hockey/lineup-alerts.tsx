@@ -17,6 +17,7 @@ export function LineupAlerts({ roster, capacities, irSlots, lock }: Props) {
   const dtd = starters.filter((player) => player.status === "DTD")
   const emptyStarters = Object.entries(capacities).reduce((sum, [slot, capacity]) => isStarterSlot(slot as Player["slot"]) ? sum + Math.max(0, capacity - starters.filter((player) => player.slot === slot).length) : sum, 0)
   const irParked = roster.filter((player) => player.status === "IR" && player.slot !== "IR")
+  const healthyOnIr = roster.filter((player) => player.slot === "IR" && (player.status === "HEALTHY" || player.injuryStatus === "HEALTHY"))
   const irOpen = Math.max(0, irSlots - roster.filter((player) => player.slot === "IR").length)
   const taxiViolations = roster.filter((player) => player.slot === "TAXI" && (player.nhlGamesPlayed ?? 0) >= TAXI_MAX_NHL_GAMES)
   const outOfPosition = starters.filter((player) => !positionFitsSlot(player.slot, player.position))
@@ -27,6 +28,7 @@ export function LineupAlerts({ roster, capacities, irSlots, lock }: Props) {
   if (outOfPosition.length > 0) issues.push(`${outOfPosition.map((player) => player.name).slice(0, 2).join(", ")}${outOfPosition.length > 2 ? ` +${outOfPosition.length - 2}` : ""} out of position`)
   if (taxiViolations.length > 0) issues.push(`${taxiViolations.map((player) => player.name).slice(0, 2).join(", ")}${taxiViolations.length > 2 ? ` +${taxiViolations.length - 2}` : ""} ineligible for the taxi squad (${TAXI_MAX_NHL_GAMES}+ NHL GP)`)
   if (irParked.length > 0 && irOpen > 0) issues.push(`${irParked[0].name} can move to IR`)
+  for (const player of healthyOnIr) issues.push(`${player.name} is healthy and can be activated from IR`)
 
   const lockBanner = lock?.locked
     ? <div role="status" data-testid="lineup-lock-banner" className="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-400/5 px-3 py-2 text-xs font-bold text-sky-300"><Lock className="size-4 shrink-0" />{lock.mode === "WEEKLY" ? "Starters are locked until Monday (first game of the week has started)" : "Players whose game has started are locked today"}</div>

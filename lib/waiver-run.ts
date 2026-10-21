@@ -58,22 +58,23 @@ export function currentWeekOpenedAt(season: number, now: Date = new Date()): Dat
   return easternMidnight(startDate)
 }
 
+const RESOLUTION_LABELS: Record<string, string> = {
+  [WAIVER_RESOLUTIONS.WON]: "Won",
+  [WAIVER_RESOLUTIONS.OUTBID]: "Outbid",
+  [WAIVER_RESOLUTIONS.INSUFFICIENT_FAAB]: "Not enough FAAB",
+  [WAIVER_RESOLUTIONS.ROSTER_FULL]: "No open roster spot",
+  [WAIVER_RESOLUTIONS.ALREADY_ROSTERED]: "Already rostered",
+  [WAIVER_RESOLUTIONS.DROP_MISSING]: "Drop is no longer on your roster",
+}
+
+const WON_STATUSES = new Set(["SUCCESSFUL", "won"])
+const FAILED_STATUSES = new Set(["FAILED", "failed"])
+
 export function waiverOutcomeLabel(status: string, resolution?: string | null): string | null {
-  if (resolution === WAIVER_RESOLUTIONS.WON || status === "SUCCESSFUL" || status === "won") return "Won"
-  switch (resolution) {
-    case WAIVER_RESOLUTIONS.OUTBID:
-      return "Outbid"
-    case WAIVER_RESOLUTIONS.INSUFFICIENT_FAAB:
-      return "Not enough FAAB"
-    case WAIVER_RESOLUTIONS.ROSTER_FULL:
-      return "No open roster spot"
-    case WAIVER_RESOLUTIONS.ALREADY_ROSTERED:
-      return "Already rostered"
-    case WAIVER_RESOLUTIONS.DROP_MISSING:
-      return "Drop is no longer on your roster"
-    default:
-      return status === "FAILED" || status === "failed" ? "Not awarded" : null
-  }
+  if (resolution && resolution in RESOLUTION_LABELS) return RESOLUTION_LABELS[resolution]
+  if (WON_STATUSES.has(status)) return "Won"
+  if (FAILED_STATUSES.has(status)) return "Not awarded"
+  return null
 }
 
 function easternOffsetMs(instant: Date): number {

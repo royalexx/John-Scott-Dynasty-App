@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
-import { PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
+import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
 import { DEFAULT_LEAGUE_SCORING } from "../lib/scoring"
 
@@ -145,9 +145,14 @@ async function main() {
       const player = registryByName.get(playerSlot.name.toLowerCase())
       const slot = slots.has(playerSlot.slot) ? (playerSlot.slot as SlotType) : SlotType.BN
       if (player) {
-        await prisma.rosterSlot.create({
-          data: { teamId: team.id, playerId: player.nhlId, slot },
-        })
+        try {
+          await prisma.rosterSlot.create({
+            data: { teamId: team.id, leagueId: team.leagueId, playerId: player.nhlId, slot },
+          })
+        } catch (error: unknown) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already on a league roster.")
+          throw error
+        }
       }
     }
   }

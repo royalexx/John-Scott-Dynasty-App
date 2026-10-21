@@ -1,7 +1,7 @@
 import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "@/lib/scoring"
 import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
-export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | null
+export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | "HEALTHY" | null
 export type RosterSlot = "C" | "W" | "F" | "D" | "G" | "BN" | "TAXI" | "IR"
 /** Taxi squad eligibility: a player must have played fewer than this many NHL games. */
 export const TAXI_MAX_NHL_GAMES = 50
@@ -594,15 +594,24 @@ function playerFromMarket(entry: LeagueRosterEntry, market: MarketPlayer): Playe
   }
 }
 
-/** Replaces a team's live roster with the frozen week snapshot. Unfrozen weeks keep the live roster. */
+/** A saved snapshot replaces the live roster. So does any week other than the current one. The current live week keeps the roster the manager is editing. */
+export function weekAssignmentsReplaceLiveRoster(
+  week: number,
+  view: { source?: "snapshot" | "live"; currentWeek?: number } | null | undefined,
+): boolean {
+  if (!view) return false
+  return view.source === "snapshot" || week !== view.currentWeek
+}
+
+/** Replaces a team's live roster with week assignments when `useAssignments` is set. */
 export function applyWeekLineup(
   teamName: string,
   live: Player[],
   market: MarketPlayer[],
   assignments: Array<{ teamName: string; nhlId: number; slot: string }> | null,
-  frozen: boolean,
+  useAssignments: boolean,
 ): Player[] {
-  if (!frozen || !assignments) return live
+  if (!useAssignments || !assignments) return live
   const mine = assignments.filter((entry) => entry.teamName === teamName)
   const liveById = new Map(live.filter((player) => player.nhlId).map((player) => [Number(player.nhlId), player]))
   const marketById = new Map(market.filter((player) => player.nhlId).map((player) => [Number(player.nhlId), player]))

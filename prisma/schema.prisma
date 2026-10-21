@@ -108,6 +108,7 @@ model League {
   matchups        Matchup[]
   leagueMessages  LeagueMessage[]
   drafts          Draft[]
+  rosterSlots     RosterSlot[]
 }
 
 model Team {
@@ -154,20 +155,27 @@ model Player {
   gameStats         PlayerGameStat[]
   weekLineups       WeekLineup[]
   draftSlots        DraftSlot[]
+
+  @@index([teamAbbrev])
+  @@index([injuryStatus])
 }
 
 model RosterSlot {
   id       String    @id @default(uuid()) @db.Uuid
   teamId   String    @db.Uuid
+  leagueId String    @db.Uuid
   playerId Int
   slot     SlotType
   lockedAt DateTime?
   team     Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   player   Player    @relation(fields: [playerId], references: [id], onDelete: Restrict)
 
   @@unique([teamId, playerId])
+  @@unique([leagueId, playerId])
   @@index([playerId])
   @@index([teamId, slot])
+  @@index([leagueId, slot])
 }
 
 /// Frozen roster for a fantasy week. Written when the week locks, and left unchanged by later trades.
@@ -221,6 +229,7 @@ model DraftSlot {
   player     Player?   @relation(fields: [playerId], references: [id], onDelete: Restrict)
 
   @@unique([draftId, pickNumber])
+  @@unique([draftId, playerId])
   @@index([draftId, round])
   @@index([teamId])
 }
@@ -294,6 +303,7 @@ model WaiverClaim {
   @@index([teamId, processDate])
   @@index([teamId, status])
   @@index([status, bidAmount])
+  @@index([status, processDate])
 }
 
 model ActivityLog {
@@ -373,6 +383,7 @@ model NhlGame {
 
   @@index([gameDate])
   @@index([gameState])
+  @@index([gameDate, gameState])
   @@index([startTimeUTC])
 }
 

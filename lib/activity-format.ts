@@ -1,4 +1,5 @@
 import type { ActivityItem } from "@/lib/hockey-data"
+import { easternShortDateTime, easternTime24h } from "@/lib/format"
 import { getEasternDate } from "@/lib/season-calendar"
 
 type ActivityRecord = {
@@ -20,8 +21,8 @@ function relativeTime(createdAt: Date) {
   const sameDay = createdDay === getEasternDate(now)
   if (createdDay === previousEasternDay(now)) return "Yesterday"
   if (sameDay && now.getTime() - createdAt.getTime() < 60_000) return "Just now"
-  if (sameDay) return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" }).format(createdAt)
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/New_York" }).format(createdAt)
+  if (sameDay) return easternTime24h.format(createdAt)
+  return easternShortDateTime.format(createdAt)
 }
 
 export function formatActivity(record: ActivityRecord): ActivityItem {

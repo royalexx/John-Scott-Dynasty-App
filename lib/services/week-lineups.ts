@@ -11,32 +11,43 @@ export interface WeekAssignment {
   slot: string
 }
 
-/** Copies the live roster into the week snapshot once. Later trades do not rewrite it. */
-export async function freezeWeekLineup(db: Db, leagueId: string, season: number, week: number) {
-  const [teamCount, frozenTeams] = await Promise.all([
-    db.team.count({ where: { leagueId } }),
-    db.weekLineup.findMany({
-      where: { season, week, team: { leagueId } },
-      distinct: ["teamId"],
-      select: { teamId: true },
-    }),
-  ])
-  if (frozenTeams.length >= teamCount) return
+export interface WeekLineupView {
+  week: number
+  currentWeek: number
+  source: "snapshot" | "live"
+  locked: boolean
+  /** True when the week is locked or a snapshot exists. Kept so older clients still treat either case as frozen. */
+  frozen: boolean
+  assignments: WeekAssignment[]
+}
 
-  const covered = new Set(frozenTeams.map((row) => row.teamId))
+/** Copies each team's live roster into the week snapshot once. A team that already has rows is left unchanged. */
+export async function freezeWeekLineup(db: Db, leagueId: string, season: number, week: number) {
   const slots = await db.rosterSlot.findMany({
     where: { team: { leagueId } },
     select: { teamId: true, playerId: true, slot: true },
   })
-  const missing = slots.filter((slot) => !covered.has(slot.teamId))
-  if (missing.length === 0) return
+  const teamsWithSlots = [...new Set(slots.map((slot) => slot.teamId))]
+  if (teamsWithSlots.length === 0) return
+
+  const coveredTeams = await db.weekLineup.findMany({
+    where: { season, week, teamId: { in: teamsWithSlots } },
+    distinct: ["teamId"],
+    select: { teamId: true },
+  })
+  const covered = new Set(coveredTeams.map((row) => row.teamId))
+  const missingTeamIds = new Set(teamsWithSlots.filter((teamId) => !covered.has(teamId)))
+  if (missingTeamIds.size === 0) return
+
   await db.weekLineup.createMany({
-    data: missing.map((slot) => ({ teamId: slot.teamId, season, week, playerId: slot.playerId, slot: slot.slot })),
+    data: slots
+      .filter((slot) => missingTeamIds.has(slot.teamId))
+      .map((slot) => ({ teamId: slot.teamId, season, week, playerId: slot.playerId, slot: slot.slot })),
     skipDuplicates: true,
   })
 }
 
-export async function weekLineupForLeague(leagueId: string, season: number, week: number, now: Date = new Date()) {
+export async function weekLineupForLeague(leagueId: string, season: number, week: number, now: Date = new Date()): Promise<WeekLineupView> {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { lineupLockMode: true } })
   const lock = await getLockSummary(season, league?.lineupLockMode, now)
   const lockedWeek = lock.mode === "WEEKLY" && week === lock.week && lock.weekStarted
@@ -47,24 +58,21 @@ export async function weekLineupForLeague(leagueId: string, season: number, week
     select: { slot: true, playerId: true, team: { select: { name: true } } },
   })
   const pastWeek = week < lock.week
-  const frozen = snapshot.length > 0 || pastWeek || lockedWeek
-  if (snapshot.length > 0) {
-    return {
-      week,
-      currentWeek: lock.week,
-      frozen: true,
-      assignments: snapshot.map((row) => ({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })),
-    }
-  }
-  const live = await prisma.rosterSlot.findMany({
-    where: { team: { leagueId } },
-    select: { slot: true, playerId: true, team: { select: { name: true } } },
-  })
+  const locked = pastWeek || lockedWeek
+  const hasSnapshot = snapshot.length > 0
+  const rows = hasSnapshot
+    ? snapshot
+    : await prisma.rosterSlot.findMany({
+        where: { team: { leagueId } },
+        select: { slot: true, playerId: true, team: { select: { name: true } } },
+      })
   return {
     week,
     currentWeek: lock.week,
-    frozen,
-    assignments: live.map((row) => ({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })),
+    source: hasSnapshot ? "snapshot" : "live",
+    locked,
+    frozen: locked || hasSnapshot,
+    assignments: rows.map((row) => ({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })),
   }
 }
 

@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
     where: { leagueId, status: { in: [TradeStatus.PENDING, TradeStatus.ACCEPTED, TradeStatus.PROCESSED, TradeStatus.REJECTED] } },
     include: { assets: { include: { player: true, draftPick: true } }, proposingTeam: true, receivingTeam: true },
     orderBy: { createdAt: "desc" },
+    take: 50,
   })
   const picks = await prisma.draftPick.findMany({
     where: { leagueId },

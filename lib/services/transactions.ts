@@ -1,14 +1,92 @@
-import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Prisma, SlotType, TradeStatus } from "@prisma/client"
+import fs from "node:fs"
+import path from "node:path"
+import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Position, Prisma, SlotType, TradeStatus } from "@prisma/client"
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
-import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
+import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, isReserveSlot, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
+import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
 type TransactionClient = Prisma.TransactionClient
 const injuredStatuses = new Set<PlayerStatus>([PlayerStatus.IR, PlayerStatus.O, PlayerStatus.DTD])
-const RESERVE_SLOTS: SlotType[] = [SlotType.TAXI, SlotType.IR, SlotType.IR_PLUS]
+const registryPositions = new Set<string>(Object.values(Position))
+
+type RegistryPlayer = {
+  id?: string
+  nhlId?: number
+  name?: string
+  team?: string
+  position?: string
+  headshot?: string
+  injuryStatus?: string | null
+  nhlGamesPlayed?: number
+  currentSeasonStats?: { gamesPlayed?: number } | null
+}
+
+let registryCache: { mtimeMs: number; byId: Map<number, RegistryPlayer> } | null = null
+
+function registryPlayerId(player: RegistryPlayer): number | null {
+  if (Number.isInteger(player.nhlId)) return player.nhlId as number
+  const match = /^nhl-(\d+)$/.exec(player.id ?? "")
+  return match ? Number(match[1]) : null
+}
+
+function cachedRegistryPlayer(playerId: number): RegistryPlayer | undefined {
+  const filePath = path.join(process.cwd(), "public", "data", "nhl-players.json")
+  let mtimeMs: number
+  try {
+    mtimeMs = fs.statSync(filePath).mtimeMs
+  } catch {
+    return undefined
+  }
+  if (!registryCache || registryCache.mtimeMs !== mtimeMs) {
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8")) as RegistryPlayer[]
+    const byId = new Map<number, RegistryPlayer>()
+    for (const player of data) {
+      const id = registryPlayerId(player)
+      if (id != null) byId.set(id, player)
+    }
+    registryCache = { mtimeMs, byId }
+  }
+  return registryCache.byId.get(playerId)
+}
+
+function registryPosition(value: string | undefined): Position {
+  return value && registryPositions.has(value) ? (value as Position) : Position.C
+}
+
+function registryStatus(value: string | null | undefined): PlayerStatus {
+  if (value === PlayerStatus.IR || value === PlayerStatus.O || value === PlayerStatus.DTD) return value
+  return PlayerStatus.HEALTHY
+}
+
+function registryGamesPlayed(player: RegistryPlayer): number {
+  const games = player.nhlGamesPlayed ?? player.currentSeasonStats?.gamesPlayed ?? 0
+  return Number.isFinite(games) ? Math.max(0, Math.trunc(games)) : 0
+}
+
+/** Inserts a Player row from the NHL registry when the id has never appeared in a boxscore. */
+export async function ensurePlayerFromRegistry(tx: Prisma.TransactionClient, playerId: number) {
+  const existing = await tx.player.findUnique({ where: { id: playerId } })
+  if (existing) return existing
+  const player = cachedRegistryPlayer(playerId)
+  if (!player) throw new Error("Player to add not found")
+  const data = {
+    name: player.name?.trim() || "Unknown Player",
+    teamAbbrev: player.team?.trim() || "FA",
+    position: registryPosition(player.position),
+    nhlGamesPlayed: registryGamesPlayed(player),
+    injuryStatus: registryStatus(player.injuryStatus),
+    headshotUrl: player.headshot ?? null,
+  }
+  return tx.player.upsert({
+    where: { id: playerId },
+    update: data,
+    create: { id: playerId, ...data },
+  })
+}
 
 export interface SubmitWaiverClaimParams {
   teamId: string
@@ -25,12 +103,11 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
     if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
     // A drop is optional while the team has an open roster spot; it is only required when the roster is full.
     if (params.playerToDropId == null) {
-      const rosterCount = await tx.rosterSlot.count({ where: { teamId: params.teamId, slot: { notIn: RESERVE_SLOTS } } })
-      if (rosterCount >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
+      const rosterSlots = await tx.rosterSlot.findMany({ where: { teamId: params.teamId }, select: { slot: true } })
+      if (countActiveRosterSlots(rosterSlots) >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
     }
 
-    const addPlayer = await tx.player.findUnique({ where: { id: params.playerToAddId }, select: { id: true } })
-    if (!addPlayer) throw new Error("Player to add not found")
+    await ensurePlayerFromRegistry(tx, params.playerToAddId)
     const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: params.playerToAddId, team: { leagueId: team.leagueId } }, select: { id: true } })
     if (alreadyRostered) throw new Error("Player is already on a league roster")
     if (params.playerToDropId != null) {
@@ -54,48 +131,72 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
 }
 
 export async function processWaiversForLeague(leagueId: string, now: Date = new Date()) {
-  const claims = await prisma.waiverClaim.findMany({
-    where: { status: ClaimStatus.PENDING, processDate: { lte: now }, team: { leagueId } },
-    include: { team: true, playerToAdd: true, playerToDrop: true },
-    orderBy: [{ bidAmount: "desc" }, { team: { waiverPriority: "asc" } }, { processDate: "asc" }],
-  })
-  const claimedPlayers = new Set<number>()
-  let processed = 0
-  for (const claim of claims) {
-    if (claimedPlayers.has(claim.playerToAddId)) continue
-    await prisma.$transaction(async (tx) => {
-      const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true, faabBalance: true } })
+  // One transaction per league. Overlapping cron runs wait on the advisory lock, then re-read claims.
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${leagueId}))`
+    const claims = await tx.waiverClaim.findMany({
+      where: { status: ClaimStatus.PENDING, processDate: { lte: now }, team: { leagueId } },
+      include: { team: true, playerToAdd: true, playerToDrop: true },
+      orderBy: [{ bidAmount: "desc" }, { team: { waiverPriority: "asc" } }, { processDate: "asc" }],
+    })
+    const claimedPlayers = new Set<number>()
+    let processed = 0
+    for (const claim of claims) {
+      if (claimedPlayers.has(claim.playerToAddId)) continue
+      const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true } })
       if (!team || team.leagueId !== leagueId) {
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
-        return
-      }
-      if (team.faabBalance < claim.bidAmount) {
-        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.INSUFFICIENT_FAAB } })
-        return
+        continue
       }
       const existingAdd = await tx.rosterSlot.findFirst({ where: { playerId: claim.playerToAddId, team: { leagueId } }, select: { id: true } })
       if (existingAdd) {
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ALREADY_ROSTERED } })
-        return
+        continue
       }
-      if (claim.playerToDropId != null) {
-        const dropSlot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: claim.teamId, playerId: claim.playerToDropId } } })
-        if (!dropSlot) {
-          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.DROP_MISSING } })
-          return
+      const dropSlot = claim.playerToDropId == null
+        ? null
+        : await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: claim.teamId, playerId: claim.playerToDropId } } })
+      if (claim.playerToDropId != null && !dropSlot) {
+        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.DROP_MISSING } })
+        continue
+      }
+      if (!dropSlot) {
+        const rosterSlots = await tx.rosterSlot.findMany({ where: { teamId: claim.teamId }, select: { slot: true } })
+        const league = await tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true } })
+        if (!league || countActiveRosterSlots(rosterSlots) >= league.rosterSize) {
+          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ROSTER_FULL } })
+          continue
         }
+      }
+
+      // A failed roster insert aborts the Postgres transaction. The savepoint lets this claim fail without undoing earlier awards.
+      await tx.$executeRaw`SAVEPOINT waiver_claim`
+      if (dropSlot) {
         await tx.rosterSlot.delete({ where: { id: dropSlot.id } })
         await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.DROP, details: { playerId: claim.playerToDropId, playerName: claim.playerToDrop?.name ?? null } } })
-      } else {
-        const rosterCount = await tx.rosterSlot.count({ where: { teamId: claim.teamId, slot: { notIn: RESERVE_SLOTS } } })
-        const league = await tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true } })
-        if (!league || rosterCount >= league.rosterSize) {
-          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ROSTER_FULL } })
-          return
-        }
       }
-      await tx.team.update({ where: { id: claim.teamId }, data: { faabBalance: { decrement: claim.bidAmount } } })
-      await tx.rosterSlot.create({ data: { teamId: claim.teamId, playerId: claim.playerToAddId, slot: SlotType.BN } })
+      const charged = await tx.team.updateMany({
+        where: { id: claim.teamId, faabBalance: { gte: claim.bidAmount } },
+        data: { faabBalance: { decrement: claim.bidAmount } },
+      })
+      if (charged.count === 0) {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT waiver_claim`
+        await tx.$executeRaw`RELEASE SAVEPOINT waiver_claim`
+        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.INSUFFICIENT_FAAB } })
+        continue
+      }
+      try {
+        await tx.rosterSlot.create({ data: { teamId: claim.teamId, leagueId: team.leagueId, playerId: claim.playerToAddId, slot: SlotType.BN } })
+      } catch (error: unknown) {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT waiver_claim`
+        await tx.$executeRaw`RELEASE SAVEPOINT waiver_claim`
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ALREADY_ROSTERED } })
+          continue
+        }
+        throw error
+      }
+      await tx.$executeRaw`RELEASE SAVEPOINT waiver_claim`
       await tx.activityLog.create({ data: { leagueId, teamId: claim.teamId, action: ActivityAction.ADD, details: { playerId: claim.playerToAddId, playerName: claim.playerToAdd.name, bidAmount: claim.bidAmount, outcome: "Won" } } })
       await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.SUCCESSFUL, resolution: WAIVER_RESOLUTIONS.WON } })
       await tx.waiverClaim.updateMany({
@@ -105,17 +206,28 @@ export async function processWaiversForLeague(leagueId: string, now: Date = new 
       await rotateWaiverPriority(tx, leagueId, claim.teamId)
       claimedPlayers.add(claim.playerToAddId)
       processed += 1
-    })
-  }
-  return processed
+    }
+    return processed
+  }, { timeout: 30_000 })
 }
 
-async function rotateWaiverPriority(tx: TransactionClient, leagueId: string, winnerId: string) {
-  const teams = await tx.team.findMany({ where: { leagueId }, orderBy: { waiverPriority: "asc" }, select: { id: true } })
-  const ordered = [...teams.filter((team) => team.id !== winnerId), ...teams.filter((team) => team.id === winnerId)]
-  for (const [index, team] of ordered.entries()) {
-    await tx.team.update({ where: { id: team.id }, data: { waiverPriority: index + 1 } })
-  }
+async function rotateWaiverPriority(tx: TransactionClient, leagueId: string, winningTeamId: string) {
+  await tx.$executeRaw`
+    UPDATE "Team" AS team
+    SET "waiverPriority" = ranked.priority::int
+    FROM (
+      SELECT
+        id,
+        ROW_NUMBER() OVER (
+          ORDER BY CASE WHEN id = ${winningTeamId}::uuid THEN 1 ELSE 0 END,
+                   "waiverPriority",
+                   id
+        ) AS priority
+      FROM "Team"
+      WHERE "leagueId" = ${leagueId}::uuid
+    ) AS ranked
+    WHERE team.id = ranked.id
+  `
 }
 
 export interface TradeAssetInput {
@@ -134,7 +246,22 @@ export async function createTradeOffer(params: {
   assets: TradeAssetInput[]
   expiresAt?: Date
 }) {
+  if (params.assets.length === 0) throw new Error("A trade must include at least one asset.")
   if (params.proposingTeamId === params.receivingTeamId) throw new Error("Teams must be different")
+  const teams = await prisma.team.findMany({
+    where: { id: { in: [params.proposingTeamId, params.receivingTeamId] } },
+    select: { id: true, leagueId: true },
+  })
+  const proposing = teams.find((team) => team.id === params.proposingTeamId)
+  const receiving = teams.find((team) => team.id === params.receivingTeamId)
+  if (!proposing || !receiving || proposing.leagueId !== params.leagueId || receiving.leagueId !== params.leagueId) {
+    throw new Error("Both teams must belong to this league.")
+  }
+  for (const asset of params.assets) {
+    const fromOk = asset.fromTeamId === params.proposingTeamId || asset.fromTeamId === params.receivingTeamId
+    const toOk = asset.toTeamId === params.proposingTeamId || asset.toTeamId === params.receivingTeamId
+    if (!fromOk || !toOk || asset.fromTeamId === asset.toTeamId) throw new Error("Trade assets must transfer between the two teams in the offer")
+  }
   const league = await prisma.league.findUnique({
     where: { id: params.leagueId },
     select: { currentWeek: true, tradeSettings: true },
@@ -161,12 +288,28 @@ export async function createTradeOffer(params: {
 }
 
 export async function executeTrade(tradeOfferId: string) {
-  return prisma.$transaction(async (tx) => {
-    const offer = await tx.tradeOffer.findUnique({ where: { id: tradeOfferId }, include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true } } } })
+  const result = await prisma.$transaction(async (tx) => {
+    const offer = await tx.tradeOffer.findUnique({
+      where: { id: tradeOfferId },
+      include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true, rosterSize: true, tradeSettings: true } } },
+    })
     if (!offer || offer.status !== TradeStatus.PENDING) throw new Error("Trade offer is not pending")
+    const teams = await tx.team.findMany({
+      where: { id: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
+      select: { id: true, name: true, leagueId: true, faabBalance: true },
+    })
+    if (teams.length !== 2 || teams.some((team) => team.leagueId !== offer.leagueId)) throw new Error("Both teams must belong to this league.")
+    if (offer.expiresAt && offer.expiresAt.getTime() <= Date.now()) {
+      const cancelled = await tx.tradeOffer.updateMany({ where: { id: offer.id, status: TradeStatus.PENDING }, data: { status: TradeStatus.CANCELLED } })
+      if (cancelled.count !== 1) throw new Error("Trade offer is not pending")
+      return { expired: true as const, offer: null }
+    }
+    const deadlineWeek = ((offer.league.tradeSettings ?? {}) as { deadlineWeek?: number }).deadlineWeek
+    if (typeof deadlineWeek === "number" && getCurrentFantasyWeek(offer.league.currentSeason) > deadlineWeek) {
+      throw new Error("The trade deadline has passed.")
+    }
     const lock = await getLockSummary(offer.league.currentSeason, offer.league.lineupLockMode)
     if (lock.mode === "WEEKLY" && lock.weekStarted) await freezeWeekLineup(tx, offer.leagueId, offer.league.currentSeason, lock.week)
-    const teams = await tx.team.findMany({ where: { id: { in: [offer.proposingTeamId, offer.receivingTeamId] } }, select: { id: true, faabBalance: true } })
     const balances = new Map(teams.map((team) => [team.id, team.faabBalance]))
     for (const asset of offer.assets) {
       if (![offer.proposingTeamId, offer.receivingTeamId].includes(asset.fromTeamId) || ![offer.proposingTeamId, offer.receivingTeamId].includes(asset.toTeamId) || asset.fromTeamId === asset.toTeamId) {
@@ -183,6 +326,22 @@ export async function executeTrade(tradeOfferId: string) {
         balances.set(asset.toTeamId, (balances.get(asset.toTeamId) ?? 0) + amount)
       }
     }
+    const rosterSlots = await tx.rosterSlot.findMany({
+      where: { teamId: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
+      select: { teamId: true, playerId: true, slot: true },
+    })
+    const activeCount = new Map(teams.map((team) => [team.id, countActiveRosterSlots(rosterSlots.filter((slot) => slot.teamId === team.id))]))
+    for (const asset of offer.assets) {
+      if (asset.assetType !== AssetType.PLAYER || asset.playerId == null) continue
+      const current = rosterSlots.find((slot) => slot.teamId === asset.fromTeamId && slot.playerId === asset.playerId)
+      if (current && !isReserveSlot(current.slot)) activeCount.set(asset.fromTeamId, (activeCount.get(asset.fromTeamId) ?? 0) - 1)
+      activeCount.set(asset.toTeamId, (activeCount.get(asset.toTeamId) ?? 0) + 1)
+    }
+    for (const team of teams) {
+      if ((activeCount.get(team.id) ?? 0) > offer.league.rosterSize) {
+        throw new Error(`${team.name} would be over the ${offer.league.rosterSize}-player roster limit.`)
+      }
+    }
     for (const asset of offer.assets) {
       if (asset.assetType === AssetType.PLAYER && asset.playerId != null) {
         const destination = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId: asset.fromTeamId, playerId: asset.playerId } } })
@@ -197,12 +356,10 @@ export async function executeTrade(tradeOfferId: string) {
     await tx.tradeOffer.update({ where: { id: tradeOfferId }, data: { status: TradeStatus.PROCESSED } })
     await tx.activityLog.create({ data: { leagueId: offer.leagueId, teamId: offer.proposingTeamId, action: ActivityAction.TRADE, details: { tradeOfferId, assetCount: offer.assets.length } } })
     await tx.activityLog.create({ data: { leagueId: offer.leagueId, teamId: offer.receivingTeamId, action: ActivityAction.TRADE, details: { tradeOfferId, assetCount: offer.assets.length } } })
-    return offer
+    return { expired: false as const, offer }
   })
-}
-
-const STARTER_ELIGIBILITY: Partial<Record<SlotType, string[]>> = {
-  C: ["C"], W: ["LW", "RW"], F: ["C", "LW", "RW"], D: ["D"], G: ["G"],
+  if (result.expired) throw new Error("This trade offer has expired.")
+  return result.offer
 }
 
 type SlotPlayer = { injuryStatus: PlayerStatus; nhlGamesPlayed: number; position: string }

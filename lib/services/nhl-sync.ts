@@ -236,18 +236,17 @@ async function syncGameStats(game: { id: number; homeTeamAbbrev: string; awayTea
 
   await prisma.$executeRaw`
     UPDATE "Player" AS p
-    SET "nhlGamesPlayed" = GREATEST(
-      p."nhlGamesPlayed",
-      (
-        SELECT COUNT(*)::int
-        FROM "PlayerGameStat" AS s
-        INNER JOIN "NhlGame" AS g ON g.id = s."gameId"
-        WHERE s."playerId" = p.id
-          AND g."gameState" IN ('FINAL', 'OFF')
-          AND (s.toi NOT IN ('0:00', '00:00', '') OR s.decision IS NOT NULL OR s.shots > 0 OR s.saves > 0 OR s.goals > 0 OR s.assists > 0)
-      )
-    )
-    WHERE p.id IN (${Prisma.join(playerIds)})
+    SET "nhlGamesPlayed" = GREATEST(p."nhlGamesPlayed", a.cnt)
+    FROM (
+      SELECT s."playerId", COUNT(*)::int AS cnt
+      FROM "PlayerGameStat" AS s
+      INNER JOIN "NhlGame" AS g ON g.id = s."gameId"
+      WHERE s."playerId" IN (${Prisma.join(playerIds)})
+        AND g."gameState" IN ('FINAL', 'OFF')
+        AND (s.toi NOT IN ('0:00', '00:00', '') OR s.decision IS NOT NULL OR s.shots > 0 OR s.saves > 0 OR s.goals > 0 OR s.assists > 0)
+      GROUP BY s."playerId"
+    ) a
+    WHERE p.id = a."playerId"
   `
 }
 
@@ -282,12 +281,23 @@ export async function syncActiveGameBoxscores(limit = 40) {
   }
   const league = await prisma.league.findFirst({ select: { scoringSettings: true } })
   const scoring = (league?.scoringSettings ?? DEFAULT_LEAGUE_SCORING) as LeagueScoring
+  const concurrency = 6
   let processedGames = 0
-  for (const game of games) {
-    const boxscore = await getJson<Boxscore>(`https://api-web.nhle.com/v1/gamecenter/${game.id}/boxscore`)
-    if (!boxscore?.playerByGameStats) continue
-    await syncGameStats(game, boxscore.playerByGameStats, scoring)
-    processedGames += 1
+  for (let index = 0; index < games.length; index += concurrency) {
+    const chunk = games.slice(index, index + concurrency)
+    const fetched = await Promise.allSettled(chunk.map(async (game) => {
+      const boxscore = await getJson<Boxscore>(`https://api-web.nhle.com/v1/gamecenter/${game.id}/boxscore`)
+      if (!boxscore?.playerByGameStats) return false
+      await syncGameStats(game, boxscore.playerByGameStats, scoring)
+      return true
+    }))
+    for (const result of fetched) {
+      if (result.status === "fulfilled") {
+        if (result.value) processedGames += 1
+        continue
+      }
+      console.error("NHL boxscore sync failed", result.reason)
+    }
   }
   return processedGames
 }
@@ -351,6 +361,25 @@ export async function recomputeMatchupsThroughWeek(leagueId: string, throughWeek
   return updated
 }
 
+/** Recomputes the live week, plus the previous week while any of its matchups are still open. */
+export async function recomputeActiveMatchups(leagueId: string, currentWeek: number, includePreviousWeek = true) {
+  const weeks = [currentWeek]
+  const previousWeek = currentWeek - 1
+  if (includePreviousWeek && previousWeek >= 1) {
+    const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { currentSeason: true } })
+    const stillOpen = league
+      ? await prisma.matchup.findFirst({
+          where: { leagueId, season: league.currentSeason, week: previousWeek, isFinal: false },
+          select: { id: true },
+        })
+      : null
+    if (stillOpen) weeks.unshift(previousWeek)
+  }
+  let updated = 0
+  for (const week of weeks) updated += await updateWeeklyMatchupScores(leagueId, week)
+  return updated
+}
+
 /** Keeps `League.currentWeek` aligned with the NHL calendar. */
 export async function syncLeagueWeek(leagueId: string) {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { currentSeason: true, currentWeek: true } })
@@ -404,4 +433,89 @@ export async function rescoreAllStats(scoring: LeagueScoring) {
       + CASE WHEN decision = 'W' THEN ${n(s.win)} WHEN decision IN ('OT','OTL') THEN ${n(s.overtimeLoss)} ELSE 0 END
       + saves * ${n(s.save)} + "goalsAgainst" * ${n(s.goalsAgainst)} + shutouts * ${n(s.shutout)}
     )::numeric, 2)`
+}
+
+const ESPN_INJURIES_URL = "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/injuries"
+
+type EspnInjury = {
+  athlete?: { displayName?: string }
+  type?: unknown
+  status?: unknown
+  details?: unknown
+  shortComment?: unknown
+  longComment?: unknown
+}
+
+/** Same folding as scripts/sync-players.mjs: strip accents, then keep lowercase letters and digits. */
+function normalizePlayerName(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
+
+function localizedText(value: unknown) {
+  if (typeof value === "string") return value
+  if (!value || typeof value !== "object") return null
+  const record = value as { default?: unknown; abbreviation?: unknown; name?: unknown }
+  if (typeof record.default === "string") return record.default
+  if (typeof record.abbreviation === "string") return record.abbreviation
+  if (typeof record.name === "string") return record.name
+  return null
+}
+
+function espnInjuryStatus(value: unknown): PlayerStatus | null {
+  const status = localizedText(value)?.toUpperCase()
+  if (!status) return null
+  if (status.includes("IR") || status.includes("INJURED")) return PlayerStatus.IR
+  if (status.includes("DTD") || status.includes("DAY-TO-DAY") || status.includes("DAY TO DAY")) return PlayerStatus.DTD
+  if (status === "O" || status.includes("OUT")) return PlayerStatus.O
+  if (status.includes("HEALTHY") || status === "ACTIVE") return PlayerStatus.HEALTHY
+  return null
+}
+
+/**
+ * Refreshes Player.injuryStatus from the ESPN NHL injury report.
+ * Players missing from a successful report are marked healthy. A failed or empty fetch leaves stored statuses alone.
+ */
+export async function syncEspnInjuries() {
+  try {
+    const response = await fetch(ESPN_INJURIES_URL, {
+      headers: { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" },
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) throw new Error(`ESPN injury report failed: ${response.status}`)
+    const data = await response.json() as { injuries?: Array<{ injuries?: EspnInjury[] }> }
+    const byName = new Map<string, PlayerStatus>()
+    for (const team of data.injuries ?? []) {
+      for (const injury of team.injuries ?? []) {
+        const name = injury.athlete?.displayName
+        if (!name) continue
+        const status = espnInjuryStatus(injury.type)
+          ?? espnInjuryStatus(injury.status)
+          ?? espnInjuryStatus([injury.details, injury.shortComment, injury.longComment].filter((part) => typeof part === "string").join(" "))
+        if (!status || status === PlayerStatus.HEALTHY) continue
+        byName.set(normalizePlayerName(name), status)
+      }
+    }
+    if (byName.size === 0) {
+      console.error("ESPN injury report contained no designations; leaving stored statuses unchanged")
+      return 0
+    }
+    const players = await prisma.player.findMany({ select: { id: true, name: true, injuryStatus: true } })
+    const changed = new Map<PlayerStatus, number[]>()
+    for (const player of players) {
+      const next = byName.get(normalizePlayerName(player.name)) ?? PlayerStatus.HEALTHY
+      if (next === player.injuryStatus) continue
+      const ids = changed.get(next) ?? []
+      ids.push(player.id)
+      changed.set(next, ids)
+    }
+    let updated = 0
+    for (const [injuryStatus, ids] of changed) {
+      const result = await prisma.player.updateMany({ where: { id: { in: ids } }, data: { injuryStatus } })
+      updated += result.count
+    }
+    return updated
+  } catch (error: unknown) {
+    console.error("ESPN injury sync failed", error)
+    return 0
+  }
 }

@@ -21,6 +21,7 @@ export interface TradeTeam {
   players: Player[]
   draftPicks?: TradePick[]
   faabAvailable?: number
+  committedFaab?: number
 }
 
 export type TradeAsset =
@@ -229,7 +230,7 @@ function AssetList({ title, owner, selected, side, onToggle, onPlayerClick, faab
     <SectionHeader label="DRAFT PICKS" count={picks.length} />
     {picks.length ? <div className="grid grid-cols-1 gap-1 px-1 py-1">{picks.map((pick) => { const checked = selected.includes(pick.id); return <button type="button" key={pick.id} onClick={() => onToggle(pick.id, side)} className={cn("flex items-center justify-between rounded border p-1.5 text-xs font-bold transition-colors", checked ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7] hover:border-[#2a3f66]")}>{pick.label}<span>{checked ? "✓" : ""}</span></button> })}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}
     <SectionHeader label="FAAB BUDGET" count={owner.faabAvailable ?? 100} />
-    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-xs font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1 text-right text-xs outline-none" /></span></label><p className="mt-1 text-xs text-[#5e7090]">${owner.faabAvailable ?? 100} available</p></div>
+    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-xs font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1 text-right text-xs outline-none" /></span></label><p className="mt-1 text-xs text-[#5e7090]">${owner.faabAvailable ?? 100} available</p>{(owner.committedFaab ?? 0) > 0 && <p className="mt-1 text-xs text-[#8ba0c7]">${owner.committedFaab} FAAB committed to pending claims</p>}</div>
   </div>
 }
 

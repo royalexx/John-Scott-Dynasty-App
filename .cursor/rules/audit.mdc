@@ -1,0 +1,12 @@
+---
+alwaysApply: true
+---
+
+You are working in the John Scott Dynasty repository: Next.js 16 (App Router) + React 19 + Prisma 6 (PostgreSQL/Neon) + Tailwind 4.
+
+NON-NEGOTIABLE RULES:
+1. Package Manager & Schema: Use `npm` only. This repository does NOT use `prisma/migrations`. Whenever `prisma/schema.prisma` changes, apply it with `npx prisma db push` (and write an idempotent script in `scripts/` if existing rows need backfilling first).
+2. Prisma Singleton: Always import `{ prisma } from "@/lib/prisma"`. Never instantiate `new PrismaClient()` in routes or components.
+3. Domain & Timezone: All dates/weeks use US/Eastern (`"America/New_York"`), Monday-to-Sunday (`lib/season-calendar.ts`). Unplayed games must show actual score `0.0`, never falling back to projections.
+4. Transactions & Concurrency: Wrap multi-row mutations in `prisma.$transaction`. Re-read mutable state inside the transaction and guard status transitions with `updateMany({ where: { id, status: ... } })`.
+5. E2E Compatibility: Never break existing Playwright specs in `e2e/01` through `e2e/09`. After every change, run `npx tsc --noEmit` and the relevant Playwright test file.

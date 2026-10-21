@@ -175,6 +175,13 @@ function readSeason(stats: unknown): number | undefined {
   return typeof season === "number" && Number.isFinite(season) ? season : undefined
 }
 
+/** League year 2026 is the NHL season id 20262027 stored on NhlGame.season. */
+function activeNhlSeason(leagueSeason: number | null | undefined) {
+  const season = leagueSeason ?? 2026
+  if (season >= 10_000_000) return season
+  return season * 10_000 + season + 1
+}
+
 function nhlPlayersMtimeMs(): number {
   try {
     return fs.statSync(path.join(process.cwd(), "public", "data", "nhl-players.json")).mtimeMs
@@ -482,16 +489,17 @@ async function buildOverlaidPlayers(): Promise<RegistryPlayer[] | null> {
   let scoring: LeagueScoring = DEFAULT_LEAGUE_SCORING
   let cacheable = true
   try {
-    const [players, stats, league] = await Promise.all([
+    const league = await prisma.league.findFirst({ select: { scoringSettings: true, currentSeason: true } })
+    scoring = leagueScoring(league?.scoringSettings)
+    const season = activeNhlSeason(league?.currentSeason)
+    const [players, stats] = await Promise.all([
       prisma.player.findMany({ select: { id: true, name: true, teamAbbrev: true, position: true, injuryStatus: true, nhlGamesPlayed: true } }),
       prisma.playerGameStat.findMany({
-        where: { game: { gameState: { in: ["LIVE", "CRIT", "FINAL", "OFF"] } } },
+        where: { game: { season, gameState: { in: ["LIVE", "CRIT", "FINAL", "OFF"] } } },
         include: { game: { select: { id: true, season: true, gameDate: true, homeTeamAbbrev: true, awayTeamAbbrev: true, startTimeUTC: true } } },
         orderBy: { game: { gameDate: "desc" } },
       }),
-      prisma.league.findFirst({ select: { scoringSettings: true } }),
     ])
-    scoring = leagueScoring(league?.scoringSettings)
     dbPlayers = players
     gameStats = stats.map((stat) => ({
       playerId: stat.playerId,

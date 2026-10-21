@@ -1,20 +1,25 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession } from "@/lib/auth-session"
+import { easternTime12h } from "@/lib/format"
 
 function formatTime(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }).format(date)
+  return easternTime12h.format(date)
 }
 
 async function caller() {
   const session = await getManagerSession()
-  const managerId = session?.managerId
-  return managerId ? prisma.user.findUnique({ where: { id: managerId } }) : null
+  if (!session) return null
+  const user = await prisma.user.findUnique({ where: { id: session.managerId } })
+  if (!user) return null
+  const team = await prisma.team.findFirst({ where: { id: session.teamId, managerId: session.managerId }, select: { leagueId: true } })
+  return { user, leagueId: team?.leagueId ?? null }
 }
 
 export async function GET(request: Request) {
-  const user = await caller()
-  if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
+  const callerSession = await caller()
+  if (!callerSession) return NextResponse.json({ error: "Authentication required." }, { status: 401 })
+  const { user, leagueId } = callerSession
   const url = new URL(request.url)
   if (url.searchParams.get("unreadOnly") === "1") {
     const unreadCount = await prisma.directMessage.count({ where: { recipientId: user.id, readAt: null } })
@@ -32,10 +37,11 @@ export async function GET(request: Request) {
       timestamp: formatTime(message.createdAt), isMe: message.senderId === user.id,
     })))
   }
+  if (!leagueId) return NextResponse.json([])
   const [partners, latestByPair, unreadGroups] = await Promise.all([
     prisma.user.findMany({
-      where: { id: { not: user.id }, managedTeams: { some: {} } },
-      include: { managedTeams: { select: { name: true }, take: 1 } },
+      where: { id: { not: user.id }, managedTeams: { some: { leagueId } } },
+      include: { managedTeams: { where: { leagueId }, select: { name: true }, take: 1 } },
       orderBy: { name: "asc" },
     }),
     prisma.directMessage.findMany({
@@ -74,6 +80,7 @@ export async function POST(request: Request) {
   const session = await getManagerSession()
   const body = await request.json().catch(() => null) as { recipientId?: unknown; body?: unknown } | null
   if (!session || typeof body?.recipientId !== "string" || typeof body.body !== "string" || !body.body.trim()) return NextResponse.json({ error: "Authentication and message body are required." }, { status: 400 })
+  if (body.body.trim().length > 2000) return NextResponse.json({ error: "Messages must be 2000 characters or fewer." }, { status: 400 })
   if (body.recipientId === session.managerId) return NextResponse.json({ error: "You cannot message yourself." }, { status: 400 })
   const recipient = await prisma.user.findUnique({
     where: { id: body.recipientId },

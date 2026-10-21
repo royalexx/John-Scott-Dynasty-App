@@ -1,18 +1,19 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import type { ActivityItem, WaiverClaim } from "@/lib/hockey-data"
 
 type ShownClaim = WaiverClaim & { outcome?: string | null }
 
-export function TransactionsDrawer({ open, claims, activities, onOpenChange, onCancel, teamId }: {
+export function TransactionsDrawer({ open, claims, activities, onOpenChange, onCancel, onBudgetChange, teamId }: {
   open: boolean
   claims: WaiverClaim[]
   activities: ActivityItem[]
   onOpenChange: (open: boolean) => void
   onCancel: (claim: WaiverClaim) => void
+  onBudgetChange?: (budget: { faabBalance: number; committedFaab: number }) => void
   teamId?: string
 }) {
   const [selected, setSelected] = useState<ShownClaim | null>(null)
@@ -20,19 +21,36 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
   const [cancelling, setCancelling] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
   const [liveClaims, setLiveClaims] = useState<ShownClaim[]>(claims)
+  const budgetRequest = useRef(0)
+  const onBudgetChangeRef = useRef(onBudgetChange)
+  onBudgetChangeRef.current = onBudgetChange
   useEffect(() => {
     if (!teamId) setLiveClaims(claims)
   }, [claims, teamId])
+  const loadClaims = useCallback(async () => {
+    if (!teamId) return
+    const requestId = ++budgetRequest.current
+    try {
+      const response = await fetch(`/api/waivers?teamId=${encodeURIComponent(teamId)}`, { cache: "no-store" })
+      if (!response.ok || requestId !== budgetRequest.current) return
+      const data = await response.json() as { claims?: ShownClaim[]; faabBalance?: number; committedFaab?: number }
+      if (requestId !== budgetRequest.current) return
+      setLiveClaims(data.claims ?? [])
+      if (typeof data.faabBalance === "number" && typeof data.committedFaab === "number") {
+        onBudgetChangeRef.current?.({ faabBalance: data.faabBalance, committedFaab: data.committedFaab })
+      }
+    } catch (error: unknown) {
+      console.error("Could not load waiver claims", error)
+    }
+  }, [teamId])
   useEffect(() => {
     if (!open || !teamId) return
-    fetch(`/api/waivers?teamId=${encodeURIComponent(teamId)}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? (await response.json() as { claims?: ShownClaim[] }).claims ?? [] : [])
-      .then(setLiveClaims)
-      .catch((error: unknown) => console.error("Could not load waiver claims", error))
-  }, [open, teamId])
+    void loadClaims()
+  }, [open, teamId, loadClaims])
   const displayedClaims = teamId ? liveClaims : claims
   const pending = displayedClaims.filter((claim) => claim.status !== "won" && claim.status !== "failed")
   const results = displayedClaims.filter((claim) => claim.status === "won" || claim.status === "failed")
+  const committedFaab = pending.reduce((sum, claim) => sum + claim.bidAmount, 0)
   const close = () => { setSelected(null); setConfirming(false); setCancelError(null); onOpenChange(false) }
   const confirmCancel = async () => {
     if (!selected || cancelling) return
@@ -54,6 +72,7 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
       }
       setLiveClaims((current) => current.filter((claim) => claim.id !== selected.id))
       onCancel(selected)
+      void loadClaims()
       setSelected(null)
       setConfirming(false)
       setCancelError(null)
@@ -74,6 +93,7 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
         </div>
         <div className="p-4">
           <h3 className="text-xs font-black uppercase tracking-wider text-[#5e7090]">Waiver Claims</h3>
+          {committedFaab > 0 && <p className="mt-2 text-xs text-[#8ba0c7]">${committedFaab} FAAB committed to pending claims</p>}
           {pending.length === 0 && results.length === 0 && <p className="mt-2 rounded-lg border border-dashed border-[#263858] p-3 text-xs text-[#5e7090]">No pending waivers</p>}
           {pending.length === 0 && results.length > 0 && <p className="mt-2 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-xs text-[#8ba0c7]">Waivers have processed.</p>}
           {pending.length > 0 && (
@@ -93,7 +113,7 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
           )}
           {results.length > 0 && (
             <>
-              <h3 className="mt-6 text-xs font-black uppercase tracking-wider text-[#5e7090]">This week&apos;s results</h3>
+              <h3 className="mt-6 text-xs font-black uppercase tracking-wider text-[#5e7090]">Recent results</h3>
               <div className="mt-2 space-y-2">
                 {results.map((claim) => (
                   <div key={claim.id} className="flex items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3">

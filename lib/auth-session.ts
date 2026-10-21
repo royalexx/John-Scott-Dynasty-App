@@ -11,6 +11,9 @@ export type ManagerSession = {
 }
 
 const DEV_SESSION_SECRET = "john-scott-dynasty-default-secret"
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30
+
+type SignedSession = Partial<ManagerSession> & { iat?: number; exp?: number }
 
 function sessionSecret() {
   const secret = process.env.SESSION_SECRET ?? process.env.CRON_SECRET
@@ -31,7 +34,8 @@ export function verifyCronSecret(provided: string | null | undefined): boolean {
 }
 
 export function signManagerSession(payload: ManagerSession): string {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url")
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const encoded = Buffer.from(JSON.stringify({ ...payload, iat: issuedAt, exp: issuedAt + SESSION_TTL_SECONDS })).toString("base64url")
   const signature = createHmac("sha256", sessionSecret()).update(encoded).digest("base64url")
   return `${encoded}.${signature}`
 }
@@ -47,7 +51,15 @@ export function verifyManagerSessionCookie(rawCookie: string): Partial<ManagerSe
   try {
     const parsed: unknown = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"))
     if (!parsed || typeof parsed !== "object") return null
-    return parsed as Partial<ManagerSession>
+    const session = parsed as SignedSession
+    const now = Math.floor(Date.now() / 1000)
+    if ("exp" in session && session.exp !== undefined) {
+      if (typeof session.exp !== "number" || !Number.isFinite(session.exp) || session.exp <= now) return null
+    }
+    if ("iat" in session && session.iat !== undefined) {
+      if (typeof session.iat !== "number" || !Number.isFinite(session.iat) || session.iat > now) return null
+    }
+    return session
   } catch {
     return null
   }

@@ -5,6 +5,7 @@ import { computeStandings } from "../lib/standings"
 import { scoreTeams } from "../lib/matchup-scoring"
 import type { LeagueScoring } from "../lib/scoring"
 import { scoringSlotsForWeek } from "../lib/services/week-lineups"
+import { STARTER_ELIGIBILITY } from "../lib/roster-eligibility"
 
 // Read-only checks against the live league database (nothing here writes).
 process.loadEnvFile?.(".env")
@@ -50,9 +51,8 @@ test.describe("league data integrity (read-only)", () => {
   })
 
   test("starters are position-eligible for their slot", async () => {
-    const eligible: Record<string, string[]> = { C: ["C"], W: ["LW", "RW"], F: ["C", "LW", "RW"], D: ["D"], G: ["G"] }
     const starters = await prisma.rosterSlot.findMany({ where: { slot: { in: ["C", "W", "F", "D", "G"] } }, include: { player: true } })
-    for (const entry of starters) expect(eligible[entry.slot], `${entry.player.name} in ${entry.slot}`).toContain(entry.player.position)
+    for (const entry of starters) expect(STARTER_ELIGIBILITY[entry.slot], `${entry.player.name} in ${entry.slot}`).toContain(entry.player.position)
   })
 
   test("every team plays exactly one opponent each week and never itself", async () => {

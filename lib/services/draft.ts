@@ -180,6 +180,11 @@ async function presentCurrent(draft: LoadedDraft, teamId: string, type?: DraftOr
   return present(await autopickIfExpired(draft), teamId, type)
 }
 
+export async function autopickDraft(leagueId: string, teamId: string) {
+  const id = await requireDraft(leagueId, teamId)
+  return present(await autopickIfExpired(await load(id)), teamId)
+}
+
 async function load(draftId: string) {
   return prisma.draft.findUniqueOrThrow({ where: { id: draftId }, include: draftInclude })
 }
@@ -192,49 +197,75 @@ function takenPlayerIds(draft: LoadedDraft) {
   return new Set(draft.slots.flatMap((slot) => (slot.playerId == null ? [] : [slot.playerId])))
 }
 
-/** Queue order is priority. The first id still undrafted is the highest-ranked available player. */
-async function firstQueuedPlayer(tx: Prisma.TransactionClient, draft: LoadedDraft, teamId: string) {
+async function rosteredPlayerIds(tx: Prisma.TransactionClient, leagueId: string) {
+  const rows = await tx.rosterSlot.findMany({ where: { leagueId }, select: { playerId: true } })
+  return new Set(rows.map((row) => row.playerId))
+}
+
+/** Queue order is priority. The first id still undrafted and not rostered is the one to pick. */
+async function firstQueuedPlayer(tx: Prisma.TransactionClient, draft: LoadedDraft, teamId: string, rostered: Set<number>) {
   const taken = takenPlayerIds(draft)
   for (const playerId of queuesOf(draft.queues)[teamId] ?? []) {
-    if (taken.has(playerId)) continue
+    if (taken.has(playerId) || rostered.has(playerId)) continue
     const player = await tx.player.findUnique({ where: { id: playerId }, select: { id: true, name: true, nhlGamesPlayed: true } })
     if (player) return player
   }
   return null
 }
 
-async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot: LoadedDraft["slots"][number], player: { id: number; name: string; nhlGamesPlayed: number }) {
-  const claimed = await tx.draftSlot.updateMany({
-    where: { id: slot.id, playerId: null },
-    data: { playerId: player.id, pickedAt: new Date() },
+/** Highest NHL games played, then lowest id, among players not drafted or rostered in this league. */
+async function bestAvailablePlayer(tx: Prisma.TransactionClient, draft: LoadedDraft, rostered: Set<number>) {
+  const excluded = [...takenPlayerIds(draft), ...rostered]
+  return tx.player.findFirst({
+    where: excluded.length > 0 ? { id: { notIn: excluded } } : undefined,
+    orderBy: [{ nhlGamesPlayed: "desc" }, { id: "asc" }],
+    select: { id: true, name: true, nhlGamesPlayed: true },
   })
-  if (claimed.count !== 1) return false
-  const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: player.id, team: { leagueId: draft.leagueId } } })
+}
+
+async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot: LoadedDraft["slots"][number], player: { id: number; name: string; nhlGamesPlayed: number }) {
+  const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: player.id, leagueId: draft.leagueId }, select: { id: true } })
+  let placement: SlotType | null = null
   if (!alreadyRostered) {
     const [league, rosterSlots] = await Promise.all([
       tx.league.findUnique({ where: { id: draft.leagueId }, select: { rosterSize: true, taxiSlots: true, taxiMaxGames: true } }),
       tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
     ])
-    if (league) {
-      const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
-      const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
-      const placement = player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
-        ? SlotType.TAXI
-        : rosterCount < league.rosterSize
-          ? SlotType.BN
-          : null
-      if (placement) {
-        await tx.rosterSlot.create({ data: { teamId: slot.teamId, playerId: player.id, slot: placement } })
-        await tx.activityLog.create({
-          data: {
-            leagueId: draft.leagueId,
-            teamId: slot.teamId,
-            action: ActivityAction.ADD,
-            details: { playerId: player.id, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
-          },
-        })
-      }
+    const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
+    const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
+    placement = league && player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
+      ? SlotType.TAXI
+      : league && rosterCount < league.rosterSize
+        ? SlotType.BN
+        : null
+    if (!placement) throw new Error("Team roster is full — cannot record draft pick without an open bench or taxi slot.")
+  }
+  let claimed: { count: number }
+  try {
+    claimed = await tx.draftSlot.updateMany({
+      where: { id: slot.id, playerId: null },
+      data: { playerId: player.id, pickedAt: new Date() },
+    })
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already drafted.")
+    throw error
+  }
+  if (claimed.count !== 1) return false
+  if (placement) {
+    try {
+      await tx.rosterSlot.create({ data: { teamId: slot.teamId, leagueId: draft.leagueId, playerId: player.id, slot: placement } })
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already on a league roster.")
+      throw error
     }
+    await tx.activityLog.create({
+      data: {
+        leagueId: draft.leagueId,
+        teamId: slot.teamId,
+        action: ActivityAction.ADD,
+        details: { playerId: player.id, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
+      },
+    })
   }
   const remaining = draft.slots.filter((item) => item.playerId == null && item.id !== slot.id)
   await tx.draft.update({
@@ -248,16 +279,13 @@ async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot
 
 async function autopickIfExpired(draft: LoadedDraft) {
   if (!clockExpired(draft)) return draft
-  const open = draft.slots.find((slot) => slot.playerId == null)
-  const taken = open ? takenPlayerIds(draft) : null
-  const queued = open ? (queuesOf(draft.queues)[open.teamId] ?? []).some((playerId) => !taken?.has(playerId)) : false
-  if (!open || !queued) return draft
   return prisma.$transaction(async (tx) => {
     const fresh = await tx.draft.findUniqueOrThrow({ where: { id: draft.id }, include: draftInclude })
     if (!clockExpired(fresh)) return fresh
     const slot = fresh.slots.find((item) => item.playerId == null)
     if (!slot) return fresh
-    const player = await firstQueuedPlayer(tx, fresh, slot.teamId)
+    const rostered = await rosteredPlayerIds(tx, fresh.leagueId)
+    const player = await firstQueuedPlayer(tx, fresh, slot.teamId, rostered) ?? await bestAvailablePlayer(tx, fresh, rostered)
     if (!player || !(await commitPick(tx, fresh, slot, player))) {
       return tx.draft.findUniqueOrThrow({ where: { id: draft.id }, include: draftInclude })
     }
@@ -282,6 +310,9 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
   const season = config.startAt.getUTCFullYear()
 
   let draft = await prisma.draft.findUnique({ where: { leagueId }, include: draftInclude })
+  if (!createBeforeStart) {
+    return { scheduled, draft: draft ? await present(draft, teamId, config.type) : null }
+  }
   const due = config.startAt.getTime() <= Date.now()
   if (!draft && (due || createBeforeStart)) {
     const teamIds = await draftTeamIds(leagueId)
@@ -331,7 +362,7 @@ export async function readDraft(leagueId: string, teamId: string, createBeforeSt
   if (draft) draft = await promoteIfDue(draft)
   return {
     scheduled,
-    draft: draft ? await presentCurrent(draft, teamId, config.type) : null,
+    draft: draft ? await present(draft, teamId, config.type) : null,
   }
 }
 

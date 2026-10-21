@@ -94,7 +94,6 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
                 <button type="button" onClick={() => addDigit("0")} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">0</button>
                 <button type="button" aria-label="Backspace" onClick={() => { setError(""); submittedPin.current = ""; setPin((current) => current.slice(0, -1)) }} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-[#8ba0c7] hover:border-[#19ffff] active:scale-90"><Delete className="size-5" /></button>
               </div>
-              <p className="mt-6 text-xs text-[#6d86ab]">Default league PIN is 1234</p>
             </div>
           </section>
         )}

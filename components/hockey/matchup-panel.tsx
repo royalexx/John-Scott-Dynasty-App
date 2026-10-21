@@ -5,6 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   applyWeekLineup,
+  weekAssignmentsReplaceLiveRoster,
   DEFAULT_SLOT_CAPACITIES,
   STARTER_SLOTS,
   getTeamRoster,
@@ -55,7 +56,7 @@ export function getYetToPlayText(teamRoster: Player[]): string {
   return `yet to play: ${parts.length ? parts.join(", ") : "none"}`
 }
 
-type WeekLineup = { frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
+type WeekLineup = { source?: "snapshot" | "live"; currentWeek?: number; frozen?: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
 
 function buildMatchupCard(
   summary: MatchupSummary,
@@ -69,9 +70,9 @@ function buildMatchupCard(
   const flip = summary.awayTeam === teamName
   const market = players ?? []
   const assignments = weekLineup?.assignments ?? null
-  const frozen = weekLineup != null
-  const trueHomeRoster = applyWeekLineup(summary.homeTeam, getTeamRoster(summary.homeTeam, roster, market), market, assignments, frozen)
-  const trueAwayRoster = applyWeekLineup(summary.awayTeam, getTeamRoster(summary.awayTeam, roster, market), market, assignments, frozen)
+  const useAssignments = weekAssignmentsReplaceLiveRoster(week, weekLineup)
+  const trueHomeRoster = applyWeekLineup(summary.homeTeam, getTeamRoster(summary.homeTeam, roster, market), market, assignments, useAssignments)
+  const trueAwayRoster = applyWeekLineup(summary.awayTeam, getTeamRoster(summary.awayTeam, roster, market), market, assignments, useAssignments)
   const starters = (list: Player[]) => list.filter((player) => isStarterSlot(player.slot))
   const expected = (list: Player[]) => starters(list).reduce((sum, player) => sum + (getWeekProjectedPoints(player, week) ?? 0), 0)
   const actual = (list: Player[]) => starters(list).reduce((sum, player) => sum + getWeekActualPoints(player, week), 0)
@@ -309,7 +310,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   onMatchupChange?: (matchupId: string) => void
   onLiveSummary?: (summary: LiveMatchupSummary) => void
   matchupResults?: MatchupResult[]
-  weekLineup?: { frozen: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
+  weekLineup?: WeekLineup
 }) {
   const weekSchedule = useMemo(() => getWeekMatchups(week), [week])
   const userMatchup = useMemo(

@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronLeft, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { DEFAULT_ROSTER_SIZE, isStarterSlot, type MarketPlayer, type Player, type WaiverClaim } from "@/lib/hockey-data"
+import { countActiveRosterSlots } from "@/lib/roster-eligibility"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 const colors: Record<string, string> = {
@@ -72,6 +73,7 @@ export function WaiverClaimDialog({
   player,
   roster,
   userFaab,
+  committedFaab = 0,
   teamName,
   open,
   onOpenChange,
@@ -83,6 +85,8 @@ export function WaiverClaimDialog({
   player: MarketPlayer | null
   roster: Player[]
   userFaab: number
+  /** Sum of pending bids. Each new bid can still use the full balance. */
+  committedFaab?: number
   teamName: string
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -109,7 +113,8 @@ export function WaiverClaimDialog({
   )
 
   const dropped = roster.find((p) => p.id === dropId)
-  const openSpots = Math.max(0, rosterSize - roster.length)
+  const activeCount = countActiveRosterSlots(roster)
+  const openSpots = Math.max(0, rosterSize - activeCount)
   const rosterFull = openSpots === 0
 
   if (!open || !player) return null
@@ -124,6 +129,10 @@ export function WaiverClaimDialog({
   }
 
   const confirm = () => {
+    if (bid > userFaab) {
+      setError(`Bid cannot exceed your $${userFaab} FAAB balance.`)
+      return
+    }
     // A drop is only mandatory when the roster is full; open bench spots allow a pure add.
     if (rosterFull && !dropped) {
       setError("Your roster is full. Select a player to drop.")
@@ -204,6 +213,7 @@ export function WaiverClaimDialog({
                 />
               </div>
               <p className="mt-1 text-xs text-[#5e7090]">${userFaab} remaining</p>
+              {committedFaab > 0 && <p className="mt-1 text-xs text-[#8ba0c7]">${committedFaab} FAAB committed to pending claims</p>}
               <WaiverTiming weekLocked={weekLocked} />
             </section>
 

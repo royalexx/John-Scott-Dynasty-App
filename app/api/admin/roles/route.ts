@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "targetManagerId and isCommissioner are required." }, { status: 400 })
   }
   if (body.targetManagerId === session.managerId && !body.isCommissioner) {
-    return NextResponse.json({ error: "You cannot remove your own commissioner role." }, { status: 400 })
+    return NextResponse.json({ error: "You cannot revoke your own commissioner role." }, { status: 400 })
   }
   const team = await prisma.team.findUnique({ where: { id: session.teamId }, select: { leagueId: true } })
   const target = team
