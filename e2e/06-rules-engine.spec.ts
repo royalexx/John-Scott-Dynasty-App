@@ -6,10 +6,21 @@ import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, pre
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
+import { remainingPinLockout } from "../lib/pin-rate-limit"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
   gameWinningGoals: 0, saves: 0, goalsAgainst: 0, shutouts: 0, decision: null, ...overrides,
+})
+
+test.describe("distributed PIN throttle", () => {
+  test("locks a bucket after five attempts within its expiry window", () => {
+    const now = new Date("2026-11-13T12:00:00Z")
+    const resetAt = new Date(now.getTime() + 300_000)
+    expect(remainingPinLockout([{ failures: 4, resetAt }], now)).toBe(0)
+    expect(remainingPinLockout([{ failures: 5, resetAt }], now)).toBe(300)
+    expect(remainingPinLockout([{ failures: 9, resetAt: new Date(now.getTime() - 1) }], now)).toBe(0)
+  })
 })
 
 test.describe("manager PIN security", () => {
