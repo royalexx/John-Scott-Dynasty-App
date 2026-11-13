@@ -22,9 +22,10 @@ const databaseName = decodeURIComponent(parsedUrl.pathname.replace(/^\//, ""))
 if (!/(^|[_-])(test|e2e)([_-]|$)/i.test(databaseName)) {
   throw new Error("TEST_DATABASE_URL must use a database whose name includes 'test' or 'e2e'.")
 }
-if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
-  throw new Error("TEST_DATABASE_URL must differ from the application's existing DATABASE_URL.")
-}
+// An already-imported config is evaluated again in Playwright workers, so
+// comparing DATABASE_URL with TEST_DATABASE_URL would reject our own isolated
+// test setup. The localhost and dedicated test-DB name checks above provide
+// the necessary protection; force both clients onto that verified database.
 // Apply to both Playwright's own Prisma clients and the isolated Next.js server.
 process.env.DATABASE_URL = testDatabaseUrl
 
