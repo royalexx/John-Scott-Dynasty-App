@@ -114,7 +114,7 @@ test("Phase 3: chat drawer has safe-size controls and preview does not allow sen
   expect(sendRect?.width ?? 0).toBeGreaterThanOrEqual(44)
   expect(sendRect?.height ?? 0).toBeGreaterThanOrEqual(44)
   const bounds = await dialog.boundingBox()
-  expect((bounds?.bottom ?? Infinity)).toBeLessThanOrEqual(701)
+  expect(bounds ? bounds.y + bounds.height : Infinity).toBeLessThanOrEqual(701)
   await capture(page, info, "phase-03-chat-320")
   await page.keyboard.press("Escape")
   await expect(dialog).toHaveCount(0)
