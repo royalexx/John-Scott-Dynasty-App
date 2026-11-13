@@ -123,7 +123,7 @@ jobs:
         run: npm ci
       - name: Reproduce pre-migration database from main without destructive operations
         run: |
-          git show origin/main:prisma/schema.prisma > "$RUNNER_TEMP/pre-migration-schema.prisma"
+          git show 9889c57fc6bb0c91898a85a887995fe1d75dec07:prisma/schema.prisma > "$RUNNER_TEMP/pre-migration-schema.prisma"
           npx prisma db push --schema "$RUNNER_TEMP/pre-migration-schema.prisma" --skip-generate
       - name: Populate legacy test league
         env:
