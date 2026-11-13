@@ -17,12 +17,28 @@ function getOrdinal(n: number) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
+function LeagueUnavailable() {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-[#070a12] px-6 text-white">
+      <section role="alert" className="w-full max-w-md rounded-2xl border border-[#263858] bg-[#111c30] p-6 text-center">
+        <h1 className="text-xl font-bold">League temporarily unavailable</h1>
+        <p className="mt-3 text-sm text-[#a6b5cf]">
+          Official league data could not be loaded. No demonstration rosters, matchups or results are being shown.
+        </p>
+        <a href="/" className="mt-5 inline-block rounded-lg bg-[#173458] px-5 py-3 text-sm font-semibold text-white">
+          Try again
+        </a>
+      </section>
+    </main>
+  )
+}
+
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
   try {
     const league = await getLeague("00000000-0000-0000-0000-000000000001")
-    if (!league) return <DashboardClient initialData={initialDashboardData} />
+    if (!league) return <LeagueUnavailable />
 
     const gateTeams: PinGateTeam[] = league.teams.map((candidate) => ({
       id: candidate.id,
@@ -183,7 +199,7 @@ export default async function Page() {
             pointsAgainst: row.pointsAgainst,
             faabRemaining: row.team.faabBalance,
             streak: row.streak,
-          })) ?? initialDashboardData.standings,
+          })) ?? [],
           activities: activityRecords.map(formatActivity),
           league: {
             rosterPositions: (league.rosterPositions as Record<string, number> | null) ?? undefined,
@@ -208,7 +224,7 @@ export default async function Page() {
       />
     )
   } catch (error: unknown) {
-    console.error("Database dashboard hydration failed; using placeholder data", error)
-    return <DashboardClient initialData={initialDashboardData} />
+    console.error("Database dashboard hydration failed; withholding unverified league data", error)
+    return <LeagueUnavailable />
   }
 }
