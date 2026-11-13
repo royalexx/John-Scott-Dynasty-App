@@ -3,13 +3,14 @@ import { getFantasyWeekDates, getFantasyWeekForDate, getCurrentFantasyWeek } fro
 import { computeStandings, isCompletedMatchup } from "../lib/standings"
 import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type LockContext } from "../lib/lineup-lock"
 import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
-import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
+import { isWeekFinal, scoreTeams, scoreTeamsByGame } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
 import { missingSnapshotTeamIds } from "../lib/services/week-lineups"
 import { PlayerStatus, SlotType } from "@prisma/client"
 import { previewFutureMove, rosterMatchesPlan } from "../lib/services/future-lineup-plans"
+import { missingDailyGameCoverage } from "../lib/services/daily-game-lineups"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
@@ -332,5 +333,33 @@ test.describe("future-week lineup plan validation", () => {
     expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 2 }], [{ playerId: 2 }, { playerId: 1 }])).toBe(true)
     expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 3 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
     expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 1 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
+  })
+})
+
+test.describe("DAILY-mode game-scoped scoring", () => {
+  test("credits a player to different owners in different NHL games without retroactive ownership changes", () => {
+    const slots = [
+      { gameId: 100, teamId: "before-trade", playerId: 7, slot: "C" },
+      { gameId: 101, teamId: "after-trade", playerId: 7, slot: "C" },
+      { gameId: 101, teamId: "before-trade", playerId: 8, slot: "BN" },
+    ]
+    const stats = [
+      { gameId: 100, playerId: 7, ...stat({ goals: 1 }) },
+      { gameId: 101, playerId: 7, ...stat({ assists: 1 }) },
+      { gameId: 101, playerId: 8, ...stat({ goals: 10 }) },
+    ]
+    const scored = scoreTeamsByGame(slots, stats, DEFAULT_LEAGUE_SCORING)
+    expect(scored.get("before-trade")).toBe(DEFAULT_LEAGUE_SCORING.goal)
+    expect(scored.get("after-trade")).toBe(DEFAULT_LEAGUE_SCORING.assist)
+  })
+
+  test("requires a snapshot header from every fantasy team for every started game", () => {
+    const coverage = [
+      { gameId: 100, teamId: "A" }, { gameId: 100, teamId: "B" },
+      { gameId: 101, teamId: "A" },
+    ]
+    expect(missingDailyGameCoverage([100, 101], ["A", "B"], coverage)).toEqual([{ gameId: 101, teamId: "B" }])
+    expect(missingDailyGameCoverage([100], ["A", "B"], coverage)).toEqual([])
+    expect(missingDailyGameCoverage([], ["A", "B"], [])).toEqual([])
   })
 })
