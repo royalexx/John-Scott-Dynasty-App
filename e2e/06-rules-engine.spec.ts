@@ -5,7 +5,7 @@ import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type Lo
 import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
-import { validateFaabReservation } from "../lib/waiver-run"
+import { assertTradePreservesReservedFaab, validateFaabReservation } from "../lib/waiver-run"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
 
@@ -224,6 +224,18 @@ test.describe("trade roster projection", () => {
       { fromTeamId: "A", toTeamId: "B", playerId: 1 },
       { fromTeamId: "A", toTeamId: "B", playerId: 1 },
     ], "BN")).toThrow(/Duplicate or unavailable/)
+  })
+})
+
+test.describe("FAAB commitments survive trades", () => {
+  test("allows transfers that leave sufficient uncommitted funds", () => {
+    expect(() => assertTradePreservesReservedFaab(80, 80)).not.toThrow()
+    expect(() => assertTradePreservesReservedFaab(100, 20)).not.toThrow()
+  })
+  test("rejects transfers that would spend reserved bids", () => {
+    expect(() => assertTradePreservesReservedFaab(79, 80)).toThrow(/reserved/)
+    expect(() => assertTradePreservesReservedFaab(-1, 0)).toThrow(/non-negative/)
+    expect(() => assertTradePreservesReservedFaab(100.5, 5)).toThrow(/safe integers/)
   })
 })
 
