@@ -3,11 +3,21 @@
 Date: 2026-11-13  
 Status: implementation pushed for review; **do not merge until checks and preview-data isolation are reviewed**.
 
+## Current confirmed Vercel configuration (2026-11-13)
+
+The owner checked project-level environment variables, **Shared**, **Storage**, and **Integrations**, and found no database connection or injected credentials. Production at `johnscottdynasty.live` may therefore be rendering the app's historical static fallback rather than real persisted league data. This is an application-level finding and does not prove the presence or absence of credentials injected through an unknown external mechanism.
+
+**Phase 0 adjustment:** This branch implements a deliberately database-free Vercel Preview display, *only when* `VERCEL_ENV=preview` and `DATABASE_URL` is missing. It renders fixture league data behind a prominent `UI PREVIEW · SAMPLE DATA · READ ONLY` banner. The Next.js `proxy.ts` intercepts preview API requests: writes and mutating GET routes (`/api/cron/*`, draft `?ensure=1`) return HTTP 403. With no `DATABASE_URL`, GET endpoints serve read-only fixtures and missing endpoints return HTTP 503 rather than querying Prisma. Player portraits continue to use existing NHL assets and headshot redirects.
+
+This preview is **not** a persistent league. There is no database creation, import, migration or production provisioning in Phase 0. Do not assume `johnscottdynasty.live` is connected to a real database until Vercel Production `DATABASE_URL` and server-side authenticated data are verified.
+
+**Preview verification:** `npm run test:preview` starts a no-database development server with `VERCEL_ENV=preview` and checks that the banner, fixture GETs, player portraits, and HTTP 403 barriers work. The screenshot suite remains separate and uses local fixtures.
+
 ## Deployment facts and boundaries
 
 - The owner confirmed that **https://johnscottdynasty.live** is the working production domain.
 - Existing GitHub PR commits have a successful **Vercel** deployment status, including the roadmap PR #9. This confirms GitHub–Vercel deployment integration, **not** that Preview and Production have separate database credentials.
-- Preview `DATABASE_URL` / Neon branch isolation is **not verified** by the repository. The Vercel project environment variables cannot be inspected via this GitHub source connection.
+- Preview `DATABASE_URL` / Neon branch isolation is **not verified**. The project currently reports no configured database connection; the new read-only preview mode is active when no `DATABASE_URL` exists.
 - Until verified, **treat hosted Vercel preview URLs as potentially attached to the live league**. Open them only to inspect read-only pages; do not submit trades, waiver claims, picks, roster moves, or commissioner changes.
 - No external preview domain is hard-coded or invented. Use the actual Vercel link attached to the PR deployment status.
 - Existing draft PR #8 contains local Prisma seed repairs but has not been merged. The normal local database seed path on `main` should not be considered fixed.
