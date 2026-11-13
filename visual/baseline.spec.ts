@@ -29,6 +29,8 @@ async function installReadOnlyFixtures(page: Page) {
       "/api/draft": { scheduled: null, draft: null },
       "/api/waivers": { faabBalance: 100, committedFaab: 0, claims: [] },
       "/api/news": { articles: [] },
+      "/api/admin/league-settings": { name: "John Scott Dynasty", rosterSize: 27 },
+      "/api/admin/roles": { managers: [] },
     }
     if (!(path in response)) {
       await route.fulfill({ status: 404, contentType: "application/json", body: "{}" })
