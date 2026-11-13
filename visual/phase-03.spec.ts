@@ -146,25 +146,6 @@ test("Phase 3: reduced motion retains keyboard tab switching", async ({ page }) 
 test("Phase 3: horizontal finger-style swipe still changes main destinations", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto("/")
-  await page.evaluate(() => {
-    const probe = window as Window & { __pagerProbe?: Array<Record<string, unknown>> }
-    probe.__pagerProbe = []
-    for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture"]) {
-      window.addEventListener(type, (ev) => {
-        const event = ev as PointerEvent
-        if (type === "pointermove" && (probe.__pagerProbe?.filter((x) => x.type === type).length ?? 0) > 16) return
-        const node = event.target instanceof Element ? event.target : null
-        probe.__pagerProbe?.push({
-          type,
-          x: event.clientX,
-          y: event.clientY,
-          pointerId: event.pointerId,
-          zone: node?.closest("[data-swipe]")?.getAttribute("data-swipe"),
-          tag: node?.tagName,
-        })
-      }, true)
-    }
-  })
   const nav = page.getByRole("navigation", { name: "Main navigation" })
   const tab = (name: string) => nav.getByRole("button", { name, exact: true })
   await expect(tab("TEAM")).toHaveAttribute("aria-pressed", "true")
@@ -191,11 +172,5 @@ test("Phase 3: horizontal finger-style swipe still changes main destinations", a
   await page.mouse.down()
   await page.mouse.move(nextX - box.width * 0.45, y, { steps: 8 })
   await page.mouse.up()
-  const probe = await page.evaluate(() => {
-    const p = window as Window & { __pagerProbe?: Array<Record<string, unknown>> }
-    const node = document.querySelector('[data-swipe="tab"] > div')
-    return { events: p.__pagerProbe, transform: (node as HTMLElement | null)?.style.transform, active: [...document.querySelectorAll('nav[aria-label="Main navigation"] button')].map((e) => [e.textContent?.trim(), e.getAttribute("aria-pressed")]) }
-  })
-  console.log("PAGER_PROBE " + JSON.stringify(probe))
   await expect(tab("PLAYERS")).toHaveAttribute("aria-pressed", "true")
 })
