@@ -5,10 +5,28 @@ import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type Lo
 import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
+import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
   gameWinningGoals: 0, saves: 0, goalsAgainst: 0, shutouts: 0, decision: null, ...overrides,
+})
+
+test.describe("manager PIN security", () => {
+  test("new credentials store salted hashes rather than plaintext", () => {
+    const hashA = hashManagerPin("1234")
+    const hashB = hashManagerPin("1234")
+    expect(hashA).not.toBe("1234")
+    expect(hashA).not.toBe(hashB)
+    expect(isHashedManagerPin(hashA)).toBe(true)
+    expect(verifyManagerPin(hashA, "1234")).toBe(true)
+    expect(verifyManagerPin(hashA, "9999")).toBe(false)
+  })
+  test("legacy plaintext PINs remain verifiable for one-time upgrade", () => {
+    expect(verifyManagerPin("1234", "1234")).toBe(true)
+    expect(verifyManagerPin("1234", "4321")).toBe(false)
+    expect(isHashedManagerPin("1234")).toBe(false)
+  })
 })
 
 test.describe("season calendar (Monday to Sunday NHL weeks)", () => {

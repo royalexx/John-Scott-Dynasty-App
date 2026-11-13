@@ -50,7 +50,7 @@ npm run dev
 
 The seed refuses to run in production, without the explicit environment flag, or when it detects any existing manager, league, team, roster, matchup or draft state. It is **initial setup only**, not a synchronization or reset operation. Use a separate, non-destructive player sync for future player data refreshes.
 
-Open [http://localhost:3000](http://localhost:3000). The development fixture gives managers the insecure PIN `1234` for initial testing only; replace these credentials before granting access to any shared league. The commissioner account is **Montreal Monarchs** (`@commissioner`).
+Open [http://localhost:3000](http://localhost:3000). The disposable development fixture uses PIN `1234` for testing only, stored as a salted scrypt hash. Change these PINs before sharing the league. Existing plaintext manager PINs are upgraded on successful login; newly created managers do not get a default PIN. The commissioner account is **Montreal Monarchs** (`@commissioner`).
 
 `npm install` runs `prisma generate`. Builds use the checked-in NHL registry without rewriting it. Refresh player data explicitly with `npm run sync-players`; review and commit changes separately.
 
