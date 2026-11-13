@@ -851,24 +851,26 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 } else setTeamDrawer(action)
               }} />
               <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
-              {/* Starters Subheader */}
-              <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
-                <span className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">Starters ({startersCount})</span>
-                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
-                  <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="rounded p-1 hover:bg-[#172338]">
+              {/* Starters section */}
+              <section id="team-starters" data-testid="team-starters" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3">
+                <h2 className="text-base font-bold text-foreground">Starters <span className="text-xs font-semibold text-text-muted">({startersCount})</span></h2>
+                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 rounded-xl border border-border bg-background text-xs font-bold text-brand">
+                  <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover">
                     <ChevronLeft className="size-3.5" />
                   </button>
                   <span>Week {week}</span>
-                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-xs font-black uppercase text-[#5e7090]">Locked</span>}
-                  <button type="button" onClick={() => shiftWeek(1)} aria-label="Next team week" className="rounded p-1 hover:bg-[#172338]">
+                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-xs font-bold uppercase text-warning">Locked</span>}
+                  <button type="button" onClick={() => shiftWeek(1)} aria-label="Next team week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover">
                     <ChevronRight className="size-3.5" />
                   </button>
                 </SwipeSurface>
               </div>
+              <div data-testid="team-score-labels" className="flex items-center justify-between gap-2 border-b border-border bg-background px-4 py-2 text-xs font-semibold text-text-muted"><span>Player / NHL schedule</span><span>Actual · Proj. FPTS</span></div>
               {(weekView?.locked ?? weekView?.frozen) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
+                <p className="border-b border-border bg-surface-raised px-4 py-2 text-xs leading-relaxed text-text-secondary">This week is locked. Switch to a later week to slot players from a trade.</p>
               ) : week > (initialData.lineupLock?.week ?? week) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
+                <p className="border-b border-border bg-surface-raised px-4 py-2 text-xs leading-relaxed text-text-secondary">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
               ) : null}
 
               {/* Starters Rows */}
@@ -881,58 +883,49 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   onSelect={selectCanonicalPlayer}
                 />
               ))}
+              </section>
 
               {/* Bench */}
-              <div className="border-b border-[#101726] bg-[#070a12] px-3.5 pt-4 pb-2 text-xs font-black text-white uppercase tracking-tight">
-                Bench ({bench.length})
-              </div>
-              {bench.map((player) => renderRosterRow(player))}
+              <section data-testid="team-bench" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+                <h2 className="border-b border-border bg-background px-4 py-3 text-base font-bold text-foreground">Bench <span className="text-xs font-semibold text-text-muted">({bench.length})</span></h2>
+                {bench.length ? bench.map((player) => renderRosterRow(player)) : <p className="px-4 py-4 text-sm text-text-muted">No players on the bench</p>}
+              </section>
 
               {/* Injured Reserve */}
-              <div className="border-b border-[#101726] bg-[#070a12] px-3.5 pt-4 pb-2 text-xs font-black text-white uppercase tracking-tight">
-                Injured Reserve
-              </div>
+              <section data-testid="team-ir" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+                <h2 className="border-b border-border bg-background px-4 py-3 text-base font-bold text-foreground">Injured Reserve <span className="text-xs font-semibold text-text-muted">({ir.length})</span></h2>
               {ir.length > 0 ? (
                 ir.map((player) => renderRosterRow(player))
               ) : (
-                <div className="flex items-center gap-2.5 border-b border-[#0f1726] px-3.5 py-2">
+                <div className="flex min-h-14 items-center gap-3 px-4 py-2">
                   <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.IR)}>IR</span>
-                  <span className="text-xs font-bold text-[#45546d]">Empty</span>
+                  <span className="text-sm font-medium text-text-muted">No players on IR</span>
                 </div>
               )}
+              </section>
 
               {/* Taxi Squad */}
-              <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-4 pb-2 text-xs font-black text-white uppercase tracking-tight">
-                <span>Taxi Squad</span>
-                <span className="text-xs text-amber-400 font-bold">&lt; {initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES} NHL GP</span>
+              <section data-testid="team-taxi" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+              <div className="flex flex-wrap items-center justify-between gap-1 border-b border-border bg-background px-4 py-3">
+                <h2 className="text-base font-bold text-foreground">Taxi Squad <span className="text-xs font-semibold text-text-muted">({taxi.length})</span></h2>
+                <span className="text-xs font-semibold text-warning">&lt; {initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES} NHL GP</span>
               </div>
-              {taxi.map((player) => (
-                <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", ((player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
-                  <div className="flex items-center gap-2.5">
-                    <button type="button" onClick={() => setEditingPlayer(player)} className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.TAXI)}>
-                      TX
-                    </button>
-                    <button type="button" onClick={() => selectCanonicalPlayer(player)} className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 text-left">
-                      <PlayerPortrait player={player} name={player.name} className="size-8" />
-                      <div>
-                      <p className="text-xs font-bold text-white">{player.name}</p>
-                      {playerNicknames[player.id] && <p className="text-xs italic text-[#5e7090]">{playerNicknames[player.id]}</p>}
-                      <p className="text-xs text-[#5e7090]">{player.team} • {player.nhlGamesPlayed ?? "—"} NHL GP</p>
-                      </div>
-                    </button>
-                  </div>
-                  <span className="text-xs font-black text-white tabular-nums">0.00</span>
+              {taxi.length ? taxi.map((player) => (
+                <div key={player.id} className={(player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES) ? "bg-danger-surface/40" : ""}>
+                  <PlayerItem player={player} fallbackSlot="TAXI" onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
                 </div>
-              ))}
+              )) : <p className="px-4 py-4 text-sm text-text-muted">No players on the taxi squad</p>}
+              </section>
 
               {/* Future Draft Picks */}
-              <div className="px-3.5 pt-5 pb-2 text-xs font-black text-white uppercase tracking-tight">Draft Picks</div>
-              <div className="flex flex-col px-3.5">
-                {draftPicks.map((pick, i) => (
-                  <div key={i} className="py-2 border-b border-[#0f1726] text-xs font-bold text-[#7d8fa9]">{formatPickLabel(pick)} ({initialData.managerHandle ?? teamName} Std)</div>
-                ))}
-              </div>
-
+              <section data-testid="team-draft-picks" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
+                <h2 className="border-b border-border bg-background px-4 py-3 text-base font-bold text-foreground">Draft Picks <span className="text-xs font-semibold text-text-muted">({draftPicks.length})</span></h2>
+                {draftPicks.length ? draftPicks.map((pick, i) => (
+                  <div key={i} className="border-b border-border px-4 py-3 text-sm font-medium text-text-secondary last:border-0">
+                    {formatPickLabel(pick)} <span className="text-xs text-text-muted">({initialData.managerHandle ?? teamName} Std)</span>
+                  </div>
+                )) : <p className="px-4 py-4 text-sm text-text-muted">No future picks currently listed</p>}
+              </section>
               {/* Player content ends naturally; no third-party branding. */}
             </div>
           </div>
