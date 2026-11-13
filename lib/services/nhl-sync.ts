@@ -309,10 +309,9 @@ export async function syncScheduleForWeeks(season: number, weeks: number[]) {
 }
 
 /**
- * Scores a fantasy week from the NHL games played on the week's real calendar dates.
- * Past weeks, and the current week once it has started under weekly lock, are copied into
- * an immutable WeekLineup snapshot before scoring so later trades and lineup moves cannot rewrite them.
- * Marks the matchup final once the week is over and every NHL game in it has finished.
+ * Scores a fantasy week using an authoritative lineup snapshot whenever locked.
+ * Never backfill an old week with today's roster: if a historical snapshot is
+ * absent or missing a matchup team, preserve its existing scores and final flag.
  */
 export async function updateWeeklyMatchupScores(leagueId: string, week: number) {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { currentSeason: true, scoringSettings: true, lineupLockMode: true } })
@@ -325,16 +324,23 @@ export async function updateWeeklyMatchupScores(leagueId: string, week: number) 
 
   const { dates, endDate } = getFantasyWeekDates(week, league.currentSeason)
   const currentWeek = getCurrentFantasyWeek(league.currentSeason)
-  if (week < currentWeek) {
-    await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
-  } else if (week === currentWeek) {
+  let requireSnapshot = week < currentWeek
+  if (week === currentWeek) {
     const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
-    if (lock.mode === "WEEKLY" && lock.weekStarted) await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
+    if (lock.mode === "WEEKLY" && lock.weekStarted) {
+      await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
+      requireSnapshot = true
+    }
   }
+  const requiredTeamIds = [...new Set(matchups.flatMap((matchup) => [matchup.homeTeamId, matchup.awayTeamId]))]
   const [games, slots] = await Promise.all([
     prisma.nhlGame.findMany({ where: { gameDate: { in: dates } }, select: { id: true, gameState: true } }),
-    scoringSlotsForWeek(leagueId, league.currentSeason, week),
+    scoringSlotsForWeek(leagueId, league.currentSeason, week, requiredTeamIds, requireSnapshot),
   ])
+  if (!slots) {
+    console.warn("Matchup scoring skipped: frozen lineup missing or incomplete", { leagueId, season: league.currentSeason, week })
+    return 0
+  }
   const stats = await prisma.playerGameStat.findMany({
     where: { gameId: { in: games.map((game) => game.id) }, playerId: { in: slots.filter((slot) => isStarterSlot(slot.slot)).map((slot) => slot.playerId) } },
   })

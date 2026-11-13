@@ -7,6 +7,7 @@ import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
+import { missingSnapshotTeamIds } from "../lib/services/week-lineups"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
@@ -286,5 +287,18 @@ test.describe("lineup lock modes", () => {
     expect(normalizeLockMode("DAILY")).toBe("DAILY")
     expect(isStarterSlot("F")).toBe(true)
     expect(isStarterSlot("BN")).toBe(false)
+  })
+})
+
+test.describe("historical scoring snapshot coverage", () => {
+  test("requires every matchup team, not merely one existing lineup row", () => {
+    const required = ["home", "away"]
+    expect(missingSnapshotTeamIds(required, [])).toEqual(required)
+    expect(missingSnapshotTeamIds(required, [{ teamId: "home" }])).toEqual(["away"])
+    expect(missingSnapshotTeamIds(required, [{ teamId: "home" }, { teamId: "away" }])).toEqual([])
+  })
+
+  test("deduplicates repeated matchups and does not infer coverage from a different team", () => {
+    expect(missingSnapshotTeamIds(["home", "away", "home"], [{ teamId: "other" }, { teamId: "home" }])).toEqual(["away"])
   })
 })
