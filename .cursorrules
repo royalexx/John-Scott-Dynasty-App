@@ -21,3 +21,12 @@
 ## Testing & Verification
 - Test Suite: Playwright E2E in `e2e/`. Tests run against authenticated manager storage state in `e2e/.auth/manager.json`.
 - Before suggesting completed tasks, verify code compiles with `npx tsc --noEmit`.
+
+## Design and Interaction Contract
+
+- **Before authoring UI:** read `DESIGN.md` and reuse token-backed components. The canonical palette/spacing/type/focus settings live in `app/globals.css`; avoid arbitrary colors and one-off paddings.
+- **Portraits are non-negotiable:** always preserve real NHL player headshots and fallbacks via `PlayerPortrait` / `getPlayerPhoto()` in roster, player market, detail, draft, waiver, and trade views. Never swap them for generated avatars or position-only icons.
+- Use `Button`, `Tabs`, `Badge`, `Sheet`, `Dialog` and `components/ui/hockey.tsx` primitives. Maintain 44px hit targets for main interactions, keyboard focus, correct status labels and reduced-motion accessibility.
+- Keep the 430px cap. Test at 320, 375, 390 and 430px before approving layout changes; avoid horizontal overflow and covered content.
+- Review semantic data labels (actual vs projected) and do not change Prisma schema, scoring, or transaction semantics during presentation work.
+- Preview-only `/ui-design-system` is for safe visual approval; GitHub implementation PRs must stay unmerged until explicit owner sign-off.
