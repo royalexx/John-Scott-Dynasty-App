@@ -56,7 +56,7 @@ export function getYetToPlayText(teamRoster: Player[]): string {
   return `yet to play: ${parts.length ? parts.join(", ") : "none"}`
 }
 
-type WeekLineup = { source?: "snapshot" | "live"; currentWeek?: number; frozen?: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
+type WeekLineup = { source?: "snapshot" | "live" | "unavailable"; currentWeek?: number; frozen?: boolean; assignments: Array<{ teamName: string; nhlId: number; slot: string }> } | null
 
 function buildMatchupCard(
   summary: MatchupSummary,
