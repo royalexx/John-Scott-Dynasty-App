@@ -5,6 +5,7 @@ import { SlidersHorizontal, X } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import type { MarketPlayer } from "@/lib/hockey-data"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type DraftSlotView = {
   pickNumber: number
@@ -143,7 +144,7 @@ export function DraftCard({ players, isCommissioner }: { players: MarketPlayer[]
           )}
           <p className="text-xs text-[#8ba0c7]">{draftType === "LINEAR" ? "Linear" : "Snake"} · {rounds} rounds</p>
         </div>
-        <button type="button" onClick={() => { setOpen(true); void load(true) }} className={cn("shrink-0 rounded-full px-4 py-2 text-sm font-bold", live ? "bg-[#19ffff] text-[#080c14]" : "border border-[#19ffff] text-[#19ffff]")}>Draft room</button>
+        <button type="button" onClick={() => { setOpen(true); void load(true) }} className={cn("min-h-11 shrink-0 rounded-full px-4 py-2 text-sm font-bold", live ? "bg-[#19ffff] text-[#080c14]" : "border border-[#19ffff] text-[#19ffff]")}>Draft room</button>
       </div>
       <DraftRoom open={open} onOpenChange={setOpen} draft={draft} players={players} isCommissioner={isCommissioner} remaining={remaining} clockError={clockError} onChange={(next) => { setClockError(null); setPayload((current) => ({ scheduled: current?.scheduled ?? null, draft: next })); setReceivedAt(Date.now()) }} />
     </>
@@ -191,7 +192,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" spring="snappy" className="relative mx-auto flex h-dvh max-h-dvh max-w-[430px] flex-col gap-0 rounded-none border-[#1a263d] bg-[#070a12] p-0 text-white">
         <header className="flex shrink-0 items-center justify-between border-b border-[#172338] px-2 py-2">
-          <button type="button" onClick={() => onOpenChange(false)} className="rounded-full px-3 py-2 text-sm font-bold text-[#8ba0c7]">Exit</button>
+          <button type="button" onClick={() => onOpenChange(false)} className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl px-3 text-sm font-bold text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">Exit</button>
           <div className="min-w-0 text-center">
             <p className="text-sm font-black">{draft?.status === "COMPLETE" ? "Draft complete" : current ? `Round ${current.round} · Pick ${current.pickNumber}` : "Draft"}</p>
             {draft?.status === "LIVE" && <p className="text-xs font-bold tabular-nums text-[#19ffff]">{draft.paused ? "Paused" : clockLabel(remaining)}</p>}
@@ -199,7 +200,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
             {draft?.status === "SCHEDULED" && <p className="text-xs text-[#8ba0c7]">Not started</p>}
           </div>
           {isCommissioner ? (
-            <button type="button" aria-label="Draft settings" onClick={() => setSettingsOpen(true)} className="rounded-full p-2 text-[#8ba0c7]"><SlidersHorizontal className="size-5" /></button>
+            <button type="button" aria-label="Draft settings" onClick={() => setSettingsOpen(true)} className="ui-touch-target flex items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><SlidersHorizontal className="size-5" /></button>
           ) : <span className="w-11" />}
         </header>
 
@@ -216,7 +217,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
 
         <div className="flex shrink-0 border-b border-[#172338]">
           {(["board", "players", "queue"] as const).map((item) => (
-            <button key={item} type="button" onClick={() => setTab(item)} className={cn("flex-1 py-2.5 text-sm font-bold capitalize", tab === item ? "text-white" : "text-[#5e7090]")}>{item}</button>
+            <button key={item} type="button" aria-pressed={tab === item} onClick={() => setTab(item)} className={cn("min-h-11 flex-1 text-sm font-bold capitalize focus-visible:outline-2 focus-visible:outline-ring", tab === item ? "border-b-2 border-brand text-foreground" : "text-text-secondary hover:bg-surface-hover")}>{item}</button>
           ))}
         </div>
 
@@ -226,17 +227,17 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
           {draft && tab === "players" && (
             <div>
               <div className="sticky top-0 space-y-2 bg-[#070a12] px-3 py-3">
-                <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players" className="w-full rounded-xl border border-[#263858] bg-[#101829] px-3 py-2.5 text-sm outline-none" />
-                <div className="flex gap-2">{["ALL", "C", "W", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setPosition(value)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", position === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
+                <input aria-label="Search draft players" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search players" className="min-h-11 w-full rounded-xl border border-border-strong bg-surface px-3 text-sm outline-none focus-visible:outline-2 focus-visible:outline-ring" />
+                <div className="flex gap-2">{["ALL", "C", "W", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setPosition(value)} aria-pressed={position === value} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-ring", position === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
               </div>
               <ul>
                 {available.map((player) => (
                   <li key={player.nhlId} className={cn("flex items-center border-b border-[#172338] px-3 py-1", armed === player.nhlId && "bg-[#10283a]")}>
                     <button type="button" onClick={() => setArmed(player.nhlId ?? null)} aria-pressed={armed === player.nhlId} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left focus-visible:rounded-md focus-visible:outline-2 focus-visible:outline-[#19ffff]">
-                      <span className={cn("flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-black text-white", positionBar[player.position])}>{player.position}</span>
+                      <PlayerPortrait player={player} name={player.name} className="size-9" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-bold">{player.name}</span>
-                        <span className="block text-xs text-[#8ba0c7]">{player.team}</span>
+                        <span className="block text-xs text-text-secondary">{player.position} · {player.team}</span>
                       </span>
                     </button>
                     <button type="button" disabled={busy || player.nhlId == null} aria-label={`${player.nhlId != null && draft.queue.includes(player.nhlId) ? "Remove" : "Queue"} ${player.name}`} aria-pressed={player.nhlId != null && draft.queue.includes(player.nhlId)} onClick={() => { if (player.nhlId == null) return; void act({ action: draft.queue.includes(player.nhlId) ? "queue-remove" : "queue-add", playerId: player.nhlId }) }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-1 text-xs font-bold text-[#19ffff] focus-visible:outline-2 focus-visible:outline-[#19ffff] disabled:opacity-40">
@@ -252,9 +253,9 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
               {queued.length === 0 && <li className="p-6 text-center text-sm text-[#8ba0c7]">Your queue is empty.</li>}
               {queued.map((player) => (
                 <li key={player.nhlId} className="flex items-center gap-3 border-b border-[#172338] px-3 py-3">
-                  <span className={cn("flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-black text-white", positionBar[player.position])}>{player.position}</span>
+                  <PlayerPortrait player={player} name={player.name} className="size-9" />
                   <span className="min-w-0 flex-1 truncate text-sm font-bold">{player.name}</span>
-                  <button type="button" onClick={() => void act({ action: "queue-remove", playerId: player.nhlId })} className="text-xs font-bold text-[#8ba0c7]">Remove</button>
+                  <button type="button" onClick={() => void act({ action: "queue-remove", playerId: player.nhlId })} aria-label={`Remove ${player.name} from queue`} className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl px-2 text-xs font-bold text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">Remove</button>
                 </li>
               ))}
             </ul>
@@ -274,7 +275,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
           <div className="absolute inset-x-0 bottom-0 z-10 rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-base font-black">Draft settings</h2>
-              <button type="button" aria-label="Close draft settings" onClick={() => setSettingsOpen(false)} className="rounded-full p-2 text-[#8ba0c7]"><X className="size-5" /></button>
+              <button type="button" aria-label="Close draft settings" onClick={() => setSettingsOpen(false)} className="ui-touch-target flex items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><X className="size-5" /></button>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => void act({ action: "start" })} className="h-12 rounded-xl bg-[#19ffff] text-sm font-bold text-[#080c14]">Start now</button>
@@ -283,7 +284,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
             <p className="mt-4 text-xs font-bold text-[#8ba0c7]">Timer</p>
             <div className="mt-2 flex gap-2">
               {[60, 90, 120, 180].map((seconds) => (
-                <button key={seconds} type="button" onClick={() => void act({ action: "timer", timerSeconds: seconds })} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", draft.timerSeconds === seconds ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{seconds}s</button>
+                <button key={seconds} type="button" onClick={() => void act({ action: "timer", timerSeconds: seconds })} aria-pressed={draft.timerSeconds === seconds} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-ring", draft.timerSeconds === seconds ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{seconds}s</button>
               ))}
             </div>
           </div>
