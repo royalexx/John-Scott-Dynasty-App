@@ -43,3 +43,67 @@ test("Player market labels the fantasy-point metric and retains photographs", as
   const portrait = page.locator("main button img").first()
   await expect(portrait).toHaveAttribute("src", /\/api\/headshot|assets\.nhle\.com/)
 })
+
+
+test("draft queue can be operated independently from player selection using the keyboard", async ({ page }) => {
+  const { marketPlayers } = await import("../lib/hockey-data")
+  const players = marketPlayers.slice(0, 3).map((player, index) => ({ ...player, nhlId: 8470001 + index }))
+  let draft = {
+    id: "fixture-draft",
+    type: "SNAKE",
+    status: "LIVE",
+    rounds: 1,
+    timerSeconds: 60,
+    startAt: "2026-11-13T18:00:00.000Z",
+    paused: true,
+    remainingSeconds: 60,
+    yourTurn: false,
+    onClockTeamId: "fixture-other-team",
+    teams: [{ id: "fixture-other-team", name: "Other Team", slot: 1 }],
+    queue: [] as number[],
+    slots: [{
+      pickNumber: 1,
+      round: 1,
+      slot: 1,
+      teamId: "fixture-other-team",
+      teamName: "Other Team",
+      playerId: null,
+      playerName: null,
+      position: null,
+      nhlTeam: null,
+    }],
+  }
+  const queueActions: string[] = []
+  await page.route("**/api/players**", async (route) => {
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(players) })
+  })
+  await page.route("**/api/draft**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ scheduled: null, draft }) })
+      return
+    }
+    const action = route.request().postDataJSON() as { action: string; playerId: number }
+    queueActions.push(action.action)
+    if (action.action === "queue-add") draft = { ...draft, queue: [...draft.queue, action.playerId] }
+    if (action.action === "queue-remove") draft = { ...draft, queue: draft.queue.filter((id) => id !== action.playerId) }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify({ draft }) })
+  })
+  await page.goto("/")
+  await page.getByRole("button", { name: "LEAGUE", exact: true }).click()
+  await page.getByRole("button", { name: "Draft room", exact: true }).click()
+  await page.getByRole("button", { name: "Players", exact: true }).last().click()
+  const name = players[0].name
+  const select = page.locator("li").filter({ hasText: name }).getByRole("button").first()
+  await expect(select).toHaveAttribute("aria-pressed", "false")
+  const add = page.getByRole("button", { name: "Queue " + name, exact: true })
+  await add.focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("button", { name: "Remove " + name, exact: true })).toBeVisible()
+  await expect(select).toHaveAttribute("aria-pressed", "false")
+  expect(queueActions).toEqual(["queue-add"])
+  const remove = page.getByRole("button", { name: "Remove " + name, exact: true })
+  await remove.focus()
+  await page.keyboard.press("Enter")
+  await expect(page.getByRole("button", { name: "Queue " + name, exact: true })).toBeVisible()
+  expect(queueActions).toEqual(["queue-add", "queue-remove"])
+})
