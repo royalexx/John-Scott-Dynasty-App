@@ -320,10 +320,15 @@ export function SwipePager({
         }
         if (Math.abs(dx) <= Math.abs(dy)) return
         origin.locked = "horizontal"
-        try {
-          containerRef.current?.setPointerCapture(origin.pointerId)
-        } catch {
-          // Window listeners still receive the gesture if capture is unavailable.
+        // Window-level listeners already track mouse drags even when the cursor
+        // leaves the pager. Chrome can cancel a later mouse drag after dynamic
+        // setPointerCapture; reserve explicit capture for touch and pen only.
+        if (move.pointerType !== "mouse") {
+          try {
+            containerRef.current?.setPointerCapture(origin.pointerId)
+          } catch {
+            // Window listeners still track the gesture if capture is unavailable.
+          }
         }
       }
       dragDistance.current = dx
