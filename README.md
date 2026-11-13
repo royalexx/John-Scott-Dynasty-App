@@ -49,7 +49,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). Every seeded manager uses PIN `1234`. The commissioner account is **Montreal Monarchs** (`@commissioner`).
 
-`npm install` runs `prisma generate`. `npm run build` also refreshes `public/data/nhl-players.json` from the NHL search API before `next build`, so a build needs network access.
+`npm install` runs `prisma generate`. Builds use the checked-in NHL registry and do not rewrite it. Run `npm run sync-players` explicitly when you intend to refresh player data; inspect and commit the resulting registry change separately.
 
 If the league row is missing, the page falls back to the static roster in `lib/hockey-data.ts` instead of the database.
 
@@ -58,7 +58,7 @@ If the league row is missing, the page falls back to the static roster in `lib/h
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Next.js dev server |
-| `npm run build` / `npm start` | Production build and server |
+| `npm run build` / `npm start` | Reproducible production build and server; no automatic NHL registry rewrite |
 | `npm run sync-players` | Rewrite the local NHL player registry |
 | `npm run prisma:seed` | Upsert players, the league, 12 teams, the 24-week schedule, rosters, and 2027–2029 draft picks |
 | `npm run test:e2e` | Playwright against `http://localhost:3000` |
