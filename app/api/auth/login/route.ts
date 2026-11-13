@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     return { valid: true as const, value: { user, team, credentialVersion } }
   })
   if (result.kind === "limited") return tooManyAttempts(result.retryAfterSeconds)
-  if (result.kind === "invalid") return NextResponse.json({ error: "Incorrect PIN." }, { status: 401 })
+  if (result.kind !== "allowed" || !result.value) return NextResponse.json({ error: "Incorrect PIN." }, { status: 401 })
 
   const { user, team, credentialVersion } = result.value
   if (!team) return NextResponse.json({ error: "No team is assigned to this manager." }, { status: 404 })
@@ -101,7 +101,7 @@ export async function PATCH(request: Request) {
     return { valid: true as const, value: { updatedAt: updated.updatedAt.toISOString() } }
   })
   if (result.kind === "limited") return tooManyAttempts(result.retryAfterSeconds)
-  if (result.kind === "invalid") return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 401 })
+  if (result.kind !== "allowed" || !result.value) return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 401 })
 
   // The updatedAt credential version invalidates every previously issued cookie.
   // Reissue only this device's session so a successful PIN change does not log it out.
