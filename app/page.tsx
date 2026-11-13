@@ -26,6 +26,12 @@ export default async function Page() {
     return <DashboardClient initialData={initialDashboardData} />
   }
 
+  // A hosted PR preview without database credentials is a visual demo only.
+  // Unlike production's historical catch/fallback, it is explicitly labeled.
+  if (process.env.VERCEL_ENV === "preview" && !process.env.DATABASE_URL) {
+    return <DashboardClient initialData={{ ...initialDashboardData, isPreviewFixture: true }} />
+  }
+
   try {
     const league = await getLeague("00000000-0000-0000-0000-000000000001")
     if (!league) return <DashboardClient initialData={initialDashboardData} />
