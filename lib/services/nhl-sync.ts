@@ -7,6 +7,7 @@ import { getCurrentFantasyWeek, getEasternDate, getFantasyWeekDates } from "@/li
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isStarterSlot } from "@/lib/lineup-lock"
 import { freezeWeekLineup, scoringSlotsForWeek } from "@/lib/services/week-lineups"
+import { activateDueLineupPlans } from "@/lib/services/future-lineup-plans"
 
 const NHL_HEADERS = { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" }
 const ACTIVE_STATES = ["LIVE", "CRIT", "FINAL", "OFF"]
@@ -326,6 +327,7 @@ export async function updateWeeklyMatchupScores(leagueId: string, week: number) 
   const currentWeek = getCurrentFantasyWeek(league.currentSeason)
   let requireSnapshot = week < currentWeek
   if (week === currentWeek) {
+    await activateDueLineupPlans(leagueId, league.currentSeason)
     const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
     if (lock.mode === "WEEKLY" && lock.weekStarted) {
       await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
@@ -403,6 +405,7 @@ export async function enforceRosterLocks() {
   const leagues = await prisma.league.findMany({ select: { id: true, currentSeason: true, lineupLockMode: true } })
   let locked = 0
   for (const league of leagues) {
+    await activateDueLineupPlans(league.id, league.currentSeason)
     const summary = await getLockSummary(league.currentSeason, league.lineupLockMode)
     const inLeague = { team: { leagueId: league.id } }
     if (summary.mode === "WEEKLY") {
