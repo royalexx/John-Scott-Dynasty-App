@@ -1,4 +1,8 @@
 import { expect, test } from "@playwright/test"
+import { PrismaClient } from "@prisma/client"
+
+const prisma = new PrismaClient()
+test.afterAll(async () => { await prisma.$disconnect() })
 
 test("schedule API returns the expected shape", async ({ request }) => {
   const response = await request.get("/api/schedule")
@@ -62,5 +66,49 @@ test("failed manager PIN attempts are limited across requests", async ({ playwri
     expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0)
   } finally {
     await anonymous.dispose()
+  }
+})
+
+test("FAAB trades cannot spend budget committed to pending waivers", async ({ request }) => {
+  const source = await prisma.team.findFirstOrThrow({ where: { faabBalance: { gt: 0 } }, orderBy: { name: "asc" } })
+  const destination = await prisma.team.findFirstOrThrow({ where: { leagueId: source.leagueId, id: { not: source.id } } })
+  const available = await prisma.player.findFirstOrThrow({ where: { rosterSlots: { none: { leagueId: source.leagueId } } } })
+  const originalBalances = await prisma.team.findMany({
+    where: { id: { in: [source.id, destination.id] } },
+    orderBy: { id: "asc" },
+    select: { id: true, faabBalance: true },
+  })
+  const claim = await prisma.waiverClaim.create({
+    data: {
+      teamId: source.id,
+      playerToAddId: available.id,
+      bidAmount: source.faabBalance,
+      processDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  })
+  let tradeId: string | null = null
+  try {
+    const trade = await prisma.tradeOffer.create({
+      data: {
+        leagueId: source.leagueId,
+        proposingTeamId: source.id,
+        receivingTeamId: destination.id,
+        assets: { create: { fromTeamId: source.id, toTeamId: destination.id, assetType: "FAAB", faabAmount: 1 } },
+      },
+    })
+    tradeId = trade.id
+    const response = await request.patch("/api/trades", { data: { tradeOfferId: trade.id, action: "ACCEPT" } })
+    expect(response.status()).toBe(400)
+    expect((await response.json()).error).toMatch(/reserved for pending waiver claims/i)
+    expect((await prisma.tradeOffer.findUniqueOrThrow({ where: { id: trade.id } })).status).toBe("PENDING")
+    expect(await prisma.team.findMany({
+      where: { id: { in: [source.id, destination.id] } },
+      orderBy: { id: "asc" },
+      select: { id: true, faabBalance: true },
+    })).toEqual(originalBalances)
+    expect((await prisma.waiverClaim.findUniqueOrThrow({ where: { id: claim.id } })).status).toBe("PENDING")
+  } finally {
+    if (tradeId) await prisma.tradeOffer.delete({ where: { id: tradeId } })
+    await prisma.waiverClaim.delete({ where: { id: claim.id } })
   }
 })
