@@ -104,7 +104,7 @@ test("Phase 5: legacy Phase 3 Match and Team structure is unchanged from before 
   await page.goto("/")
   await mainTab(page, "TEAM").click()
   await expect(page.getByTestId("team-identity")).toHaveCount(0)
-  await expect(page.getByText(/^Starters \(/)).toBeAttached()
+  await expect(page.getByText(/^Starters \(/).first()).toBeAttached()
   await expect(page.locator('[data-slot="player-portrait"] img').first()).toHaveAttribute("src", /\/api\/headshot|assets\.nhle\.com/)
   await mainTab(page, "MATCH").click()
   await expect(page.getByTestId("matchup-scorecard")).toHaveCount(0)
