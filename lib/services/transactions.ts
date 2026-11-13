@@ -5,7 +5,7 @@ import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
-import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, isReserveSlot, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
+import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
@@ -298,11 +298,17 @@ export async function createTradeOffer(params: {
 
 export async function executeTrade(tradeOfferId: string) {
   const result = await prisma.$transaction(async (tx) => {
+    // Do not let two concurrent acceptances process the same offer twice.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tradeOfferId}))`
     const offer = await tx.tradeOffer.findUnique({
       where: { id: tradeOfferId },
-      include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true, rosterSize: true, tradeSettings: true } } },
+      include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true, rosterSize: true, rosterPositions: true, taxiSlots: true, irSlots: true, tradeSettings: true } } },
     })
     if (!offer || offer.status !== TradeStatus.PENDING) throw new Error("Trade offer is not pending")
+    // Lock both teams in stable order, matching roster moves and waiver awards.
+    for (const teamId of [offer.proposingTeamId, offer.receivingTeamId].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${teamId}))`
+    }
     const teams = await tx.team.findMany({
       where: { id: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
       select: { id: true, name: true, leagueId: true, faabBalance: true },
@@ -339,16 +345,22 @@ export async function executeTrade(tradeOfferId: string) {
       where: { teamId: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
       select: { teamId: true, playerId: true, slot: true },
     })
-    const activeCount = new Map(teams.map((team) => [team.id, countActiveRosterSlots(rosterSlots.filter((slot) => slot.teamId === team.id))]))
-    for (const asset of offer.assets) {
-      if (asset.assetType !== AssetType.PLAYER || asset.playerId == null) continue
-      const current = rosterSlots.find((slot) => slot.teamId === asset.fromTeamId && slot.playerId === asset.playerId)
-      if (current && !isReserveSlot(current.slot)) activeCount.set(asset.fromTeamId, (activeCount.get(asset.fromTeamId) ?? 0) - 1)
-      activeCount.set(asset.toTeamId, (activeCount.get(asset.toTeamId) ?? 0) + 1)
-    }
+    // Every incoming traded player is placed on BN, regardless of their old slot.
+    // Simulate both sides of the trade before writing anything so swaps are
+    // validated simultaneously, not by temporary intermediate roster state.
+    const resulting = previewPlayerTransfers(
+      rosterSlots,
+      teams.map((team) => team.id),
+      offer.assets.filter((asset) => asset.assetType === AssetType.PLAYER && asset.playerId != null).map((asset) => ({
+        fromTeamId: asset.fromTeamId, toTeamId: asset.toTeamId, playerId: asset.playerId as number,
+      })),
+      SlotType.BN,
+    )
     for (const team of teams) {
-      if ((activeCount.get(team.id) ?? 0) > offer.league.rosterSize) {
-        throw new Error(`${team.name} would be over the ${offer.league.rosterSize}-player roster limit.`)
+      try {
+        assertRosterWithinCapacity(offer.league, resulting.get(team.id) ?? [])
+      } catch (error: unknown) {
+        throw new Error(`${team.name}: ${error instanceof Error ? error.message : "Invalid roster after trade"}`)
       }
     }
     for (const asset of offer.assets) {

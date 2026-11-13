@@ -49,3 +49,27 @@ export function displacedLandingSlot(vacatedSlot: string, position: string, benc
   if (benchHasRoom && vacatedSlot !== "BN") return "BN"
   return null
 }
+
+/** Preview all traded player transfers without persisting any roster changes. */
+export function previewPlayerTransfers<S extends string>(
+  roster: ReadonlyArray<{ teamId: string; playerId: number; slot: S }>,
+  teamIds: ReadonlyArray<string>,
+  transfers: ReadonlyArray<{ fromTeamId: string; toTeamId: string; playerId: number }>,
+  receivedSlot: S,
+): Map<string, Array<{ playerId: number; slot: S }>> {
+  const result = new Map(teamIds.map((teamId) => [
+    teamId, roster.filter((row) => row.teamId === teamId).map((row) => ({ playerId: row.playerId, slot: row.slot })),
+  ] as const))
+  for (const transfer of transfers) {
+    const source = result.get(transfer.fromTeamId)
+    const destination = result.get(transfer.toTeamId)
+    if (!source || !destination || source === destination) {
+      throw new Error("Trade involves a team outside the offer.")
+    }
+    const index = source.findIndex((row) => row.playerId === transfer.playerId)
+    if (index === -1) throw new Error("Duplicate or unavailable player in this trade.")
+    source.splice(index, 1)
+    destination.push({ playerId: transfer.playerId, slot: receivedSlot })
+  }
+  return result
+}
