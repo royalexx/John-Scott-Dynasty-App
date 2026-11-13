@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { getCurrentFantasyWeek } from "../lib/season-calendar"
+import { PrismaClient } from "@prisma/client"
 
 test.describe("audit regressions", () => {
   test("players market: F/W/G filters and goalie sort controls", async ({ page }) => {
@@ -87,6 +88,24 @@ test.describe("audit regressions", () => {
     const session = await (await request.get("/api/auth/session")).json() as { user?: { teamId: string } }
     const teamId = session.user!.teamId
     type Row = { playerId: number; slot: string }
+    // Only exercise this historical regression when both named fixture players
+    // are IR-eligible and assigned to the same team. Never issue a mutation
+    // merely to discover preconditions: that can corrupt the test fixture.
+    const database = new PrismaClient()
+    const preflight = await database.rosterSlot.findMany({
+      where: { teamId, playerId: { in: [BEDARD, SHESTERKIN] } },
+      include: { player: true },
+    })
+    await database.$disconnect()
+    const initialBedard = preflight.find((entry) => entry.playerId === BEDARD)
+    const initialShesterkin = preflight.find((entry) => entry.playerId === SHESTERKIN)
+    test.skip(
+      !initialBedard || initialBedard.slot !== "IR" ||
+      initialBedard.player.injuryStatus !== "IR" ||
+      !initialShesterkin || initialShesterkin.slot === "IR" ||
+      initialShesterkin.player.injuryStatus !== "IR",
+      "Requires two IR-eligible players in the specific historical starting slots.",
+    )
     // The current week locks starters once the first game starts. Arrange next week so the IR swap can still run.
     const openWeek = getCurrentFantasyWeek() + 1
     const move = (playerId: number, targetSlot: string) => request.post("/api/roster/move", { data: { teamId, playerId, targetSlot, week: openWeek } })
@@ -95,9 +114,8 @@ test.describe("audit regressions", () => {
       return new Map(((await response.json()) as { roster: Row[] }).roster.map((row) => [row.playerId, row.slot]))
     }
 
-    // Probe (a no-op move) so the test only runs against the expected starting layout.
-    const before = await slotsOf(await move(BEDARD, "IR"))
-    test.skip(before.get(BEDARD) !== "IR" || before.get(SHESTERKIN) === "IR", "Unexpected starting roster layout")
+    // Preflight was read-only; the eligible roster state is already established.
+    const before = new Map(preflight.map((entry) => [entry.playerId, entry.slot]))
 
     const swapped = await move(SHESTERKIN, "IR")
     expect(swapped.status()).toBe(200)
