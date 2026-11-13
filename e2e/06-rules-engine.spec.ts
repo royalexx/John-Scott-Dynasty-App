@@ -130,9 +130,12 @@ test.describe("standings from matchup results", () => {
     expect(rows.every((row) => row.wins === 0 && row.losses === 0)).toBe(true)
   })
 
-  test("a past week with recorded scores counts even if the flag was never set", () => {
-    const rows = computeStandings(["A", "B"], [m(1, "A", "B", 20, 10, false)], 3)
-    expect(rows.find((row) => row.teamId === "A")!.wins).toBe(1)
+  test("a past week with recorded scores is not counted before finalization", () => {
+    const pending = m(1, "A", "B", 20, 10, false)
+    expect(isCompletedMatchup(pending, 3)).toBe(false)
+    const rows = computeStandings(["A", "B"], [pending], 3)
+    expect(rows.find((row) => row.teamId === "A")!.wins).toBe(0)
+    expect(rows.find((row) => row.teamId === "B")!.losses).toBe(0)
   })
 
   test("matchups without scores never count", () => {

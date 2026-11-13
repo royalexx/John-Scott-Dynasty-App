@@ -17,10 +17,10 @@ export interface StandingRecord {
   streak: string | null
 }
 
-/** A matchup counts toward standings once it is final (or an earlier week that already has recorded scores). */
-export function isCompletedMatchup(matchup: StandingMatchup, currentWeek: number): boolean {
+/** Recorded scores alone are not final: late NHL stat corrections can change them. */
+export function isCompletedMatchup(matchup: StandingMatchup, _currentWeek: number): boolean {
   if (matchup.homeScore === null || matchup.awayScore === null) return false
-  return matchup.isFinal || matchup.week < currentWeek
+  return matchup.isFinal === true
 }
 
 export function computeStandings(teamIds: string[], matchups: StandingMatchup[], currentWeek: number): StandingRecord[] {
