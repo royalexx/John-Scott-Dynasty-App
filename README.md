@@ -61,7 +61,7 @@ If the league row is missing, the page falls back to the static roster in `lib/h
 | `npm run build` / `npm start` | Production build and server |
 | `npm run sync-players` | Rewrite the local NHL player registry |
 | `npm run prisma:seed` | Upsert players, the league, 12 teams, the 24-week schedule, rosters, and 2027–2029 draft picks |
-| `npm run test:e2e` | Playwright against `http://localhost:3000` |
+| `npm run test:e2e` | Playwright against a dedicated server at `http://localhost:3100` using `TEST_DATABASE_URL` |
 | `npm run test:e2e:ui` | Playwright UI mode |
 | `npx tsc --noEmit` | Typecheck |
 
@@ -158,3 +158,19 @@ npx tsc --noEmit
 ```
 
 The database must already be seeded. Specs hit the real league, including roster moves, trades, and waivers.
+
+
+## Safe end-to-end testing
+
+**The E2E suite writes to PostgreSQL. Never use the production or shared-development database.**
+
+Create a dedicated local PostgreSQL database, such as `johnscott_e2e`. Initialize it with the current Prisma schema and the *initial-development seed* described above. Then run Playwright with `TEST_DATABASE_URL` pointing to that isolated database.
+
+```bash
+export TEST_DATABASE_URL="postgresql://johnscott:johnscott@127.0.0.1:5432/johnscott_e2e"
+DATABASE_URL="$TEST_DATABASE_URL" npx prisma db push
+DATABASE_URL="$TEST_DATABASE_URL" SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
+npm run test:e2e
+```
+
+The Playwright configuration rejects missing URLs, remote database hosts, database names without `test` or `e2e`. It also starts its own Next.js instance on port 3100 and refuses to reuse a previously running server. These checks fail closed before any tests execute. The example assumes a newly created, empty database.
