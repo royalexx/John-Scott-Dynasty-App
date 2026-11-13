@@ -772,6 +772,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   return (
     <div className="flex min-h-screen justify-center bg-black font-sans antialiased">
       <main className="relative flex min-h-0 h-dvh w-full max-w-[430px] flex-col overflow-hidden border-x border-[#121927] bg-[#070a12] shadow-2xl">
+        {initialData.isPreviewFixture && (
+          <div data-testid="preview-fixture-banner" className="shrink-0 border-b border-amber-400/30 bg-amber-950/60 px-3 py-1 text-center text-[11px] font-bold tracking-wide text-amber-200">
+            UI PREVIEW · SAMPLE DATA · READ ONLY
+          </div>
+        )}
         
         {/* Sleeper League Header */}
         <header className="flex items-center justify-between bg-[#070a12] px-3.5 pt-3 pb-2">
