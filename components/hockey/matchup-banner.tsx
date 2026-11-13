@@ -1,4 +1,5 @@
 import type { MatchupSummary } from "@/lib/hockey-data"
+import { HockeyStatus } from "@/components/ui/hockey"
 import { cn } from "@/lib/utils"
 
 function initials(name: string) {
@@ -8,46 +9,38 @@ function initials(name: string) {
   return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase()
 }
 
-function gamesLeftLabel(count: number) {
-  return count === 1 ? "1 game left" : `${count} games left`
-}
-
 function TeamSide({
-  align,
-  name,
-  record,
-  score,
-  gamesLeft,
-  winning,
-  active,
+  align, name, record, score, gamesLeft, leading, isFinal,
 }: {
   align: "left" | "right"
   name: string
   record: string
   score: number
   gamesLeft: number
-  winning: boolean
-  active: boolean
+  leading: boolean
+  isFinal: boolean
 }) {
   return (
     <div className={cn("min-w-0", align === "right" && "text-right")}>
-      <div className={cn("flex items-center gap-2", align === "right" && "flex-row-reverse")}>
-        <div aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#172338] text-[11px] font-black text-white">
+      <div className={cn("flex min-w-0 items-center gap-2", align === "right" && "flex-row-reverse")}>
+        <span aria-hidden="true" className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border-strong bg-surface-raised text-xs font-extrabold text-text-secondary">
           {initials(name)}
-        </div>
+        </span>
         <div className="min-w-0">
-          <p className={cn("truncate text-sm font-bold", winning ? "text-white" : "text-zinc-400")}>{name}</p>
-          <p className="truncate text-[12px] text-zinc-500">{record}</p>
+          <p className="truncate text-sm font-bold text-foreground" title={name}>{name}</p>
+          <p className="truncate text-xs text-text-muted">{record}</p>
         </div>
       </div>
-      <p className={cn("mt-2 font-black tabular-nums leading-8", active ? "text-2xl" : "text-[1.5rem]", winning ? "text-white" : "text-zinc-300")}>
+      <p className={cn("ui-stat-number mt-4 text-[28px] font-extrabold leading-none", leading ? "text-foreground" : "text-text-secondary")}>
         {score.toFixed(2)}
       </p>
-      <p className="mt-1 text-[12px] text-[#8ba0c7]">{gamesLeftLabel(gamesLeft)}</p>
+      <p className="mt-1.5 text-xs font-semibold text-text-muted">Actual FPTS</p>
+      <p className="mt-2 text-xs text-text-secondary">{isFinal ? "Completed" : `${gamesLeft} game${gamesLeft === 1 ? "" : "s"} left`}</p>
     </div>
   )
 }
 
+/** Actual scores and projected scores are separate; no invented win probability. */
 export function MatchupBanner({
   summary,
   projectedHome,
@@ -55,7 +48,6 @@ export function MatchupBanner({
   week = 1,
   homeGamesLeft,
   awayGamesLeft,
-  active = true,
 }: {
   summary: MatchupSummary
   projectedHome: number
@@ -65,28 +57,29 @@ export function MatchupBanner({
   awayGamesLeft: number
   active?: boolean
 }) {
-  const homeWinning = summary.homeScore >= summary.awayScore
   const isFinal = summary.status === "Final"
-
+  const homeLeading = summary.homeScore > summary.awayScore
+  const awayLeading = summary.awayScore > summary.homeScore
+  const live = !isFinal && /live|progress/i.test(summary.status)
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-[#183047] bg-[#0b1c2d] p-3.5">
+    <section data-testid="matchup-scorecard" aria-label={`Week ${week} matchup`} className="flex h-full flex-col gap-4 rounded-2xl border border-border-strong bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-bold text-[#aeb4ff]">Week {week}</span>
-        <span className={isFinal ? "rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-semibold text-zinc-400" : "flex items-center gap-1.5 rounded-full bg-[#2b6b54]/30 px-2.5 py-0.5 text-xs font-semibold text-[#64dbad]"}>
-          {!isFinal && <span className="size-1.5 animate-pulse rounded-full bg-lime-400" aria-hidden="true" />}
-          {summary.status}
-        </span>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-text-muted">Head to head</p>
+          <h2 className="mt-0.5 text-base font-bold text-foreground">Week {week} matchup</h2>
+        </div>
+        <HockeyStatus label={summary.status} tone={live ? "live" : "neutral"} />
       </div>
 
-      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2">
-        <TeamSide align="left" name={summary.homeTeam} record={summary.homeRecord} score={summary.homeScore} gamesLeft={homeGamesLeft} winning={homeWinning} active={active} />
-        <span className="pt-8 text-xs font-semibold text-zinc-500">vs</span>
-        <TeamSide align="right" name={summary.awayTeam} record={summary.awayRecord} score={summary.awayScore} gamesLeft={awayGamesLeft} winning={!homeWinning} active={active} />
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2 border-t border-border pt-4">
+        <TeamSide align="left" name={summary.homeTeam} record={summary.homeRecord} score={summary.homeScore} gamesLeft={homeGamesLeft} leading={homeLeading} isFinal={isFinal} />
+        <span aria-hidden="true" className="pt-12 text-xs font-bold uppercase text-text-muted">vs</span>
+        <TeamSide align="right" name={summary.awayTeam} record={summary.awayRecord} score={summary.awayScore} gamesLeft={awayGamesLeft} leading={awayLeading} isFinal={isFinal} />
       </div>
 
-      <p className="mt-3 text-center text-[13px] text-[#5e7090]">
-        Projected points: {projectedHome.toFixed(1)} – {projectedAway.toFixed(1)}
+      <p className="rounded-xl border border-border bg-background px-3 py-2.5 text-center text-sm font-semibold text-text-secondary">
+        Projected points: <span className="ui-stat-number text-foreground">{projectedHome.toFixed(1)} – {projectedAway.toFixed(1)}</span>
       </p>
-    </div>
+    </section>
   )
 }
