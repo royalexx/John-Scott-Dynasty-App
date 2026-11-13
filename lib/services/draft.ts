@@ -1,6 +1,7 @@
 import { ActivityAction, DraftStatus, Prisma, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLeagueStandings } from "@/lib/db/leagues"
+import { DEFAULT_BENCH_CAPACITY } from "@/lib/roster-eligibility"
 
 export type DraftOrder = "LINEAR" | "SNAKE"
 
