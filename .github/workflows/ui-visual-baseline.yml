@@ -1,6 +1,8 @@
 name: UI visual baseline (read-only)
 
 on:
+  push:
+    branches: ["ui/phase-*"]
   pull_request:
     branches: [main]
     paths:
