@@ -493,8 +493,13 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
     const target = resolvedTargetId ? visibleRoster.find((player) => player.id === resolvedTargetId) ?? roster.find((player) => player.id === resolvedTargetId) : undefined
     if (!source) return
+    if (week > (initialData.lineupLock?.week ?? getCurrentFantasyWeek())) {
+      setToast("Future weeks are view-only until separate lineup planning is available. Your live roster was not changed.")
+      window.setTimeout(() => setToast(null), 4000)
+      return
+    }
     if (weekView?.locked ?? weekView?.frozen) {
-      setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
+      setToast("This week's starting lineup is locked. Frozen starters cannot be changed.")
       window.setTimeout(() => setToast(null), 4000)
       return
     }
@@ -853,9 +858,9 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 </SwipeSurface>
               </div>
               {(weekView?.locked ?? weekView?.frozen) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
+                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week's starting lineup is locked. Frozen starters cannot be changed.</p>
               ) : week > (initialData.lineupLock?.week ?? week) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
+                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} is a read-only preview of your current roster. Future-week lineup changes are not available yet.</p>
               ) : null}
 
               {/* Starters Rows */}

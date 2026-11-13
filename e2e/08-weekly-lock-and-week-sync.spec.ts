@@ -91,6 +91,31 @@ test.describe("weekly starter lock", () => {
     await expect(page.getByTestId("lineup-lock-banner")).toContainText("locked until Monday")
   })
 
+  test("future-week lineup previews cannot mutate the current live roster", async ({ request }) => {
+    const league = await prisma.league.findFirstOrThrow()
+    const futureWeek = getCurrentFantasyWeek(league.currentSeason) + 1
+    test.skip(futureWeek > 24, "No future fantasy week remains in this season")
+    const team = await prisma.team.findFirstOrThrow({ where: { name: "Montreal Monarchs" } })
+    const starter = await prisma.rosterSlot.findFirstOrThrow({ where: { teamId: team.id, slot: { in: ["C", "W", "F", "D", "G"] } } })
+    const before = await prisma.rosterSlot.findMany({
+      where: { teamId: team.id }, orderBy: { id: "asc" },
+      select: { id: true, playerId: true, slot: true, lockedAt: true },
+    })
+    const futureSnapshotsBefore = await prisma.weekLineup.count({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })
+
+    const response = await request.post("/api/roster/move", {
+      data: { teamId: team.id, playerId: starter.playerId, targetSlot: "BN", week: futureWeek },
+    })
+    expect(response.status()).toBe(400)
+    expect((await response.json()).error).toMatch(/future-week lineup previews are read-only/i)
+    const after = await prisma.rosterSlot.findMany({
+      where: { teamId: team.id }, orderBy: { id: "asc" },
+      select: { id: true, playerId: true, slot: true, lockedAt: true },
+    })
+    expect(after).toEqual(before)
+    expect(await prisma.weekLineup.count({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })).toBe(futureSnapshotsBefore)
+  })
+
   test("a move for another manager's team is refused", async ({ request }) => {
     const other = await prisma.team.findFirstOrThrow({ where: { name: { not: "Montreal Monarchs" } } })
     const slot = await prisma.rosterSlot.findFirstOrThrow({ where: { teamId: other.id } })

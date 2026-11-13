@@ -94,4 +94,5 @@ export function isWeekLineupLocked(lock: { mode: string; week: number; weekStart
   return lock.mode === "WEEKLY" && week === lock.week && lock.weekStarted
 }
 
-export const FUTURE_LINEUP_LOCK_MESSAGE = "This week's lineup is locked. Switch to a later week to slot players from a trade."
+export const FUTURE_LINEUP_LOCK_MESSAGE = "This week's lineup is locked. Its frozen starters cannot be changed."
+export const FUTURE_LINEUP_PREVIEW_MESSAGE = "Future-week lineup previews are read-only until separate planning is available; the live roster was not changed."
