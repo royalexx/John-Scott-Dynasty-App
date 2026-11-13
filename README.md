@@ -40,13 +40,15 @@ CRON_SECRET="a-different-long-random-cron-secret"
 
 `DATABASE_URL` is required. `SESSION_SECRET` is required in every environment (at least 32 characters); `CRON_SECRET` must be a separate unpredictable value. Automated cron calls use `Authorization: Bearer <CRON_SECRET>`, never `?secret=` in a URL. Existing sessions require a new login after the security update, and changing a PIN invalidates prior sessions.
 
-There is not yet a `prisma/migrations` folder. **Never use `db push` or the seed against the live league.** For a disposable **development** database only:
+Versioned Prisma migrations now live under `prisma/migrations`. **Do not run schema or seed commands against a populated league without checking its migration state.** For an empty **development** database:
 
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
 npm run dev
 ```
+
+The schema baseline (`20261113000000_baseline`) is for new empty databases. A database already created with `prisma db push` has no migration history; validate its schema before explicitly marking the baseline applied with `prisma migrate resolve --applied 20261113000000_baseline`. **Never run the initial baseline directly against existing tables.** No hosted database was migrated by creating this file.
 
 The seed refuses to run in production, without the explicit environment flag, or when it detects any existing manager, league, team, roster, matchup or draft state. It is **initial setup only**, not a synchronization or reset operation. Use a separate, non-destructive player sync for future player data refreshes.
 
@@ -170,7 +172,7 @@ Create a dedicated local PostgreSQL database, such as `johnscott_e2e`. Initializ
 
 ```bash
 export TEST_DATABASE_URL="postgresql://johnscott:johnscott@127.0.0.1:5432/johnscott_e2e"
-DATABASE_URL="$TEST_DATABASE_URL" npx prisma db push
+DATABASE_URL="$TEST_DATABASE_URL" npx prisma migrate deploy
 DATABASE_URL="$TEST_DATABASE_URL" SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
 npm run test:e2e
 ```
