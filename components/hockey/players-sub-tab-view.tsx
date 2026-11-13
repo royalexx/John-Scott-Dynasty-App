@@ -34,10 +34,10 @@ function HorizonPicker({ mode, horizon, onChange }: { mode: HorizonMode; horizon
     <>
       <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Window</p>
       <div className="mt-2 flex gap-2">
-        <button type="button" onClick={() => onChange("stats", "Last 14 Days")} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", mode === "stats" ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>Stats</button>
-        <button type="button" onClick={() => onChange("projections", "This Week")} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", mode === "projections" ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>Projections</button>
+        <button type="button" onClick={() => onChange("stats", "Last 14 Days")} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", mode === "stats" ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>Stats</button>
+        <button type="button" onClick={() => onChange("projections", "This Week")} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", mode === "projections" ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>Projections</button>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">{options.map((option) => <button key={option} type="button" onClick={() => onChange(mode, option as HockeyHorizon)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", horizon === option ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{option}</button>)}</div>
+      <div className="mt-2 flex flex-wrap gap-2">{options.map((option) => <button key={option} type="button" onClick={() => onChange(mode, option as HockeyHorizon)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", horizon === option ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{option}</button>)}</div>
     </>
   )
 }
@@ -67,13 +67,13 @@ function TradeOfferCard({ trade, onAccept, onDecline, onCounter }: { trade: Leag
       </div>
       {trade.status === "ACTIVE" && !trade.isIncoming ? (
         <div className="mt-4">
-          <button type="button" onClick={onDecline} className="h-10 w-full rounded-xl bg-rose-500 text-sm font-bold text-white">Cancel Offer</button>
+          <button type="button" onClick={onDecline} className="min-h-11 w-full rounded-xl bg-rose-500 text-sm font-bold text-white">Cancel Offer</button>
         </div>
       ) : trade.status === "ACTIVE" ? (
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <button type="button" onClick={onAccept} className="h-10 rounded-xl bg-emerald-400 text-sm font-bold text-[#080c14]">Accept</button>
-          <button type="button" onClick={onDecline} className="h-10 rounded-xl bg-rose-500 text-sm font-bold text-white">Decline</button>
-          <button type="button" onClick={onCounter} className="h-10 rounded-xl border border-[#19ffff] text-sm font-bold text-[#19ffff]">Counter</button>
+          <button type="button" onClick={onAccept} className="min-h-11 rounded-xl bg-emerald-400 text-sm font-bold text-[#080c14]">Accept</button>
+          <button type="button" onClick={onDecline} className="min-h-11 rounded-xl bg-rose-500 text-sm font-bold text-white">Decline</button>
+          <button type="button" onClick={onCounter} className="min-h-11 rounded-xl border border-[#19ffff] text-sm font-bold text-[#19ffff]">Counter</button>
         </div>
       ) : null}
     </article>
@@ -208,9 +208,9 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         <SheetContent side="bottom" spring="snappy" className="mx-auto max-h-[80vh] max-w-[430px] overflow-y-auto rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4 text-white">
           <h2 className="text-lg font-black">Filters</h2>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Position</p>
-          <div className="mt-2 flex flex-wrap gap-2">{["ALL", "C", "LW", "RW", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setSelectedSearchPos(value)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", selectedSearchPos === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{value}</button>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{["ALL", "C", "LW", "RW", "D", "G"].map((value) => <button key={value} type="button" onClick={() => setSelectedSearchPos(value)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", selectedSearchPos === value ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{value}</button>)}</div>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Ownership</p>
-          <div className="mt-2 flex flex-wrap gap-2">{[["ALL", "All"], ["AVAILABLE", "Available"], ["ROSTERED", "Rostered"]].map(([value, label]) => <button key={value} type="button" onClick={() => setSearchOwnerFilter(value)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", searchOwnerFilter === value ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{label}</button>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{[["ALL", "All"], ["AVAILABLE", "Available"], ["ROSTERED", "Rostered"]].map(([value, label]) => <button key={value} type="button" onClick={() => setSearchOwnerFilter(value)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", searchOwnerFilter === value ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{label}</button>)}</div>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">NHL team</p>
           <select aria-label="Filter by NHL team" value={searchTeamFilter} onChange={(event) => setSearchTeamFilter(event.target.value)} className="mt-2 w-full rounded-xl border border-[#263858] bg-[#101829] px-3 py-3 text-sm text-white outline-none"><option value="ALL">All NHL teams</option>{teams.map((team) => <option key={team} value={team}>{team}</option>)}</select>
           <HorizonPicker mode={horizonMode} horizon={horizon} onChange={onHorizonChange} />
@@ -240,9 +240,9 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         <SheetContent side="bottom" spring="snappy" className="mx-auto max-h-[80vh] max-w-[430px] overflow-y-auto rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4 text-white">
           <h2 className="text-lg font-black">Filters</h2>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Position</p>
-          <div className="mt-2 flex flex-wrap gap-2">{(["ALL", "C", "W", "D", "G"] as const).map((position) => <button key={position} type="button" onClick={() => selectLeaderPosition(position)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", leaderPosFilter === position ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{position}</button>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{(["ALL", "C", "W", "D", "G"] as const).map((position) => <button key={position} type="button" onClick={() => selectLeaderPosition(position)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", leaderPosFilter === position ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{position}</button>)}</div>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Category</p>
-          <div className="mt-2 flex flex-wrap gap-2">{leaderCategories.map((category) => <button key={category} type="button" onClick={() => selectLeaderCategory(category)} className={cn("rounded-full px-3 py-1.5 text-sm font-bold", leaderCategory === category ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{category}</button>)}</div>
+          <div className="mt-2 flex flex-wrap gap-2">{leaderCategories.map((category) => <button key={category} type="button" onClick={() => selectLeaderCategory(category)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", leaderCategory === category ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{category}</button>)}</div>
           <HorizonPicker mode={horizonMode} horizon={horizon} onChange={onHorizonChange} />
         </SheetContent>
       </Sheet>
@@ -294,14 +294,14 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
       <section className="rounded-2xl border border-[#19ffff]/30 bg-[#101a2b] p-4">
         <p className="text-sm font-bold text-[#19ffff]">Propose a trade</p>
         <p className="mt-1 text-[13px] text-[#8ba0c7]">Players, draft picks, and FAAB.</p>
-        <button type="button" onClick={onOpenTradeBuilder} className="mt-3 h-10 w-full rounded-xl bg-[#19ffff] text-sm font-bold text-[#080c14]">Open Trade Builder</button>
+        <button type="button" onClick={onOpenTradeBuilder} className="mt-3 min-h-11 w-full rounded-xl bg-[#19ffff] text-sm font-bold text-[#080c14]">Open Trade Builder</button>
       </section>
       <section>
         <div className="mb-3 flex items-center justify-between gap-2">
           <h3 className="text-base font-black text-white">Offers</h3>
           <div className="flex gap-1">
             {(["ALL", "ACTIVE", "ACCEPTED", "REJECTED"] as const).map((filter) => (
-              <button type="button" key={filter} onClick={() => setActiveTradeFilter(filter)} className={cn("rounded-full px-2.5 py-1 text-xs font-bold", activeTradeFilter === filter ? "bg-[#19ffff] text-[#080c14]" : "bg-[#172338] text-[#8ba0c7]")}>{filter === "ALL" ? "All" : filter === "ACTIVE" ? "Open" : filter === "ACCEPTED" ? "Done" : "Out"}</button>
+              <button type="button" key={filter} onClick={() => setActiveTradeFilter(filter)} className={cn("rounded-full px-2.5 py-1 text-xs font-bold", activeTradeFilter === filter ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{filter === "ALL" ? "All" : filter === "ACTIVE" ? "Open" : filter === "ACCEPTED" ? "Done" : "Out"}</button>
             ))}
           </div>
         </div>
