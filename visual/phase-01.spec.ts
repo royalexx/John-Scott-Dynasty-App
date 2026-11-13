@@ -46,8 +46,11 @@ test("Player market labels the fantasy-point metric and retains photographs", as
 
 
 test("draft queue can be operated independently from player selection using the keyboard", async ({ page }) => {
-  const { marketPlayers } = await import("../lib/hockey-data")
-  const players = marketPlayers.slice(0, 3).map((player, index) => ({ ...player, nhlId: 8470001 + index }))
+  // Standalone fixture objects avoid importing the app's aliased server dependencies in Playwright Node.
+  const players = [
+    { rank: 1, nhlId: 8470001, name: "Fixture Center", position: "C", team: "SJS", waiver: "FA", velocity: "", rostered: "0%", trend: "0%", fpts: 0, projection: 10, gp: 0, goals: 0, assists: 0, sog: 0, hits: 0, blocks: 0, adp: 0 },
+    { rank: 2, nhlId: 8470002, name: "Fixture Wing", position: "RW", team: "DAL", waiver: "FA", velocity: "", rostered: "0%", trend: "0%", fpts: 0, projection: 8, gp: 0, goals: 0, assists: 0, sog: 0, hits: 0, blocks: 0, adp: 0 },
+  ]
   let draft = {
     id: "fixture-draft",
     type: "SNAKE",
