@@ -32,13 +32,15 @@ function isInvalidRosterPlacement(player: Player): boolean {
 }
 
 export const PlayerItem = React.memo(function PlayerItem({
-  player, fallbackSlot, onEdit, onSelect, nickname,
+  player, fallbackSlot, onEdit, onSelect, nickname, invalidOverride,
 }: {
   player: Player | null
   fallbackSlot: string
   onEdit: (player: Player | null, fallbackSlot: string) => void
   onSelect: (player: Player) => void
   nickname?: string
+  /** Surface-only override for commissioner-configured taxi NHL GP limits. */
+  invalidOverride?: boolean
 }) {
   if (!player) {
     return (
@@ -53,7 +55,7 @@ export const PlayerItem = React.memo(function PlayerItem({
 
   const projected = player.schedule?.weekProjectedFantasyPoints
   const actual = getWeekActualPoints(player)
-  const invalid = isInvalidRosterPlacement(player)
+  const invalid = invalidOverride ?? isInvalidRosterPlacement(player)
   return (
     <div data-testid="team-player-row" className={cn(
       "flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 transition-colors",
