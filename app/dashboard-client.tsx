@@ -850,7 +850,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
-              <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
+              <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} onReview={() => document.getElementById("team-starters")?.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })} />
               {/* Starters section */}
               <section id="team-starters" data-testid="team-starters" className="mx-3 mt-4 overflow-hidden rounded-2xl border border-border bg-surface">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3">
