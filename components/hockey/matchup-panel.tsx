@@ -66,6 +66,7 @@ function buildMatchupCard(
   week: number,
   weekLineup: WeekLineup,
   matchupResults: MatchupResult[],
+  lineupLockMode: "WEEKLY" | "DAILY",
 ) {
   const flip = summary.awayTeam === teamName
   const market = players ?? []
@@ -77,9 +78,13 @@ function buildMatchupCard(
   const expected = (list: Player[]) => starters(list).reduce((sum, player) => sum + (getWeekProjectedPoints(player, week) ?? 0), 0)
   const actual = (list: Player[]) => starters(list).reduce((sum, player) => sum + getWeekActualPoints(player, week), 0)
   const gamesLeft = (list: Player[]) => starters(list).filter((player) => player.gameState !== "Final").length
-  const finalResult = matchupResults.find((result) => result.week === week && result.isFinal && result.homeTeam === summary.homeTeam && result.awayTeam === summary.awayTeam)
-  const trueHomeScore = finalResult ? finalResult.homeScore : actual(trueHomeRoster)
-  const trueAwayScore = finalResult ? finalResult.awayScore : actual(trueAwayRoster)
+  const savedResult = matchupResults.find((result) => result.week === week && result.homeTeam === summary.homeTeam && result.awayTeam === summary.awayTeam)
+  const finalResult = savedResult?.isFinal ? savedResult : null
+  // DAILY scoring is game-specific; recomputing from today's visible roster
+  // would reassign points after lineup changes or transactions.
+  const authoritative = lineupLockMode === "DAILY" ? savedResult : finalResult
+  const trueHomeScore = authoritative ? authoritative.homeScore : actual(trueHomeRoster)
+  const trueAwayScore = authoritative ? authoritative.awayScore : actual(trueAwayRoster)
   const trueProjectedHome = expected(trueHomeRoster)
   const trueProjectedAway = expected(trueAwayRoster)
   const trueHomeGamesLeft = gamesLeft(trueHomeRoster)
@@ -295,6 +300,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   onLiveSummary,
   matchupResults = [],
   weekLineup = null,
+  lineupLockMode = "WEEKLY",
 }: {
   roster: Player[]
   players?: MarketPlayer[]
@@ -311,6 +317,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   onLiveSummary?: (summary: LiveMatchupSummary) => void
   matchupResults?: MatchupResult[]
   weekLineup?: WeekLineup
+  lineupLockMode?: "WEEKLY" | "DAILY"
 }) {
   const weekSchedule = useMemo(() => getWeekMatchups(week), [week])
   const userMatchup = useMemo(
@@ -342,8 +349,8 @@ export const MatchupPanel = React.memo(function MatchupPanel({
 
   const matchupIndex = Math.max(0, weekSchedule.findIndex((matchup) => matchup.id === selectedMatchupId))
   const cards = useMemo(
-    () => weekSchedule.map((summary) => buildMatchupCard(summary, teamName, roster, players, week, weekLineup, matchupResults)),
-    [matchupResults, players, roster, teamName, week, weekLineup, weekSchedule],
+     () => weekSchedule.map((summary) => buildMatchupCard(summary, teamName, roster, players, week, weekLineup, matchupResults, lineupLockMode)),
+    [lineupLockMode, matchupResults, players, roster, teamName, week, weekLineup, weekSchedule],
   )
   const card = cards[matchupIndex] ?? cards[0]
   const homeRoster = card?.homeRoster ?? []
@@ -398,6 +405,11 @@ export const MatchupPanel = React.memo(function MatchupPanel({
         <div data-testid="historical-matchup-lineup-unavailable" role="status" className="mx-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
           Historical starters were not recorded for this week. Archived results are preserved; current rosters are not substituted.
         </div>
+      )}
+      {lineupLockMode === "DAILY" && (
+        <p data-testid="daily-matchup-score-source" className="mx-3 rounded-md border border-[#263858] bg-[#111c30] px-3 py-2 text-xs text-[#8ba0c7]">
+          Scores use each NHL game's locked player assignments, not the currently displayed weekly roster.
+        </p>
       )}
       <div className="grid grid-cols-2 gap-3 px-3 text-[11px] font-semibold leading-snug text-[#8ba0c7]">
         <p className="min-w-0">{getYetToPlayText(homeRoster)}</p>
