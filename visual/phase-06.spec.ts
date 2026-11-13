@@ -174,7 +174,7 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: width === 320 ? 700 : 844 })
     const attemptedWrites: string[] = []
     page.on("request", request => {
-      if (request.method() !== "GET" && /\\/api\\/(trades|waivers|draft)/.test(request.url())) attemptedWrites.push(request.url())
+      if (request.method() !== "GET" && /\/api\/(trades|waivers|draft)/.test(request.url())) attemptedWrites.push(request.url())
     })
     await page.goto("/ui-design-system")
     await page.getByRole("button", { name: "Review trade workflow" }).click()
@@ -186,7 +186,7 @@ for (const width of [320, 390]) {
     const player = dialog.getByRole("checkbox", { name: /^Select / }).first()
     await player.check()
     await expect(player).toBeChecked()
-    await expect(dialog.locator('[data-slot="player-portrait"] img').first()).toHaveAttribute("src", /\\/api\\/headshot|assets\\.nhle\\.com/)
+    await expect(dialog.locator('[data-slot="player-portrait"] img').first()).toHaveAttribute("src", /\/api\/headshot|assets\.nhle\.com/)
     await capture(page, info, `phase-06-trade-assets-${width}`)
     await dialog.getByRole("button", { name: "Review proposal" }).click()
     await expect(progress).toHaveAttribute("aria-valuenow", "3")
