@@ -770,27 +770,27 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   )
 
   return (
-    <div className="flex min-h-screen justify-center bg-black font-sans antialiased">
-      <main className="relative flex min-h-0 h-dvh w-full max-w-[430px] flex-col overflow-hidden border-x border-[#121927] bg-[#070a12] shadow-2xl">
+    <div className="flex min-h-dvh justify-center bg-background font-sans antialiased">
+      <main data-testid="app-shell" className="relative flex h-dvh min-h-0 w-full max-w-[430px] flex-col overflow-hidden border-x border-border bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl">
         {initialData.isPreviewFixture && (
           <div data-testid="preview-fixture-banner" className="shrink-0 border-b border-amber-400/30 bg-amber-950/60 px-3 py-1 text-center text-[11px] font-bold tracking-wide text-amber-200">
             UI PREVIEW · SAMPLE DATA · READ ONLY
           </div>
         )}
         
-        {/* Sleeper League Header */}
-        <header className="flex items-center justify-between bg-[#070a12] px-3.5 pt-3 pb-2">
+        {/* League identity and 44px utility controls */}
+        <header data-testid="app-header" className="relative z-10 flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <button type="button" onClick={() => setDmOpen(true)} aria-label="Open direct messages" className="relative rounded-full p-1 text-zinc-400 hover:bg-[#172338] hover:text-white"><MessageSquare className="size-5" />{hasUnreadMessages && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white">!</span>}</button>
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-[#22314d] bg-[#162033] text-xs">🏒</div>
-            <h1 className="truncate text-sm font-black uppercase tracking-wider text-white">JOHN SCOTT DYNASTY</h1>
+            <button type="button" onClick={() => setDmOpen(true)} aria-label="Open direct messages" className="ui-touch-target relative flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover hover:text-foreground"><MessageSquare className="size-5" />{hasUnreadMessages && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white">!</span>}</button>
+            <div aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-sm">🏒</div>
+            <h1 className="min-w-0 truncate text-[13px] font-extrabold uppercase tracking-wide text-foreground">JOHN SCOTT DYNASTY</h1>
           </div>
-          <button type="button" onClick={() => setTeamDrawer("settings")} aria-label="League & Team Settings" className="p-1 text-zinc-400 transition hover:text-white"><Settings className="size-5" /></button>
+          <button type="button" onClick={() => setTeamDrawer("settings")} aria-label="League & Team Settings" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover hover:text-foreground"><Settings className="size-5" /></button>
         </header>
 
-        {/* 4 Core Tabs */}
-        <nav className="border-b border-[#141d2f] bg-[#070a12]">
-          <div className="relative mx-3 flex">
+        {/* Four primary destinations; SwipePager remains the source of swipe behavior. */}
+        <nav aria-label="Main navigation" className="relative z-10 shrink-0 border-b border-border bg-background">
+          <div className="relative mx-2 flex">
             {mainTabs.map((tab) => {
               const active = activeTab === tab
               return (
@@ -798,9 +798,19 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={active}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return
+                    event.preventDefault()
+                    const direction = event.key === "ArrowRight" ? 1 : -1
+                    const nextIndex = (mainTabs.indexOf(tab) + direction + mainTabs.length) % mainTabs.length
+                    setActiveTab(mainTabs[nextIndex])
+                    const target = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[nextIndex]
+                    target?.focus()
+                  }}
                   className={cn(
-                    "relative flex-1 py-2.5 text-center text-xs font-black tracking-widest transition-colors",
-                    active ? "text-[#19ffff]" : "text-[#5e7090] hover:text-zinc-300"
+                    "relative min-h-11 flex-1 rounded-lg py-2 text-center text-xs font-bold tracking-wide transition-colors",
+                    active ? "text-brand" : "text-text-muted hover:bg-surface-hover hover:text-foreground"
                   )}
                 >
                   {tab}
@@ -809,7 +819,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             })}
             <motion.span
               aria-hidden="true"
-              className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-1/4 rounded-full bg-[#19ffff] shadow-[0_0_8px_#19ffff]"
+              className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-1/4 rounded-full bg-brand"
               style={{ x: underlineX }}
             />
           </div>
@@ -833,7 +843,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
-            <div className="flex flex-col pb-24">
+            <div className="flex flex-col pb-4">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
                   setTradeNavigationRequest((request) => request + 1)
@@ -923,15 +933,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 ))}
               </div>
 
-              {/* Watermark */}
-              <div className="mt-8 flex items-center justify-center gap-1.5 text-zinc-600 opacity-60">
-                <span>⚡</span>
-                <span className="text-xs font-black tracking-widest uppercase">sleeper</span>
-              </div>
+              {/* Player content ends naturally; no third-party branding. */}
             </div>
           </div>
 
-          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain pb-24" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain pb-4" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
             <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeRequestId={tradeNavigationRequest} />
           </div>
           <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
@@ -939,10 +945,10 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           </div>
         </SwipePager>
 
-        <div className="absolute inset-x-3 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
-          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex min-h-11 w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
-            <MessageSquare className="size-3.5 shrink-0 text-[#19ffff]" />
-            <span className="truncate text-xs text-[#8ba0c7]"><b className="text-white">Chat:</b> {chatPreview}</span>
+        <div data-testid="chat-dock" className="relative z-20 shrink-0 border-t border-border bg-background px-3 py-2">
+          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-left text-xs transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            <MessageSquare className="size-4 shrink-0 text-brand" />
+            <span className="truncate text-xs text-text-secondary"><b className="text-foreground">Chat:</b> {chatPreview}</span>
           </button>
         </div>
 
@@ -951,6 +957,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           onOpenChange={setChatOpen}
           leagueId={initialData.leagueId}
           latestPreview={chatPreview}
+          readOnly={Boolean(initialData.isPreviewFixture)}
           onLatestMessage={(message) => setChatPreview(message)}
         />
 
