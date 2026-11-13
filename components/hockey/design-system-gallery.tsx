@@ -160,6 +160,7 @@ export function DesignSystemGallery() {
         onOpenChange={setTradeOpen}
         team={demoSender}
         partners={[demoPartner]}
+        onPlayerClick={(player) => setMessage(`Preview only · ${player.name} selected`)}
         onSendTrade={() => { setTradeOpen(false); setMessage("Preview only · No trade saved") }}
       />
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
