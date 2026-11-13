@@ -7,6 +7,7 @@ import { type PlayerDialogTarget } from "@/components/hockey/player-detail-dialo
 import type { PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
 import { getPlayerStatsForHorizon, getProjectedFPTS, getSyncedPlayerFPTS, normalizeSearchText } from "@/lib/hockey-calculators"
 import { PlayersSubTabView } from "@/components/hockey/players-sub-tab-view"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type PositionFilter = "ALL" | "C" | "W" | "F" | "D" | "G"
 type SkaterSort = "FPTS" | "G" | "A" | "PTS" | "SOG" | "HIT" | "BLK"
@@ -101,38 +102,39 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
   const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: p.schedule?.opponent ?? "—", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
   return (
     <div className="flex flex-col">
-      <div aria-label="Player market sections" className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
-        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" aria-pressed={subTab === id} onClick={() => setSubTab(id)} className={cn("relative flex w-full cursor-pointer flex-col items-center gap-1 py-1 text-xs font-bold", subTab === id && "text-[#19ffff]")}>{subTab === id && <span className="absolute inset-x-3 -bottom-2 h-0.5 rounded-full bg-[#19ffff]" />}<Icon className="size-4" />{label}</button>)}
-      </div>
+      <nav aria-label="Player market sections" className="grid grid-cols-4 border-b border-border px-1 text-text-secondary">
+        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" aria-pressed={subTab === id} onClick={() => setSubTab(id)} className={cn("relative flex min-h-12 w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md py-1 text-xs font-bold hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring", subTab === id && "text-brand")}>{subTab === id && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-brand" />}<Icon className="size-4" />{label}</button>)}
+      </nav>
       {subTab !== "available" ? <PlayersSubTabView teamName={teamName} tab={subTab} roster={roster} players={dynastyPlayers} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} onCounterTrade={onCounterTrade} onInitiateTrade={onInitiateTrade} horizonMode={horizonMode} horizon={horizon} onHorizonChange={(mode, next) => { setHorizonMode(mode); setHorizon(next); setSettings({ ...settings, viewType: mode === "stats" ? "Stats" : "Projections", period: next }) }} onSelect={onSelect} onClaim={onClaim} onOpenTradeBuilder={onOpenTradeBuilder} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} /> : <>
-      <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
-        <h2 className="text-base font-black text-white">Available</h2>
-        <button type="button" aria-label="Filters" onClick={() => setFiltersOpen(true)} className="rounded-full bg-[#172338] px-3 py-1.5 text-[13px] font-bold text-white">{filter === "ALL" ? "All" : filter} · {availableSort}</button>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <h2 className="text-base font-bold text-foreground">Available</h2>
+        <button type="button" aria-label="Filters" onClick={() => setFiltersOpen(true)} className="flex min-h-11 items-center rounded-full border border-border bg-surface-raised px-3 text-[13px] font-semibold text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">{filter === "ALL" ? "All" : filter} · {availableSort}</button>
       </div>
-      <p className="flex items-center justify-between gap-2 border-b border-[#141e33] px-3 py-2 text-xs font-semibold text-[#8ba0c7]"><span>Sorted by {availableSort} · {horizon}</span><span>{settings.viewType === "Stats" ? "Actual" : "Projected"} FPTS</span></p>
-      <ul>
+      <p className="flex items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2 text-xs font-semibold text-text-secondary"><span>Sorted by {availableSort} · {horizon}</span><span>{settings.viewType === "Stats" ? "Actual" : "Projected"} FPTS</span></p>
+      <ul data-testid="available-player-list">
         {players.slice(0, visibleCount).map((p) => {
           const points = settings.viewType === "Stats"
             ? getSyncedPlayerFPTS(p, horizon)
             : horizon === "This Week" && p.schedule ? p.schedule.weekProjectedFantasyPoints : getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28)
           return (
-            <li key={p.nhlId ? `nhl-${p.nhlId}` : p.name} className="flex items-center gap-3 border-b border-[#172338] px-3 py-3">
-              <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-black", p.position === "G" ? "bg-sky-500 text-white" : p.position === "D" ? "bg-amber-600 text-white" : p.position === "C" ? "bg-blue-600 text-white" : "bg-teal-600 text-white")}>{p.position}</span>
+            <li key={p.nhlId ? `nhl-${p.nhlId}` : p.name} className="flex items-center gap-2 border-b border-border px-3 py-2.5 transition-colors hover:bg-surface-hover">
+              <button type="button" onClick={() => selectPlayer(p)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 text-left focus-visible:rounded-lg focus-visible:outline-2 focus-visible:outline-ring">
+                <PlayerPortrait player={p} name={p.name} className="size-9" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-bold text-white">{p.name}</span>
-                  <span className="block truncate text-[13px] text-[#8ba0c7]">{p.team} · {p.schedule?.opponent ?? "—"}{p.injuryStatus ? ` · ${p.injuryStatus}` : ""}</span>
+                  <span className="block truncate text-sm font-bold text-foreground">{p.name}</span>
+                  <span className="block truncate text-xs text-text-secondary">{p.position} · {p.team} · {p.schedule?.opponent ?? "—"}{p.injuryStatus ? ` · ${p.injuryStatus}` : ""}</span>
                 </span>
-                <span className={cn("shrink-0 text-[13px] font-bold", p.waiver === "FA" ? "text-emerald-300" : "text-amber-300")}>{p.waiver === "FA" ? "FA" : "W"}</span>
-                <span aria-label={`${settings.viewType === "Stats" ? "Actual" : "Projected"} fantasy points: ${points.toFixed(1)} (${horizon})`} className="w-12 shrink-0 text-right text-base font-black tabular-nums text-white">{points.toFixed(1)}</span>
+                <span className={cn("shrink-0 text-xs font-semibold", p.waiver === "FA" ? "text-success" : "text-warning")}>{p.waiver === "FA" ? "FA" : "W"}</span>
+                <span aria-label={`${settings.viewType === "Stats" ? "Actual" : "Projected"} fantasy points: ${points.toFixed(1)} (${horizon})`} className="w-12 shrink-0 text-right text-sm font-extrabold tabular-nums text-foreground">{points.toFixed(1)}</span>
               </button>
-              <button type="button" aria-label={`Add or claim ${p.name}`} onClick={() => onClaim(p)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-[#19ffff] text-[#080c14] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#19ffff]"><Plus className="size-4" /></button>
+              <button type="button" aria-label={`Add or claim ${p.name}`} onClick={() => onClaim(p)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-brand text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><Plus className="size-4" /></button>
             </li>
           )
         })}
       </ul>
-      <p className="px-3 pt-3 text-center text-[13px] text-[#5e7090]">Showing {Math.min(visibleCount, players.length)} of {players.length} players</p>
-      {players.length > visibleCount && <button type="button" onClick={() => setVisibleCount((count) => count + 50)} className="mx-auto my-3 block rounded-full border border-[#19ffff]/50 px-5 py-2 text-sm font-bold text-[#19ffff]">Show 50 more</button>}
+      {players.length === 0 && <p role="status" className="px-4 py-8 text-center text-sm text-text-secondary">No available players match these filters.</p>}
+      <p className="px-3 pt-3 text-center text-xs text-text-muted">Showing {Math.min(visibleCount, players.length)} of {players.length} players</p>
+      {players.length > visibleCount && <button type="button" onClick={() => setVisibleCount((count) => count + 50)} className="mx-auto my-3 block min-h-11 rounded-full border border-brand/50 px-5 py-2 text-sm font-bold text-brand hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">Show 50 more</button>}
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent side="bottom" spring="snappy" className="mx-auto max-h-[80vh] max-w-[430px] overflow-y-auto rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-4 text-white">
           <h2 className="text-lg font-black">Filters</h2>
