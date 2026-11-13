@@ -4,7 +4,7 @@ import { getManagerSession, signManagerSession } from "@/lib/auth-session"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "@/lib/pin-crypto"
 import { verifyWithPinThrottle } from "@/lib/pin-rate-limit"
 
-const PIN_PATTERN = /^\\d{4}$/
+const PIN_PATTERN = /^\d{4}$/
 const MANAGER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function retryMessage(seconds: number) {
