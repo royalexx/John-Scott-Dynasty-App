@@ -151,7 +151,7 @@ export function LeagueFeed({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[#070a12] text-white">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-24 space-y-5">
         <DraftCard players={players} isCommissioner={isCommissioner} />
         <WeeklyPodium week={week} matchups={displayMatchups} />
         <MatchupsSection week={week} matchups={displayMatchups} teamName={teamName} teamLogo={teamLogo} onSelect={(matchup) => onSelectMatchup?.(matchup.id)} onWeekChange={onWeekChange} />
