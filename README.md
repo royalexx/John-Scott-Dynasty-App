@@ -38,7 +38,7 @@ SESSION_SECRET="a-dedicated-long-random-session-secret"
 CRON_SECRET="a-different-long-random-cron-secret"
 ```
 
-`DATABASE_URL` is required. `SESSION_SECRET` is required in production (at least 32 characters); `CRON_SECRET` must be a separate unpredictable value. Automated cron calls use `Authorization: Bearer <CRON_SECRET>`, never `?secret=` in a URL. Existing sessions require a new login after the security update, and changing a PIN invalidates prior sessions.
+`DATABASE_URL` is required. `SESSION_SECRET` is required in every environment (at least 32 characters); `CRON_SECRET` must be a separate unpredictable value. Automated cron calls use `Authorization: Bearer <CRON_SECRET>`, never `?secret=` in a URL. Existing sessions require a new login after the security update, and changing a PIN invalidates prior sessions.
 
 There is not yet a `prisma/migrations` folder. **Never use `db push` or the seed against the live league.** For a disposable **development** database only:
 
