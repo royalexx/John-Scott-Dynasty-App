@@ -13,9 +13,19 @@ import { getCurrentFantasyWeek } from "@/lib/season-calendar"
  * is unaffected: this proxy returns NextResponse.next() immediately.
  */
 export function proxy(request: NextRequest) {
-  if (process.env.VERCEL_ENV !== "preview") return NextResponse.next()
-
   const path = request.nextUrl.pathname
+
+  // Fail closed for review-only UI: a streamed app-level notFound() may return
+  // HTTP 200 in Next.js dev mode. The HTTP boundary must enforce a real 404.
+  if (path === "/ui-design-system") {
+    const hostedPreview = process.env.VERCEL_ENV === "preview"
+    const localFixture = process.env.NODE_ENV === "development" && process.env.UI_VISUAL_FIXTURES === "1" && !process.env.VERCEL
+    return hostedPreview || localFixture
+      ? NextResponse.next()
+      : new NextResponse("Not Found", { status: 404, headers: { "Cache-Control": "no-store" } })
+  }
+
+  if (process.env.VERCEL_ENV !== "preview") return NextResponse.next()
   const safeMethod = ["GET", "HEAD", "OPTIONS"].includes(request.method)
   const triggersServerWrites =
     path.startsWith("/api/cron/") ||
@@ -65,5 +75,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/api/:path*", "/ui-design-system"],
 }

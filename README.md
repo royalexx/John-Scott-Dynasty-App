@@ -172,3 +172,7 @@ Open the associated GitHub Actions **UI visual baseline** run to review Match, T
 **Warning:** The normal `npm run test:e2e` suite can modify settings, rosters and sync data. It now requires `E2E_ALLOW_MUTATION=1` and an explicitly named **local loopback** `*_e2e` / `*_test` PostgreSQL database, and refuses to reuse an arbitrary running dev server. Never run the mutation-capable suite against production/shared Neon. Vercel previews are **not** assumed isolated until their Preview environment database is verified.
 
 No NHL player portrait sources or images are removed by Phase 0.
+
+## UI design system
+
+The phased mobile UI work follows [DESIGN.md](DESIGN.md), which defines semantic dark-mode tokens, spacing, typography, touch targets, focus, position-color treatment, and preservation of real NHL player portraits. A read-only component gallery is available at `/ui-design-system` in local visual-fixture mode or a Vercel PR Preview; it is disabled on the Production domain.

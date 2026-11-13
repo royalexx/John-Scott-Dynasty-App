@@ -1,14 +1,137 @@
 @import "tailwindcss";
 
+/*
+ * John Scott Dynasty design tokens — canonical definitions.
+ * Tailwind v4 utilities map to these via @theme inline; use semantic tokens
+ * instead of introducing new arbitrary hex values in individual components.
+ * See DESIGN.md for contrast, typography, motion and density requirements.
+ */
+:root {
+  color-scheme: dark;
+  --ds-canvas: #070a12;
+  --ds-surface: #0d1424;
+  --ds-surface-raised: #122035;
+  --ds-surface-hover: #17283f;
+  --ds-border: #2b415d;
+  --ds-border-strong: #395878;
+  --ds-text: #f1f6ff;
+  --ds-text-secondary: #b3c3d8;
+  --ds-text-muted: #95abc4;
+  --ds-accent: #19d9e3;
+  --ds-accent-foreground: #07131a;
+  --ds-focus: #6be6f4;
+  --ds-success: #69e0b0;
+  --ds-warning: #f7ce79;
+  --ds-danger: #ff91a4;
+  --ds-success-surface: #103629;
+  --ds-warning-surface: #3a2d17;
+  --ds-danger-surface: #3c1b2b;
+
+  /* Accessible positional badges: preserve the NHL position color family. */
+  --ds-position-c: #2857a8;
+  --ds-position-w: #0c726e;
+  --ds-position-f: #6334a5;
+  --ds-position-d: #e9aa53;
+  --ds-position-g: #4aa1cc;
+  --ds-position-ink: #08121d;
+
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-6: 24px;
+  --ds-space-8: 32px;
+
+  --ds-type-label: 12px;
+  --ds-type-body: 14px;
+  --ds-type-section: 18px;
+  --ds-type-screen: 24px;
+  --ds-touch-target: 44px;
+  --ds-radius-sm: 8px;
+  --ds-radius-md: 12px;
+  --ds-radius-lg: 16px;
+  --ds-radius-xl: 20px;
+
+  /* Base UI/shadcn-compatible semantic aliases. */
+  --background: var(--ds-canvas);
+  --foreground: var(--ds-text);
+  --card: var(--ds-surface);
+  --card-foreground: var(--ds-text);
+  --popover: var(--ds-surface-raised);
+  --popover-foreground: var(--ds-text);
+  --primary: var(--ds-accent);
+  --primary-foreground: var(--ds-accent-foreground);
+  --secondary: var(--ds-surface-raised);
+  --secondary-foreground: var(--ds-text);
+  --muted: var(--ds-surface-hover);
+  --muted-foreground: var(--ds-text-muted);
+  --accent: var(--ds-surface-hover);
+  --accent-foreground: var(--ds-text);
+  --destructive: var(--ds-danger);
+  --destructive-foreground: var(--ds-accent-foreground);
+  --border: var(--ds-border);
+  --input: var(--ds-border-strong);
+  --ring: var(--ds-focus);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-surface: var(--ds-surface);
+  --color-surface-raised: var(--ds-surface-raised);
+  --color-surface-hover: var(--ds-surface-hover);
+  --color-border-strong: var(--ds-border-strong);
+  --color-text-secondary: var(--ds-text-secondary);
+  --color-text-muted: var(--ds-text-muted);
+  --color-brand: var(--ds-accent);
+  --color-success: var(--ds-success);
+  --color-warning: var(--ds-warning);
+  --color-danger: var(--ds-danger);
+  --color-success-surface: var(--ds-success-surface);
+  --color-warning-surface: var(--ds-warning-surface);
+  --color-danger-surface: var(--ds-danger-surface);
+
+  --color-position-c: var(--ds-position-c);
+  --color-position-w: var(--ds-position-w);
+  --color-position-f: var(--ds-position-f);
+  --color-position-d: var(--ds-position-d);
+  --color-position-g: var(--ds-position-g);
+  --color-position-ink: var(--ds-position-ink);
+
+  --radius-sm: var(--ds-radius-sm);
+  --radius-md: var(--ds-radius-md);
+  --radius-lg: var(--ds-radius-lg);
+  --radius-xl: var(--ds-radius-xl);
+  --text-label: var(--ds-type-label);
+  --text-body: var(--ds-type-body);
+  --text-section: var(--ds-type-section);
+  --text-screen: var(--ds-type-screen);
+}
+
 @layer base {
-  :root {
-    --background: #080c14;
-    --foreground: #ffffff;
-  }
+  html { background: var(--ds-canvas); }
 
   body {
-    background-color: #080c14;
-    color: #ffffff;
+    background-color: var(--ds-canvas);
+    color: var(--ds-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-tap-highlight-color: transparent;
     overflow-x: hidden;
@@ -16,26 +139,38 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* Hide scrollbar for tabs and horizontal sliders */
-  ::-webkit-scrollbar {
-    display: none;
+  /* Consistent keyboard focus, including legacy components without utility classes. */
+  :where(button, a[href], input, textarea, select, [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--ds-focus);
+    outline-offset: 2px;
   }
-  * {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+
+  :where(button, input, select, textarea):disabled {
+    cursor: not-allowed;
   }
-}
-/* PWA Mobile Optimization & Safe Areas */
-@supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .safe-bottom {
-    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-  }
-  .safe-top {
-    padding-top: calc(0.5rem + env(safe-area-inset-top));
-  }
+
+  /* Preserve existing scroll behavior for compact tab bars on mobile. */
+  ::-webkit-scrollbar { display: none; }
+  * { -ms-overflow-style: none; scrollbar-width: none; }
 }
 
-/* Prevent unwanted pull-to-refresh bounce in standalone mode */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+  .safe-top { padding-top: calc(0.5rem + env(safe-area-inset-top)); }
+}
+
+/* Use on primary actions; densely packed legacy rows are migrated per screen. */
+.ui-touch-target {
+  min-width: var(--ds-touch-target);
+  min-height: var(--ds-touch-target);
+}
+
+/* Regular numeric columns stay aligned as fantasy points refresh. */
+.ui-stat-number {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
 html, body {
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
@@ -45,6 +180,15 @@ html, body {
 button, [role="button"], .cursor-pointer {
   touch-action: manipulation;
   cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(*, *::before, *::after) {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @keyframes shake {

@@ -5,7 +5,7 @@ import { TAXI_MAX_NHL_GAMES, getWeekActualPoints, isStarterSlot, type Player } f
 import { positionFitsSlot } from "@/lib/roster-eligibility"
 
 export const slotBadgeColors: Record<string, string> = {
-  C: "bg-[#1d4ed8] text-white", W: "bg-[#0d9488] text-white", F: "bg-[#7c3aed] text-white", D: "bg-[#b45309] text-white", G: "bg-[#0284c7] text-white", BN: "bg-[#1e293b] text-[#94a3b8]", TAXI: "bg-[#451a03] text-[#f59e0b] border border-[#78350f]", IR: "bg-[#4c0519] text-[#f43f5e] border border-[#881337]",
+  C: "bg-position-c text-white", W: "bg-position-w text-white", F: "bg-position-f text-white", D: "bg-position-d text-position-ink", G: "bg-position-g text-position-ink", BN: "bg-surface-raised text-text-secondary", TAXI: "bg-warning-surface text-warning border border-warning/30", IR: "bg-danger-surface text-danger border border-danger/30",
 }
 
 function isInvalidRosterPlacement(player: Player): boolean {
@@ -31,20 +31,20 @@ export const PlayerItem = React.memo(function PlayerItem({
 }) {
   if (!player) {
     return (
-      <button type="button" onClick={() => onEdit(null, fallbackSlot)} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-[#0f1726] px-3.5 py-2 text-left transition-colors hover:bg-[#16233b] active:scale-[0.99]">
+      <button type="button" onClick={() => onEdit(null, fallbackSlot)} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-border px-3.5 py-2 text-left transition-colors hover:bg-surface-hover active:scale-[0.99]">
         <div className="flex items-center gap-2.5">
           <span className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase", slotBadgeColors[fallbackSlot])}>
             {fallbackSlot}
           </span>
-          <span className="text-xs font-bold text-[#45546d]">Empty</span>
+          <span className="text-xs font-bold text-text-muted">Empty</span>
         </div>
-        <span className="text-xs font-bold text-[#45546d]">—</span>
+        <span className="text-xs font-bold text-text-muted">—</span>
       </button>
     )
   }
 
   return (
-    <div className={cn("flex items-center justify-between border-b border-[#0f1726] px-3.5 py-2 transition-colors", isInvalidRosterPlacement(player) ? "bg-rose-500/10" : "hover:bg-[#0c1220]")}>
+    <div className={cn("flex items-center justify-between border-b border-border px-3.5 py-2 transition-colors", isInvalidRosterPlacement(player) ? "bg-rose-500/10" : "hover:bg-[#0c1220]")}>
       <div className="flex min-w-0 items-center gap-2.5">
         <button
           type="button"
@@ -55,7 +55,7 @@ export const PlayerItem = React.memo(function PlayerItem({
         </button>
 
         <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left">
-          <PlayerPortrait player={player} name={player.name} className="size-8 border border-[#1b263b]" />
+          <PlayerPortrait player={player} name={player.name} className="size-8 border border-border" />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="truncate text-sm font-bold tracking-tight leading-tight text-white">{player.name}</p>
@@ -65,8 +65,8 @@ export const PlayerItem = React.memo(function PlayerItem({
                 </span>
               )}
             </div>
-            {nickname && <p className="truncate text-xs italic text-[#5e7090]">{nickname}</p>}
-            <p className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-[#5e7090]">
+            {nickname && <p className="truncate text-xs italic text-text-muted">{nickname}</p>}
+            <p className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-text-muted">
               <span className="truncate">
                 <span className="font-semibold text-zinc-300">{player.position}</span> - {player.team} • {player.schedule ? (player.schedule.opponent && player.schedule.opponent !== "—" ? `${player.schedule.day} ${player.schedule.time} ${player.schedule.opponent}` : `${player.schedule.day} ${player.schedule.time}`) : "No game this week"}
               </span>
@@ -78,7 +78,7 @@ export const PlayerItem = React.memo(function PlayerItem({
 
       <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-11 shrink-0 cursor-pointer flex-col items-end justify-center pl-2 text-right">
         <p className="text-sm font-black tabular-nums leading-none text-white">{getWeekActualPoints(player).toFixed(1)}</p>
-        <p className="mt-0.5 text-[11px] font-semibold tabular-nums leading-none text-[#8ba0c7]">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
+        <p className="mt-0.5 text-[11px] font-semibold tabular-nums leading-none text-text-secondary">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
       </button>
     </div>
   )
