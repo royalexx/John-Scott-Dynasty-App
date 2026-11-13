@@ -77,7 +77,7 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
           const value = marketStat(player, stat, statsHorizon)
           return perGame ? value / gamesPlayed() : value
         }
-        if (sort === "FPTS") return settings.viewType === "Stats" ? getSyncedPlayerFPTS(player, statsHorizon) : (horizon === "This Week" && player.schedule ? player.schedule.weekProjectedFantasyPoints : getProjectedFPTS(player, horizon === "Next 14 Days" ? 7 : 28))
+        if (sort === "FPTS") return settings.viewType === "Stats" ? getSyncedPlayerFPTS(player, statsHorizon) : (horizon === "This Week" && player.schedule ? player.schedule.weekProjectedFantasyPoints : getProjectedFPTS(player, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28))
         if (sort === "G") return counting("goals")
         if (sort === "A") return counting("assists")
         if (sort === "PTS") return counting("goals") + counting("assists")
@@ -114,7 +114,7 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
         {players.slice(0, visibleCount).map((p) => {
           const points = settings.viewType === "Stats"
             ? getSyncedPlayerFPTS(p, horizon)
-            : horizon === "This Week" && p.schedule ? p.schedule.weekProjectedFantasyPoints : getProjectedFPTS(p, horizon === "Next 14 Days" ? 7 : 28)
+            : horizon === "This Week" && p.schedule ? p.schedule.weekProjectedFantasyPoints : getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28)
           return (
             <li key={p.nhlId ? `nhl-${p.nhlId}` : p.name} className="flex items-center gap-3 border-b border-[#172338] px-3 py-3">
               <button type="button" onClick={() => selectPlayer(p)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
