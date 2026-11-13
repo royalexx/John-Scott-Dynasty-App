@@ -101,14 +101,15 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
   const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: p.schedule?.opponent ?? "—", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
   return (
     <div className="flex flex-col">
-      <div role="tablist" aria-label="Player market sections" className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
-        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" role="tab" aria-selected={subTab === id} onClick={() => setSubTab(id)} className={cn("relative flex w-full cursor-pointer flex-col items-center gap-1 py-1 text-xs font-bold", subTab === id && "text-[#19ffff]")}>{subTab === id && <span className="absolute inset-x-3 -bottom-2 h-0.5 rounded-full bg-[#19ffff]" />}<Icon className="size-4" />{label}</button>)}
+      <div aria-label="Player market sections" className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
+        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" aria-pressed={subTab === id} onClick={() => setSubTab(id)} className={cn("relative flex w-full cursor-pointer flex-col items-center gap-1 py-1 text-xs font-bold", subTab === id && "text-[#19ffff]")}>{subTab === id && <span className="absolute inset-x-3 -bottom-2 h-0.5 rounded-full bg-[#19ffff]" />}<Icon className="size-4" />{label}</button>)}
       </div>
       {subTab !== "available" ? <PlayersSubTabView teamName={teamName} tab={subTab} roster={roster} players={dynastyPlayers} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} onCounterTrade={onCounterTrade} onInitiateTrade={onInitiateTrade} horizonMode={horizonMode} horizon={horizon} onHorizonChange={(mode, next) => { setHorizonMode(mode); setHorizon(next); setSettings({ ...settings, viewType: mode === "stats" ? "Stats" : "Projections", period: next }) }} onSelect={onSelect} onClaim={onClaim} onOpenTradeBuilder={onOpenTradeBuilder} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} /> : <>
       <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
         <h2 className="text-base font-black text-white">Available</h2>
         <button type="button" aria-label="Filters" onClick={() => setFiltersOpen(true)} className="rounded-full bg-[#172338] px-3 py-1.5 text-[13px] font-bold text-white">{filter === "ALL" ? "All" : filter} · {availableSort}</button>
       </div>
+      <p className="flex items-center justify-between gap-2 border-b border-[#141e33] px-3 py-2 text-xs font-semibold text-[#8ba0c7]"><span>Sorted by {availableSort} · {horizon}</span><span>{settings.viewType === "Stats" ? "Actual" : "Projected"} FPTS</span></p>
       <ul>
         {players.slice(0, visibleCount).map((p) => {
           const points = settings.viewType === "Stats"
@@ -123,9 +124,9 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
                   <span className="block truncate text-[13px] text-[#8ba0c7]">{p.team} · {p.schedule?.opponent ?? "—"}{p.injuryStatus ? ` · ${p.injuryStatus}` : ""}</span>
                 </span>
                 <span className={cn("shrink-0 text-[13px] font-bold", p.waiver === "FA" ? "text-emerald-300" : "text-amber-300")}>{p.waiver === "FA" ? "FA" : "W"}</span>
-                <span className="w-12 text-right text-base font-black tabular-nums text-white">{points.toFixed(1)}</span>
+                <span aria-label={`${settings.viewType === "Stats" ? "Actual" : "Projected"} fantasy points: ${points.toFixed(1)} (${horizon})`} className="w-12 shrink-0 text-right text-base font-black tabular-nums text-white">{points.toFixed(1)}</span>
               </button>
-              <button type="button" aria-label={`Add or claim ${p.name}`} onClick={() => onClaim(p)} className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#19ffff] text-[#080c14]"><Plus className="size-4" /></button>
+              <button type="button" aria-label={`Add or claim ${p.name}`} onClick={() => onClaim(p)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full bg-[#19ffff] text-[#080c14] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#19ffff]"><Plus className="size-4" /></button>
             </li>
           )
         })}
