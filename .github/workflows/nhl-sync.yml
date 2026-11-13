@@ -13,5 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger NHL Sync Endpoint
+        env:
+          APP_HOST: ${{ secrets.VERCEL_APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          curl -f -s "https://${{ secrets.VERCEL_APP_URL }}/api/cron/sync?secret=${{ secrets.CRON_SECRET }}"
+          test -n "$APP_HOST" && test -n "$CRON_SECRET"
+          curl --fail --silent --show-error --retry 2 \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://${APP_HOST}/api/cron/sync"
