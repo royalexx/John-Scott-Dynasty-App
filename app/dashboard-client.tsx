@@ -493,8 +493,13 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
     const target = resolvedTargetId ? visibleRoster.find((player) => player.id === resolvedTargetId) ?? roster.find((player) => player.id === resolvedTargetId) : undefined
     if (!source) return
+    if (week > (initialData.lineupLock?.week ?? getCurrentFantasyWeek())) {
+      setToast("Future weeks are view-only until separate lineup planning is available. Your live roster was not changed.")
+      window.setTimeout(() => setToast(null), 4000)
+      return
+    }
     if (weekView?.locked ?? weekView?.frozen) {
-      setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
+      setToast("This week's starting lineup is locked. Frozen starters cannot be changed.")
       window.setTimeout(() => setToast(null), 4000)
       return
     }
