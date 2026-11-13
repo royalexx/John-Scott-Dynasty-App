@@ -60,7 +60,11 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- --hostname localhost --port 3100",
     url: "http://localhost:3100",
-    env: { DATABASE_URL: testDatabaseUrl },
+    env: {
+      DATABASE_URL: testDatabaseUrl,
+      // Stable test-only signing key; never load production secrets from .env.
+      SESSION_SECRET: "e2e-local-only-session-secret-not-for-production-2026",
+    },
     reuseExistingServer: false,
     timeout: 120 * 1000,
   },
