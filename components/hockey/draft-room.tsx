@@ -190,7 +190,7 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" spring="snappy" className="relative mx-auto flex h-dvh max-h-dvh max-w-[430px] flex-col gap-0 rounded-none border-[#1a263d] bg-[#070a12] p-0 text-white">
+      <SheetContent side="bottom" spring="snappy" className="!fixed !bottom-0 !left-1/2 !right-auto !top-auto !z-50 !flex !h-dvh !max-h-dvh !w-full !max-w-[430px] !-translate-x-1/2 !flex-col !gap-0 !overflow-hidden !rounded-none !border-[#1a263d] !bg-[#070a12] !p-0 !pb-[env(safe-area-inset-bottom)] !text-white">
         <header className="flex shrink-0 items-center justify-between border-b border-[#172338] px-2 py-2">
           <button type="button" onClick={() => onOpenChange(false)} className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl px-3 text-sm font-bold text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">Exit</button>
           <div className="min-w-0 text-center">
