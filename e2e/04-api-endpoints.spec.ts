@@ -69,6 +69,45 @@ test("failed manager PIN attempts are limited across requests", async ({ playwri
   }
 })
 
+test("commissioner privileges cannot reject a trade belonging to another league", async ({ request }) => {
+  const session = await (await request.get("/api/auth/session")).json() as { isCommissioner: boolean; user?: { teamId: string } }
+  expect(session.isCommissioner, "fixture manager must exercise the commissioner bypass path").toBe(true)
+  const originalLeague = await prisma.league.findFirstOrThrow({ where: { teams: { some: { id: session.user!.teamId } } } })
+  const managers = await prisma.user.findMany({ orderBy: { handle: "asc" }, take: 2 })
+  expect(managers).toHaveLength(2)
+  const outsideLeague = await prisma.league.create({
+    data: {
+      name: "Isolated authorization boundary test",
+      currentSeason: originalLeague.currentSeason,
+      currentWeek: originalLeague.currentWeek,
+      rosterSize: originalLeague.rosterSize,
+      taxiSlots: originalLeague.taxiSlots,
+      irSlots: originalLeague.irSlots,
+      scoringSettings: {},
+    },
+  })
+  try {
+    const home = await prisma.team.create({
+      data: { leagueId: outsideLeague.id, managerId: managers[0].id, name: "External Sender", waiverPriority: 1 },
+    })
+    const away = await prisma.team.create({
+      data: { leagueId: outsideLeague.id, managerId: managers[1].id, name: "External Receiver", waiverPriority: 2 },
+    })
+    const offer = await prisma.tradeOffer.create({
+      data: { leagueId: outsideLeague.id, proposingTeamId: home.id, receivingTeamId: away.id },
+    })
+    for (const action of ["REJECT", "CANCEL", "ACCEPT"] as const) {
+      const response = await request.patch("/api/trades", { data: { tradeOfferId: offer.id, action } })
+      expect(response.status(), action).toBe(403)
+      expect((await prisma.tradeOffer.findUniqueOrThrow({ where: { id: offer.id } })).status).toBe("PENDING")
+    }
+  } finally {
+    await prisma.tradeOffer.deleteMany({ where: { leagueId: outsideLeague.id } })
+    await prisma.team.deleteMany({ where: { leagueId: outsideLeague.id } })
+    await prisma.league.delete({ where: { id: outsideLeague.id } })
+  }
+})
+
 test("FAAB trades cannot spend budget committed to pending waivers", async ({ request }) => {
   const source = await prisma.team.findFirstOrThrow({ where: { faabBalance: { gt: 0 } }, orderBy: { name: "asc" } })
   const destination = await prisma.team.findFirstOrThrow({ where: { leagueId: source.leagueId, id: { not: source.id } } })
