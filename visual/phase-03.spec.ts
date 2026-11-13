@@ -30,6 +30,8 @@ for (const viewport of widths) {
       const selected = navigation.getByRole("button", { name: tab, exact: true })
       await selected.click()
       await expect(selected).toHaveAttribute("aria-pressed", "true")
+      // The pager springs after state updates; capture the settled screen, not a mid-swipe frame.
+      await page.waitForTimeout(550)
       for (const other of ["MATCH", "TEAM", "PLAYERS", "LEAGUE"]) {
         if (other !== tab) await expect(navigation.getByRole("button", { name: other })).toHaveAttribute("aria-pressed", "false")
       }
@@ -139,4 +141,30 @@ test("Phase 3: reduced motion retains keyboard tab switching", async ({ page }) 
   await expect(nav.getByRole("button", { name: "MATCH" })).toHaveAttribute("aria-pressed", "true")
   await nav.getByRole("button", { name: "LEAGUE", exact: true }).click()
   await expect(nav.getByRole("button", { name: "LEAGUE" })).toHaveAttribute("aria-pressed", "true")
+})
+
+test("Phase 3: horizontal finger-style swipe still changes main destinations", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto("/")
+  const nav = page.getByRole("navigation", { name: "Main navigation" })
+  const tab = (name: string) => nav.getByRole("button", { name, exact: true })
+  await expect(tab("TEAM")).toHaveAttribute("aria-pressed", "true")
+  const box = await page.locator('[data-swipe="tab"]').boundingBox()
+  expect(box).not.toBeNull()
+  if (!box) return
+  const y = box.y + Math.min(120, box.height / 3)
+  const startX = box.x + box.width * 0.3
+  await page.mouse.move(startX, y)
+  await page.mouse.down()
+  await page.mouse.move(startX + box.width * 0.45, y, { steps: 8 })
+  await page.mouse.up()
+  await expect(tab("MATCH")).toHaveAttribute("aria-pressed", "true")
+  await page.waitForTimeout(550)
+
+  const nextX = box.x + box.width * 0.7
+  await page.mouse.move(nextX, y)
+  await page.mouse.down()
+  await page.mouse.move(nextX - box.width * 0.45, y, { steps: 8 })
+  await page.mouse.up()
+  await expect(tab("TEAM")).toHaveAttribute("aria-pressed", "true")
 })
