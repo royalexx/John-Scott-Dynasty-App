@@ -34,20 +34,23 @@ Create `.env` with:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
-CRON_SECRET="any-long-random-string"
+SESSION_SECRET="a-dedicated-long-random-session-secret"
+CRON_SECRET="a-different-long-random-cron-secret"
 ```
 
 `DATABASE_URL` is required. `CRON_SECRET` is required only for the NHL sync and waiver cron routes.
 
-There is no `prisma/migrations` folder. Push the schema, then seed the league:
+There is not yet a `prisma/migrations` folder. **Never use `db push` or the seed against the live league.** For a disposable **development** database only:
 
 ```bash
 npx prisma db push
-npm run prisma:seed
+SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Every seeded manager uses PIN `1234`. The commissioner account is **Montreal Monarchs** (`@commissioner`).
+The seed refuses to run in production, without the explicit environment flag, or when it detects any existing manager, league, team, roster, matchup or draft state. It is **initial setup only**, not a synchronization or reset operation. Use a separate, non-destructive player sync for future player data refreshes.
+
+Open [http://localhost:3000](http://localhost:3000). The development fixture gives managers the insecure PIN `1234` for initial testing only; replace these credentials before granting access to any shared league. The commissioner account is **Montreal Monarchs** (`@commissioner`).
 
 `npm install` runs `prisma generate`. `npm run build` also refreshes `public/data/nhl-players.json` from the NHL search API before `next build`, so a build needs network access.
 
@@ -60,7 +63,7 @@ If the league row is missing, the page falls back to the static roster in `lib/h
 | `npm run dev` | Next.js dev server |
 | `npm run build` / `npm start` | Production build and server |
 | `npm run sync-players` | Rewrite the local NHL player registry |
-| `npm run prisma:seed` | Upsert players, the league, 12 teams, the 24-week schedule, rosters, and 2027–2029 draft picks |
+| `npm run prisma:seed` | Initialize only an explicitly authorized empty development database; refuses all existing league state |
 | `npm run test:e2e` | Playwright against `http://localhost:3000` |
 | `npm run test:e2e:ui` | Playwright UI mode |
 | `npx tsc --noEmit` | Typecheck |
