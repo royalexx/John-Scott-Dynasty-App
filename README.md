@@ -158,3 +158,17 @@ npx tsc --noEmit
 ```
 
 The database must already be seeded. Specs hit the real league, including roster moves, trades, and waivers.
+
+## UI visual baseline and safe E2E testing
+
+Phase 0 of the UI modernization uses a **read-only** local fixture and Playwright screenshot capture, separate from the database-backed E2E suite:
+
+```bash
+npm run test:visual
+```
+
+Open the associated GitHub Actions **UI visual baseline** run to review Match, Team, Players, League, modal and PIN screenshots at multiple mobile widths. See [Phase 0 documentation](docs/PHASE_00_BASELINE_AND_PREVIEW.md).
+
+**Warning:** The normal `npm run test:e2e` suite can modify settings, rosters and sync data. It now requires `E2E_ALLOW_MUTATION=1` and an explicitly named **local loopback** `*_e2e` / `*_test` PostgreSQL database, and refuses to reuse an arbitrary running dev server. Never run the mutation-capable suite against production/shared Neon. Vercel previews are **not** assumed isolated until their Preview environment database is verified.
+
+No NHL player portrait sources or images are removed by Phase 0.
