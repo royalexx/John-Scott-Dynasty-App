@@ -69,7 +69,8 @@ try {
     process.exitCode = 1
   }
 } catch (error) {
-  console.error("Read-only migration inspection failed:", error instanceof Error ? error.message : String(error))
+  const message = error instanceof Error ? error.message : String(error)
+  console.error("Read-only migration inspection failed:", message.replaceAll(process.env.DATABASE_URL, "[DATABASE_URL REDACTED]"))
   process.exitCode = 1
 } finally {
   await db.$disconnect()
