@@ -129,6 +129,16 @@ jobs:
         env:
           SEED_EMPTY_LEAGUE: YES_I_HAVE_VERIFIED_THE_DATABASE
         run: npm run prisma:seed
+      - name: Read-only audit confirms legacy schema is unbaselined
+        run: |
+          node scripts/migration-preflight.mjs > "$RUNNER_TEMP/preflight-before.json"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs"
+          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/preflight-before.json", "utf8"))
+          if (report.verdict !== "UNBASELINED_POPULATED_SCHEMA" || !report.legacyPinColumnHasDefault) {
+            throw new Error("Fixture did not reproduce the populated legacy schema and insecure PIN default")
+          }
+          NODE
       - name: Record existing identities and record counts
         run: |
           node --input-type=module <<'NODE'
@@ -154,6 +164,14 @@ jobs:
       - name: Verify schema parity and retained league records
         run: |
           npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          node scripts/migration-preflight.mjs > "$RUNNER_TEMP/preflight-after.json"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs"
+          const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/preflight-after.json", "utf8"))
+          if (report.verdict !== "HISTORY_READY" || report.legacyPinColumnHasDefault || report.pendingMigrations.length !== 0) {
+            throw new Error("Migration did not fully reconcile history or clear the legacy PIN default")
+          }
+          NODE
           node --input-type=module <<'NODE'
           import fs from "node:fs"
           import { PrismaClient } from "@prisma/client"
