@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test"
 /** No .env, no database, no accounts: emulates a hosted Vercel preview. */
 export default defineConfig({
   testDir: "./visual",
-  testMatch: /preview-readonly\.spec\.ts/,
+  testMatch: /(?:preview-readonly|phase-01)\.spec\.ts/,
   workers: 1,
   retries: 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-preview-report" }]],
