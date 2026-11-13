@@ -2,6 +2,7 @@ import { ActivityAction, DraftStatus, Prisma, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLeagueStandings } from "@/lib/db/leagues"
 import { DEFAULT_BENCH_CAPACITY } from "@/lib/roster-eligibility"
+import { captureStartedDailyGamesForTeam } from "@/lib/services/daily-game-lineups"
 
 export type DraftOrder = "LINEAR" | "SNAKE"
 
@@ -225,6 +226,12 @@ async function bestAvailablePlayer(tx: Prisma.TransactionClient, draft: LoadedDr
 }
 
 async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot: LoadedDraft["slots"][number], player: { id: number; name: string; nhlGamesPlayed: number }) {
+  // Coordinate draft arrivals with transactions and per-game lineup captures.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${slot.teamId}))`
+  const leagueAtPick = await tx.league.findUnique({ where: { id: draft.leagueId }, select: { currentSeason: true, lineupLockMode: true } })
+  if (leagueAtPick?.lineupLockMode === "DAILY") {
+    await captureStartedDailyGamesForTeam(tx, slot.teamId, leagueAtPick.currentSeason)
+  }
   // A drafted player must be transferred to the drafting team. Never consume a
   // pick for a player already owned elsewhere (or already owned by this team).
   const alreadyRostered = await tx.rosterSlot.findFirst({

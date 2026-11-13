@@ -135,6 +135,7 @@ model Team {
   weekLineups     WeekLineup[]
   draftSlots      DraftSlot[]
   lineupPlans     LineupPlan[]
+  dailyGameLineups DailyGameLineup[]
 
   @@unique([leagueId, managerId])
   @@index([leagueId])
@@ -157,6 +158,7 @@ model Player {
   weekLineups       WeekLineup[]
   draftSlots        DraftSlot[]
   lineupPlanEntries LineupPlanEntry[]
+  dailyGameLineupEntries DailyGameLineupEntry[]
 
   @@index([teamAbbrev])
   @@index([injuryStatus])
@@ -222,6 +224,36 @@ model LineupPlanEntry {
   player   Player     @relation(fields: [playerId], references: [id], onDelete: Restrict)
 
   @@unique([planId, playerId])
+  @@index([playerId])
+}
+
+/// Per-fantasy-team, per-NHL-game record of assigned players when the game locks.
+/// A header with zero entries is valid evidence of no rostered players for this game.
+model DailyGameLineup {
+  id         String                 @id @default(uuid()) @db.Uuid
+  teamId     String                 @db.Uuid
+  gameId     Int
+  season     Int
+  week       Int
+  capturedAt DateTime               @default(now())
+  team       Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  game       NhlGame                @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  entries    DailyGameLineupEntry[]
+
+  @@unique([teamId, gameId])
+  @@index([season, week])
+  @@index([gameId])
+}
+
+model DailyGameLineupEntry {
+  id         String          @id @default(uuid()) @db.Uuid
+  snapshotId String          @db.Uuid
+  playerId   Int
+  slot       SlotType
+  snapshot   DailyGameLineup @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  player     Player          @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, playerId])
   @@index([playerId])
 }
 
@@ -411,6 +443,7 @@ model NhlGame {
   awayScore      Int              @default(0)
   updatedAt      DateTime         @updatedAt
   gameStats      PlayerGameStat[]
+  dailyLineups   DailyGameLineup[]
 
   @@index([gameDate])
   @@index([gameState])
