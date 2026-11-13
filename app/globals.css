@@ -27,6 +27,14 @@
   --ds-warning-surface: #3a2d17;
   --ds-danger-surface: #3c1b2b;
 
+  /* Accessible positional badges: preserve the NHL position color family. */
+  --ds-position-c: #2857a8;
+  --ds-position-w: #0c726e;
+  --ds-position-f: #6334a5;
+  --ds-position-d: #e9aa53;
+  --ds-position-g: #4aa1cc;
+  --ds-position-ink: #08121d;
+
   --ds-space-1: 4px;
   --ds-space-2: 8px;
   --ds-space-3: 12px;
@@ -100,6 +108,13 @@
   --color-success-surface: var(--ds-success-surface);
   --color-warning-surface: var(--ds-warning-surface);
   --color-danger-surface: var(--ds-danger-surface);
+
+  --color-position-c: var(--ds-position-c);
+  --color-position-w: var(--ds-position-w);
+  --color-position-f: var(--ds-position-f);
+  --color-position-d: var(--ds-position-d);
+  --color-position-g: var(--ds-position-g);
+  --color-position-ink: var(--ds-position-ink);
 
   --radius-sm: var(--ds-radius-sm);
   --radius-md: var(--ds-radius-md);
