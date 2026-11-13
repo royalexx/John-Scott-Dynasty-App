@@ -25,7 +25,7 @@ The preflight is **read only**. Confirm the expected league and team counts. `mi
 If the preflight says `UNBASELINED_POPULATED_SCHEMA`, compare the existing hosted schema against the version of `prisma/schema.prisma` on `main` **before** any migration or baseline resolution:
 
 ```bash
-git show origin/main:prisma/schema.prisma > /tmp/john-scott-pre-migration-schema.prisma
+git show 9889c57fc6bb0c91898a85a887995fe1d75dec07:prisma/schema.prisma > /tmp/john-scott-pre-migration-schema.prisma
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
   --to-schema-datamodel /tmp/john-scott-pre-migration-schema.prisma \
