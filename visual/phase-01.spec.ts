@@ -91,7 +91,7 @@ test("draft queue can be operated independently from player selection using the 
   await page.goto("/")
   await page.getByRole("button", { name: "LEAGUE", exact: true }).click()
   await page.getByRole("button", { name: "Draft room", exact: true }).click()
-  await page.getByRole("button", { name: "Players", exact: true }).last().click()
+  await page.getByRole("button", { name: /^players$/i }).last().click()
   const name = players[0].name
   const select = page.locator("li").filter({ hasText: name }).getByRole("button").first()
   await expect(select).toHaveAttribute("aria-pressed", "false")
