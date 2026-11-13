@@ -833,7 +833,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
-            <div className="flex flex-col pb-16">
+            <div className="flex flex-col pb-24">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
                   setTradeNavigationRequest((request) => request + 1)
@@ -843,9 +843,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
               <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
-                <button type="button" className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">
-                  <span>Starters ({startersCount})</span>
-                </button>
+                <span className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">Starters ({startersCount})</span>
                 <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
                   <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="rounded p-1 hover:bg-[#172338]">
                     <ChevronLeft className="size-3.5" />
@@ -933,7 +931,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             </div>
           </div>
 
-          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain pb-24" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
             <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeRequestId={tradeNavigationRequest} />
           </div>
           <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
@@ -942,7 +940,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         </SwipePager>
 
         <div className="absolute inset-x-3 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
-          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
+          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex min-h-11 w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
             <MessageSquare className="size-3.5 shrink-0 text-[#19ffff]" />
             <span className="truncate text-xs text-[#8ba0c7]"><b className="text-white">Chat:</b> {chatPreview}</span>
           </button>
