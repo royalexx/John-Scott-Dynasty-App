@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test"
 import { PrismaClient } from "@prisma/client"
 import { getCurrentFantasyWeek, getFantasyWeekDates } from "../lib/season-calendar"
+import { freezeWeekLineup, missingSnapshotTeamIds, scoringSlotsForWeek, weekLineupForLeague } from "../lib/services/week-lineups"
+import { updateWeeklyMatchupScores } from "../lib/services/nhl-sync"
 
 const prisma = new PrismaClient()
 test.afterAll(async () => { await prisma.$disconnect() })
@@ -114,6 +116,40 @@ test.describe("weekly starter lock", () => {
     })
     expect(after).toEqual(before)
     expect(await prisma.weekLineup.count({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })).toBe(futureSnapshotsBefore)
+  })
+
+  test("incomplete historical lineups cannot overwrite persisted matchup scores", async () => {
+    const league = await prisma.league.findFirstOrThrow()
+    const historicalWeek = 2
+    test.skip(getCurrentFantasyWeek(league.currentSeason) <= historicalWeek, "needs a past completed fantasy week")
+
+    const before = await prisma.matchup.findMany({
+      where: { leagueId: league.id, season: league.currentSeason, week: historicalWeek },
+      orderBy: { id: "asc" },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homePoints: true, awayPoints: true, isFinal: true },
+    })
+    test.skip(before.length === 0, "requires a historical seeded matchup")
+    const participants = [...new Set(before.flatMap((matchup) => [matchup.homeTeamId, matchup.awayTeamId]))]
+    const snapshots = await prisma.weekLineup.findMany({ where: { season: league.currentSeason, week: historicalWeek, teamId: { in: participants } }, select: { teamId: true } })
+    test.skip(missingSnapshotTeamIds(participants, snapshots).length === 0, "fixture has authoritative complete snapshots")
+
+    const rowCount = await prisma.weekLineup.count({ where: { season: league.currentSeason, week: historicalWeek } })
+    await expect(freezeWeekLineup(prisma, league.id, league.currentSeason, historicalWeek)).rejects.toThrow(/Only the current fantasy week/)
+    expect(await scoringSlotsForWeek(league.id, league.currentSeason, historicalWeek, participants)).toBeNull()
+    expect(await updateWeeklyMatchupScores(league.id, historicalWeek)).toBe(0)
+
+    const after = await prisma.matchup.findMany({
+      where: { leagueId: league.id, season: league.currentSeason, week: historicalWeek },
+      orderBy: { id: "asc" },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homePoints: true, awayPoints: true, isFinal: true },
+    })
+    expect(after).toEqual(before)
+    expect(await prisma.weekLineup.count({ where: { season: league.currentSeason, week: historicalWeek } })).toBe(rowCount)
+
+    const preview = await weekLineupForLeague(league.id, league.currentSeason, historicalWeek)
+    expect(preview.source).toBe("unavailable")
+    expect(preview.locked).toBe(true)
+    expect(preview.assignments).toEqual([])
   })
 
   test("a move for another manager's team is refused", async ({ request }) => {
