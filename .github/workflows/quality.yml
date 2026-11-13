@@ -1,0 +1,35 @@
+name: Pull Request Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Build must not use the actual production database or secrets.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/johnscott_ci
+      SESSION_SECRET: ci-only-session-signing-secret-that-is-not-used-in-production
+      CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build (no external NHL registry refresh)
+        run: npm run build
