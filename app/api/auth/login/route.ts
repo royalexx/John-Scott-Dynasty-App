@@ -148,7 +148,7 @@ export async function POST(request: Request) {
     handle: user.handle,
     teamName: team.name,
     isCommissioner: user.isCommissioner,
-  })
+  }, user.updatedAt.toISOString())
   const response = NextResponse.json({ success: true, teamId: team.id, teamName: team.name })
   response.cookies.set("dynasty_manager", session, {
     httpOnly: true,
@@ -187,6 +187,21 @@ export async function PATCH(request: Request) {
   }
 
   clearFailures(keys)
-  await prisma.user.update({ where: { id: session.managerId }, data: { pin: hashPin(body.newPin) } })
-  return NextResponse.json({ success: true })
+  const updated = await prisma.user.update({
+    where: { id: session.managerId },
+    data: { pin: hashPin(body.newPin) },
+    select: { updatedAt: true },
+  })
+  // The updatedAt credential version invalidates every previously issued cookie.
+  // Reissue only this device's session so a successful PIN change does not log it out.
+  const refreshed = signManagerSession(session, updated.updatedAt.toISOString())
+  const response = NextResponse.json({ success: true })
+  response.cookies.set("dynasty_manager", refreshed, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  })
+  return response
 }
