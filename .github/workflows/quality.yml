@@ -69,7 +69,7 @@ jobs:
       - name: Initialize disposable PostgreSQL schema
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
-        run: npx prisma db push --skip-generate
+        run: npx prisma migrate deploy
       - name: Seed disposable league fixture
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
@@ -86,19 +86,3 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 3
-
-  baseline-candidate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
-      - name: Generate schema baseline candidate (read-only)
-        run: |
-          echo 'BEGIN_PRISMA_SCHEMA_BASELINE_20261113'
-          npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script
-          echo 'END_PRISMA_SCHEMA_BASELINE_20261113'
