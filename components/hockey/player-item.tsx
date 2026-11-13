@@ -1,11 +1,25 @@
-﻿import React from "react"
+import React from "react"
 import { cn } from "@/lib/utils"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { TAXI_MAX_NHL_GAMES, getWeekActualPoints, isStarterSlot, type Player } from "@/lib/hockey-data"
 import { positionFitsSlot } from "@/lib/roster-eligibility"
 
 export const slotBadgeColors: Record<string, string> = {
-  C: "bg-position-c text-white", W: "bg-position-w text-white", F: "bg-position-f text-white", D: "bg-position-d text-position-ink", G: "bg-position-g text-position-ink", BN: "bg-surface-raised text-text-secondary", TAXI: "bg-warning-surface text-warning border border-warning/30", IR: "bg-danger-surface text-danger border border-danger/30",
+  C: "bg-position-c text-white",
+  W: "bg-position-w text-white",
+  F: "bg-position-f text-white",
+  D: "bg-position-d text-position-ink",
+  G: "bg-position-g text-position-ink",
+  BN: "bg-surface-raised text-text-secondary",
+  TAXI: "border border-warning/30 bg-warning-surface text-warning",
+  IR: "border border-danger/30 bg-danger-surface text-danger",
+}
+
+const playerStatusStyles: Record<string, string> = {
+  DTD: "bg-warning-surface text-warning",
+  IR: "bg-danger-surface text-danger",
+  O: "bg-danger-surface text-danger",
+  TAXI: "bg-warning-surface text-warning",
 }
 
 function isInvalidRosterPlacement(player: Player): boolean {
@@ -16,12 +30,9 @@ function isInvalidRosterPlacement(player: Player): boolean {
   if (isStarterSlot(player.slot) && !positionFitsSlot(player.slot, player.position)) return true
   return injured
 }
+
 export const PlayerItem = React.memo(function PlayerItem({
-  player,
-  fallbackSlot,
-  onEdit,
-  onSelect,
-  nickname,
+  player, fallbackSlot, onEdit, onSelect, nickname,
 }: {
   player: Player | null
   fallbackSlot: string
@@ -31,54 +42,55 @@ export const PlayerItem = React.memo(function PlayerItem({
 }) {
   if (!player) {
     return (
-      <button type="button" onClick={() => onEdit(null, fallbackSlot)} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-border px-3.5 py-2 text-left transition-colors hover:bg-surface-hover active:scale-[0.99]">
-        <div className="flex items-center gap-2.5">
-          <span className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase", slotBadgeColors[fallbackSlot])}>
-            {fallbackSlot}
-          </span>
-          <span className="text-xs font-bold text-text-muted">Empty</span>
-        </div>
-        <span className="text-xs font-bold text-text-muted">—</span>
+      <button type="button" aria-label={`Fill empty ${fallbackSlot} starting slot`} onClick={() => onEdit(null, fallbackSlot)}
+        className="flex min-h-14 w-full items-center gap-3 border-b border-border px-4 py-2 text-left text-text-muted transition-colors hover:bg-surface-hover">
+        <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg text-xs font-extrabold", slotBadgeColors[fallbackSlot])}>{fallbackSlot}</span>
+        <span className="flex-1 text-sm font-semibold">Empty starting slot</span>
+        <span aria-hidden="true" className="text-xs font-bold">Add player</span>
       </button>
     )
   }
 
+  const projected = player.schedule?.weekProjectedFantasyPoints
+  const actual = getWeekActualPoints(player)
+  const invalid = isInvalidRosterPlacement(player)
   return (
-    <div className={cn("flex items-center justify-between border-b border-border px-3.5 py-2 transition-colors", isInvalidRosterPlacement(player) ? "bg-rose-500/10" : "hover:bg-[#0c1220]")}>
-      <div className="flex min-w-0 items-center gap-2.5">
-        <button
-          type="button"
-          onClick={() => onEdit(player, fallbackSlot)}
-          className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}
-        >
-          {player.slot}
-        </button>
+    <div data-testid="team-player-row" className={cn(
+      "flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 transition-colors",
+      invalid ? "bg-danger-surface/30" : "bg-surface hover:bg-surface-hover",
+    )}>
+      <button type="button" onClick={() => onEdit(player, fallbackSlot)}
+        aria-label={`Edit ${player.name} ${player.slot} roster slot`}
+        className={cn("flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg px-1 text-xs font-extrabold focus-visible:outline-2 focus-visible:outline-ring", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}>
+        {player.slot}
+      </button>
 
-        <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left">
-          <PlayerPortrait player={player} name={player.name} className="size-8 border border-border" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <p className="truncate text-sm font-bold tracking-tight leading-tight text-white">{player.name}</p>
-              {player.status && (
-                <span className={cn("shrink-0 rounded px-1 text-xs font-black uppercase", player.status === "DTD" ? "bg-amber-400/20 text-amber-300" : "bg-[#ff2a85]/20 text-[#ff2a85]")}>
-                  {player.status}
-                </span>
-              )}
-            </div>
-            {nickname && <p className="truncate text-xs italic text-text-muted">{nickname}</p>}
-            <p className="flex min-w-0 items-baseline gap-1.5 text-xs leading-tight text-text-muted">
-              <span className="truncate">
-                <span className="font-semibold text-zinc-300">{player.position}</span> - {player.team} • {player.schedule ? (player.schedule.opponent && player.schedule.opponent !== "—" ? `${player.schedule.day} ${player.schedule.time} ${player.schedule.opponent}` : `${player.schedule.day} ${player.schedule.time}`) : "No game this week"}
-              </span>
-              <span className="shrink-0 font-semibold tabular-nums">{player.schedule?.weekGamesScheduled ?? 0} GP</span>
-            </p>
-          </div>
-        </button>
-      </div>
+      <button type="button" onClick={() => onSelect(player)}
+        aria-label={`View ${player.name} player details`}
+        className="flex min-h-12 min-w-0 flex-1 items-center gap-2 text-left focus-visible:rounded-lg focus-visible:outline-2 focus-visible:outline-ring">
+        <PlayerPortrait player={player} name={player.name} className="size-9" />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1">
+            <span title={player.name} className="min-w-0 truncate text-sm font-bold leading-tight text-foreground">{player.name}</span>
+            {player.status && <span className={cn("shrink-0 rounded px-1 py-0.5 text-[10px] font-bold", playerStatusStyles[player.status] ?? "bg-surface-raised text-text-secondary")}>{player.status}</span>}
+          </span>
+          {nickname && <span className="block truncate text-[11px] italic text-text-muted">{nickname}</span>}
+          <span className="block truncate text-xs leading-snug text-text-secondary">
+            <b className="font-semibold">{player.position}</b> · {player.team} · {player.schedule
+              ? (player.schedule.opponent && player.schedule.opponent !== "—"
+                ? `${player.schedule.day} ${player.schedule.time} ${player.schedule.opponent}`
+                : `${player.schedule.day} ${player.schedule.time}`)
+              : "No game this week"}
+          </span>
+          <span className="block text-[11px] font-medium text-text-muted">{player.schedule?.weekGamesScheduled ?? 0} GP scheduled</span>
+        </span>
+      </button>
 
-      <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-11 shrink-0 cursor-pointer flex-col items-end justify-center pl-2 text-right">
-        <p className="text-sm font-black tabular-nums leading-none text-white">{getWeekActualPoints(player).toFixed(1)}</p>
-        <p className="mt-0.5 text-[11px] font-semibold tabular-nums leading-none text-text-secondary">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
+      <button type="button" onClick={() => onSelect(player)}
+        aria-label={`${player.name}: ${actual.toFixed(1)} actual FPTS, ${projected?.toFixed(1) ?? "unavailable"} projected FPTS; view details`}
+        className="flex min-h-11 min-w-12 shrink-0 flex-col items-end justify-center text-right focus-visible:rounded-lg focus-visible:outline-2 focus-visible:outline-ring">
+        <span className="ui-stat-number text-sm font-extrabold leading-none text-foreground">{actual.toFixed(1)}</span>
+        <span className="ui-stat-number mt-1 text-[11px] font-semibold leading-none text-text-muted">proj {projected?.toFixed(1) ?? "—"}</span>
       </button>
     </div>
   )
