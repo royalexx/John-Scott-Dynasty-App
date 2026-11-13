@@ -7,8 +7,7 @@ import type { LeagueScoring } from "../lib/scoring"
 import { scoringSlotsForWeek } from "../lib/services/week-lineups"
 import { STARTER_ELIGIBILITY } from "../lib/roster-eligibility"
 
-// Read-only checks against the live league database (nothing here writes).
-process.loadEnvFile?.(".env")
+// Read-only checks against the isolated database injected by Playwright.
 const prisma = new PrismaClient()
 const SEASON = 2026
 
