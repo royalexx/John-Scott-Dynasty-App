@@ -118,7 +118,6 @@ test.describe("retroactive matchup scores and standings", () => {
       const { dates } = getFantasyWeekDates(week, SEASON)
       const stats = await prisma.playerGameStat.findMany({ where: { game: { gameDate: { in: dates } } } })
       const totals = scoreTeams(slots, stats, league.scoringSettings as LeagueScoring)
-      const matchups = await prisma.matchup.findMany({ where: { season: SEASON, week } })
       for (const matchup of matchups) {
         expect(Number(matchup.homeScore), `w${week} home`).toBeCloseTo(totals.get(matchup.homeTeamId) ?? 0, 1)
         expect(Number(matchup.awayScore), `w${week} away`).toBeCloseTo(totals.get(matchup.awayTeamId) ?? 0, 1)
