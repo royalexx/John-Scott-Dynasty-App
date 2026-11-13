@@ -25,8 +25,8 @@ test("cron routes reject URL credentials without executing jobs", async ({ playw
     baseURL,
     storageState: { cookies: [], origins: [] },
   })
-  // Even if the supplied query string equals CRON_SECRET, it must never authorize a job.
-  const querySecret = encodeURIComponent(process.env.CRON_SECRET ?? "invalid-test-token")
+  // Use a dummy value: never place a real secret in a test request URL.
+  const querySecret = "legacy-query-only-test-token"
   for (const endpoint of ["/api/cron/sync", "/api/cron/waivers"]) {
     const response = await anonymous.get(`${endpoint}?secret=${querySecret}`)
     expect(response.status()).toBe(403)
