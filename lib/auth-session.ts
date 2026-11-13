@@ -1,4 +1,4 @@
-﻿import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
+﻿import { createHmac, timingSafeEqual } from "node:crypto"
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
@@ -10,22 +10,18 @@ export type ManagerSession = {
   isCommissioner: boolean
 }
 
-// Unique to this development process, not a public hard-coded signing key.
-const DEV_SESSION_SECRET = randomBytes(32).toString("base64url")
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30
 
 type SignedSession = Partial<ManagerSession> & { iat?: number; exp?: number; credentialVersion?: string }
 
 function sessionSecret() {
+  // An explicit stable key is required even in development: Next.js may serve
+  // auth and page requests from different workers.
   const secret = process.env.SESSION_SECRET
-  if (secret) {
-    if (secret.length < 32) throw new Error("SESSION_SECRET must contain at least 32 characters")
-    return secret
+  if (!secret || secret.length < 32) {
+    throw new Error("SESSION_SECRET must be configured with at least 32 characters")
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("A dedicated SESSION_SECRET must be set in production")
-  }
-  return DEV_SESSION_SECRET
+  return secret
 }
 
 export function verifyCronSecret(provided: string | null | undefined): boolean {
