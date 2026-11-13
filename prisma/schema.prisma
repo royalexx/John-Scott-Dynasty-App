@@ -73,7 +73,7 @@ model User {
   email            String          @unique
   name             String
   handle           String          @unique
-  pin              String          @default("1234")
+  pin              String
   isCommissioner     Boolean         @default(false)
   avatarUrl        String?
   createdAt        DateTime        @default(now())
@@ -415,4 +415,10 @@ model PlayerGameStat {
   @@unique([playerId, gameId])
   @@index([gameId])
   @@index([playerId])
+}
+
+model LoginThrottle {
+  key       String   @id
+  failures  Int      @default(0)
+  resetAt   DateTime
 }

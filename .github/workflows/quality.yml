@@ -1,0 +1,88 @@
+name: Pull Request Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Build must not use the actual production database or secrets.
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/johnscott_ci
+      SESSION_SECRET: ci-only-session-signing-secret-that-is-not-used-in-production
+      CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build (no external NHL registry refresh)
+        run: npm run build
+
+  database-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-local-test-only
+          POSTGRES_DB: johnscott_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d johnscott_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgresql://ci:ci-local-test-only@127.0.0.1:5432/johnscott_e2e
+      SESSION_SECRET: ci-only-session-signing-secret-that-is-not-used-in-production
+      CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
+      SEED_EMPTY_LEAGUE: YES_I_HAVE_VERIFIED_THE_DATABASE
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Initialize disposable PostgreSQL schema
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npx prisma migrate deploy
+      - name: Seed disposable league fixture
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: npm run prisma:seed
+      - name: Verify database-backed API and deterministic rules
+        run: npx playwright test --project=chromium
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-smoke-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 3

@@ -20,11 +20,18 @@ test("players API returns players", async ({ request }) => {
   expect(body.length).toBeGreaterThan(0)
 })
 
-test("/api/cron/sync accepts the configured query secret", async ({ request }) => {
-  test.setTimeout(120_000)
-  const response = await request.get("/api/cron/sync?secret=super-secret-hockey-key-123")
-  expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual(expect.objectContaining({ success: true }))
+test("cron routes reject URL credentials without executing jobs", async ({ playwright, baseURL }) => {
+  const anonymous = await playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+  })
+  // Use a dummy value: never place a real secret in a test request URL.
+  const querySecret = "legacy-query-only-test-token"
+  for (const endpoint of ["/api/cron/sync", "/api/cron/waivers"]) {
+    const response = await anonymous.get(`${endpoint}?secret=${querySecret}`)
+    expect(response.status()).toBe(403)
+  }
+  await anonymous.dispose()
 })
 
 // Deliberately does NOT run waivers: that processes real pending claims in the shared database.
@@ -38,3 +45,22 @@ for (const endpoint of ["/api/cron/waivers", "/api/trades"]) {
     await anonymous.dispose()
   })
 }
+test("failed manager PIN attempts are limited across requests", async ({ playwright, baseURL }) => {
+  const anonymous = await playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+    extraHTTPHeaders: { "x-forwarded-for": "198.51.100.72" },
+  })
+  const data = { managerId: "11111111-1111-4111-8111-111111111112", pin: "9999" }
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await anonymous.post("/api/auth/login", { data })
+      expect(response.status()).toBe(401)
+    }
+    const limited = await anonymous.post("/api/auth/login", { data })
+    expect(limited.status()).toBe(429)
+    expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0)
+  } finally {
+    await anonymous.dispose()
+  }
+})

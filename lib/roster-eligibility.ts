@@ -20,6 +20,19 @@ export function countActiveRosterSlots(slots: ReadonlyArray<{ slot: string }>): 
   return slots.filter((entry) => !isReserveSlot(entry.slot)).length
 }
 
+/** A waiver acquisition lands on BN, even when the player being dropped is a starter. */
+export function hasRoomForBenchAcquisition(
+  slots: ReadonlyArray<{ playerId: number; slot: string }>,
+  activeLimit: number,
+  benchLimit: number,
+  dropPlayerId?: number | null,
+): boolean {
+  if (!Number.isInteger(activeLimit) || activeLimit <= 0 || !Number.isInteger(benchLimit) || benchLimit <= 0) return false
+  const retained = dropPlayerId == null ? slots : slots.filter((slot) => slot.playerId !== dropPlayerId)
+  return countActiveRosterSlots(retained) < activeLimit &&
+    retained.filter((slot) => slot.slot === "BN").length < benchLimit
+}
+
 export function positionFitsSlot(slot: string, position: string): boolean {
   const allowed = STARTER_ELIGIBILITY[slot]
   return !allowed || allowed.includes(position)
@@ -35,4 +48,28 @@ export function displacedLandingSlot(vacatedSlot: string, position: string, benc
   if (positionFitsSlot(vacatedSlot, position)) return vacatedSlot
   if (benchHasRoom && vacatedSlot !== "BN") return "BN"
   return null
+}
+
+/** Preview all traded player transfers without persisting any roster changes. */
+export function previewPlayerTransfers<S extends string>(
+  roster: ReadonlyArray<{ teamId: string; playerId: number; slot: S }>,
+  teamIds: ReadonlyArray<string>,
+  transfers: ReadonlyArray<{ fromTeamId: string; toTeamId: string; playerId: number }>,
+  receivedSlot: S,
+): Map<string, Array<{ playerId: number; slot: S }>> {
+  const result = new Map(teamIds.map((teamId) => [
+    teamId, roster.filter((row) => row.teamId === teamId).map((row) => ({ playerId: row.playerId, slot: row.slot })),
+  ] as const))
+  for (const transfer of transfers) {
+    const source = result.get(transfer.fromTeamId)
+    const destination = result.get(transfer.toTeamId)
+    if (!source || !destination || source === destination) {
+      throw new Error("Trade involves a team outside the offer.")
+    }
+    const index = source.findIndex((row) => row.playerId === transfer.playerId)
+    if (index === -1) throw new Error("Duplicate or unavailable player in this trade.")
+    source.splice(index, 1)
+    destination.push({ playerId: transfer.playerId, slot: receivedSlot })
+  }
+  return result
 }

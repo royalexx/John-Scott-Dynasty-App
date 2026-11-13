@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test"
 import { PrismaClient } from "@prisma/client"
 import { getCurrentFantasyWeek, getFantasyWeekDates } from "../lib/season-calendar"
 
-process.loadEnvFile?.(".env")
 const prisma = new PrismaClient()
 test.afterAll(async () => { await prisma.$disconnect() })
 
