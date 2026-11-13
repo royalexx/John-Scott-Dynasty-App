@@ -83,7 +83,13 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json() as { claimId?: string; teamId?: string }
     if (!body.claimId || !body.teamId) return NextResponse.json({ error: "claimId and teamId are required" }, { status: 400 })
     if (body.teamId !== session.teamId) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    const result = await prisma.waiverClaim.updateMany({ where: { id: body.claimId, teamId: body.teamId, status: ClaimStatus.PENDING }, data: { status: ClaimStatus.CANCELLED } })
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${body.teamId}))`
+      return tx.waiverClaim.updateMany({
+        where: { id: body.claimId, teamId: body.teamId, status: ClaimStatus.PENDING },
+        data: { status: ClaimStatus.CANCELLED },
+      })
+    })
     if (result.count !== 1) return NextResponse.json({ error: "Pending waiver claim not found" }, { status: 404 })
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
