@@ -63,6 +63,9 @@ test("real player portraits, shared actions, tabs and bottom sheet remain intera
 
   await page.getByRole("tab", { name: "Season", exact: true }).click()
   await expect(page.getByText("2026–27 season totals")).toBeVisible()
+  const tabs = await page.locator('[data-slot="tabs-list"]').boundingBox()
+  const panel = await page.locator('[data-slot="tabs-content"]:visible').boundingBox()
+  expect((panel?.y ?? 0), "Horizontal tabs must render above their content, not beside it").toBeGreaterThanOrEqual((tabs?.y ?? 0) + (tabs?.height ?? 0))
   await page.getByRole("button", { name: "Open sheet" }).click()
   await expect(page.getByText("Example bottom sheet")).toBeVisible()
   await page.getByRole("button", { name: "Close sheet" }).click()
