@@ -4,7 +4,7 @@ import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Position, Prisma,
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
-import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
+import { nextWaiverProcessAt, validateFaabReservation, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
 import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
@@ -98,9 +98,18 @@ export interface SubmitWaiverClaimParams {
 export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
   if (!Number.isInteger(params.bidAmount) || params.bidAmount < 0) throw new Error("Bid amount must be a non-negative integer")
   return prisma.$transaction(async (tx) => {
-    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true, rosterPositions: true } } } })
+    // Serialize submissions with claim awards and other same-team roster changes.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.teamId}))`
+    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true, rosterPositions: true, waiverSettings: true } } } })
     if (!team) throw new Error("Team not found")
-    if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
+    const settings = (team.league.waiverSettings ?? {}) as Record<string, unknown>
+    const minimum = typeof settings.minBid === "number" && Number.isInteger(settings.minBid)
+      ? settings.minBid : 0
+    const pending = await tx.waiverClaim.aggregate({
+      where: { teamId: params.teamId, status: ClaimStatus.PENDING },
+      _sum: { bidAmount: true },
+    })
+    validateFaabReservation(team.faabBalance, pending._sum.bidAmount ?? 0, params.bidAmount, minimum)
     await ensurePlayerFromRegistry(tx, params.playerToAddId)
     const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: params.playerToAddId, team: { leagueId: team.leagueId } }, select: { id: true } })
     if (alreadyRostered) throw new Error("Player is already on a league roster")
