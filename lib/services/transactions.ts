@@ -381,6 +381,29 @@ function slotCapacity(league: { rosterPositions: Prisma.JsonValue; taxiSlots: nu
   return positions[slot] ?? 0
 }
 
+/** Final-state validation: every mutation must fit all configured slots, not only the destination. */
+function assertRosterWithinCapacity(
+  league: { rosterSize: number; rosterPositions: Prisma.JsonValue; taxiSlots: number; irSlots: number },
+  roster: ReadonlyArray<{ slot: SlotType }>,
+) {
+  const counts = new Map<SlotType, number>()
+  for (const placement of roster) {
+    counts.set(placement.slot, (counts.get(placement.slot) ?? 0) + 1)
+  }
+  for (const slot of Object.values(SlotType)) {
+    const capacity = slotCapacity(league, slot)
+    if (!Number.isInteger(capacity) || capacity < 0) {
+      throw new Error(`Invalid league capacity for ${slot}`)
+    }
+    if ((counts.get(slot) ?? 0) > capacity) {
+      throw new Error(`${slot} is full (maximum ${capacity})`)
+    }
+  }
+  if (countActiveRosterSlots(roster) > league.rosterSize) {
+    throw new Error(`Active roster exceeds the ${league.rosterSize}-player limit`)
+  }
+}
+
 /**
  * Moves a player to `targetSlot`. If `targetPlayerId` is given (or the slot is full) the occupant
  * is displaced. They take the vacated slot only when their position can play it; otherwise they move
@@ -388,6 +411,8 @@ function slotCapacity(league: { rosterPositions: Prisma.JsonValue; taxiSlots: nu
  */
 export async function updateRosterPlacement(teamId: string, playerId: number, targetSlot: SlotType, targetPlayerId?: number, week?: number) {
   return prisma.$transaction(async (tx) => {
+    // Serialize simultaneous moves by the same team before reading placement state.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${teamId}))`
     const slot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId } }, include: { player: true, team: { include: { league: true } } } })
     if (!slot) throw new Error("Player is not on this roster")
     const league = slot.team.league
@@ -406,7 +431,14 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
     const occupants = await tx.rosterSlot.findMany({ where: { teamId, slot: targetSlot, id: { not: slot.id } }, include: { player: true }, orderBy: { id: "asc" } })
     let swapWith = targetPlayerId !== undefined ? await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId: targetPlayerId } }, include: { player: true } }) : null
     if (targetPlayerId !== undefined && (!swapWith || swapWith.slot !== targetSlot)) throw new Error("The player you are swapping with has moved; refresh and try again")
-    if (!swapWith && targetSlot !== SlotType.BN && occupants.length >= slotCapacity(league, targetSlot)) swapWith = occupants[0] ?? null
+    const capacity = slotCapacity(league, targetSlot)
+    if (!Number.isInteger(capacity) || capacity <= 0) throw new Error(`${targetSlot} is not an enabled roster slot`)
+    if (!swapWith && occupants.length >= capacity) {
+      // Never silently overfill the bench. Other full slots may auto-displace
+      // their first occupant for backwards compatibility with existing flows.
+      if (targetSlot === SlotType.BN) throw new Error("Bench is full. Select a valid swap.")
+      swapWith = occupants[0] ?? null
+    }
 
     if (swapWith) {
       if (!arrangingFutureWeek && (isSlotLocked(lock, swapWith.slot, swapWith.player.teamAbbrev) || isSlotLocked(lock, slot.slot, swapWith.player.teamAbbrev))) throw new Error("The target roster slot is locked")
@@ -419,6 +451,8 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
     } else {
       await tx.rosterSlot.update({ where: { id: slot.id }, data: { slot: targetSlot } })
     }
-    return tx.rosterSlot.findMany({ where: { teamId }, include: { player: true }, orderBy: { slot: "asc" } })
+    const resultingRoster = await tx.rosterSlot.findMany({ where: { teamId }, include: { player: true }, orderBy: { slot: "asc" } })
+    assertRosterWithinCapacity(league, resultingRoster)
+    return resultingRoster
   })
 }

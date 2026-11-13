@@ -1,6 +1,7 @@
 import { ActivityAction, DraftStatus, Prisma, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLeagueStandings } from "@/lib/db/leagues"
+import { DEFAULT_BENCH_CAPACITY } from "@/lib/roster-eligibility"
 
 export type DraftOrder = "LINEAR" | "SNAKE"
 
@@ -224,22 +225,42 @@ async function bestAvailablePlayer(tx: Prisma.TransactionClient, draft: LoadedDr
 }
 
 async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot: LoadedDraft["slots"][number], player: { id: number; name: string; nhlGamesPlayed: number }) {
-  const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: player.id, leagueId: draft.leagueId }, select: { id: true } })
-  let placement: SlotType | null = null
-  if (!alreadyRostered) {
-    const [league, rosterSlots] = await Promise.all([
-      tx.league.findUnique({ where: { id: draft.leagueId }, select: { rosterSize: true, taxiSlots: true, taxiMaxGames: true } }),
-      tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
-    ])
-    const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
-    const rosterCount = rosterSlots.filter((entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS).length
-    placement = league && player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
-      ? SlotType.TAXI
-      : league && rosterCount < league.rosterSize
-        ? SlotType.BN
-        : null
-    if (!placement) throw new Error("Team roster is full — cannot record draft pick without an open bench or taxi slot.")
+  // A drafted player must be transferred to the drafting team. Never consume a
+  // pick for a player already owned elsewhere (or already owned by this team).
+  const alreadyRostered = await tx.rosterSlot.findFirst({
+    where: { playerId: player.id, leagueId: draft.leagueId },
+    select: { id: true },
+  })
+  if (alreadyRostered) throw new Error("That player is already on a league roster.")
+
+  const [league, rosterSlots] = await Promise.all([
+    tx.league.findUnique({
+      where: { id: draft.leagueId },
+      select: { rosterSize: true, rosterPositions: true, taxiSlots: true, taxiMaxGames: true },
+    }),
+    tx.rosterSlot.findMany({ where: { teamId: slot.teamId }, select: { slot: true } }),
+  ])
+  if (!league) throw new Error("Draft league no longer exists.")
+
+  const positions = (league.rosterPositions ?? {}) as Record<string, number>
+  const benchCapacity = Number.isInteger(positions.BN) && positions.BN >= 0
+    ? positions.BN
+    : DEFAULT_BENCH_CAPACITY
+  const benchCount = rosterSlots.filter((entry) => entry.slot === SlotType.BN).length
+  const taxiCount = rosterSlots.filter((entry) => entry.slot === SlotType.TAXI).length
+  const activeCount = rosterSlots.filter(
+    (entry) => entry.slot !== SlotType.TAXI && entry.slot !== SlotType.IR && entry.slot !== SlotType.IR_PLUS,
+  ).length
+
+  const placement = player.nhlGamesPlayed < league.taxiMaxGames && taxiCount < league.taxiSlots
+    ? SlotType.TAXI
+    : activeCount < league.rosterSize && benchCount < benchCapacity
+      ? SlotType.BN
+      : null
+  if (!placement) {
+    throw new Error("No legal bench or taxi slot is available; free a roster slot before drafting.")
   }
+
   let claimed: { count: number }
   try {
     claimed = await tx.draftSlot.updateMany({
@@ -247,26 +268,30 @@ async function commitPick(tx: Prisma.TransactionClient, draft: LoadedDraft, slot
       data: { playerId: player.id, pickedAt: new Date() },
     })
   } catch (error: unknown) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already drafted.")
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error("That player is already drafted.")
+    }
     throw error
   }
   if (claimed.count !== 1) return false
-  if (placement) {
-    try {
-      await tx.rosterSlot.create({ data: { teamId: slot.teamId, leagueId: draft.leagueId, playerId: player.id, slot: placement } })
-    } catch (error: unknown) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already on a league roster.")
-      throw error
-    }
-    await tx.activityLog.create({
-      data: {
-        leagueId: draft.leagueId,
-        teamId: slot.teamId,
-        action: ActivityAction.ADD,
-        details: { playerId: player.id, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
-      },
+  try {
+    await tx.rosterSlot.create({
+      data: { teamId: slot.teamId, leagueId: draft.leagueId, playerId: player.id, slot: placement },
     })
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error("That player is already on a league roster.")
+    }
+    throw error
   }
+  await tx.activityLog.create({
+    data: {
+      leagueId: draft.leagueId,
+      teamId: slot.teamId,
+      action: ActivityAction.ADD,
+      details: { playerId: player.id, playerName: player.name, slot: placement, pickNumber: slot.pickNumber },
+    },
+  })
   const remaining = draft.slots.filter((item) => item.playerId == null && item.id !== slot.id)
   await tx.draft.update({
     where: { id: draft.id },
