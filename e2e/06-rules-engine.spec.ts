@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test"
 import { getFantasyWeekDates, getFantasyWeekForDate, getCurrentFantasyWeek } from "../lib/season-calendar"
 import { computeStandings, isCompletedMatchup } from "../lib/standings"
 import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type LockContext } from "../lib/lineup-lock"
-import { displacedLandingSlot, positionFitsSlot } from "../lib/roster-eligibility"
+import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 
@@ -171,6 +171,51 @@ test.describe("roster swap eligibility", () => {
     expect(displacedLandingSlot("C", "C", false)).toBe("C")
     expect(displacedLandingSlot("F", "LW", false)).toBe("F")
     expect(displacedLandingSlot("W", "C", true)).toBe("BN")
+  })
+})
+
+test.describe("trade roster projection", () => {
+  const roster = [
+    { teamId: "A", playerId: 1, slot: "C" },
+    { teamId: "A", playerId: 2, slot: "BN" },
+    { teamId: "B", playerId: 3, slot: "D" },
+  ]
+  test("incoming players occupy bench; outgoing players are removed", () => {
+    const result = previewPlayerTransfers(roster, ["A", "B"], [
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+      { fromTeamId: "B", toTeamId: "A", playerId: 3 },
+    ], "BN")
+    expect(result.get("A")).toEqual([{ playerId: 2, slot: "BN" }, { playerId: 3, slot: "BN" }])
+    expect(result.get("B")).toEqual([{ playerId: 1, slot: "BN" }])
+    expect(roster[0].slot).toBe("C") // projection must not mutate the source
+  })
+  test("rejects duplicate player transfers before any database write", () => {
+    expect(() => previewPlayerTransfers(roster, ["A", "B"], [
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+    ], "BN")).toThrow(/Duplicate or unavailable/)
+  })
+})
+
+test.describe("waiver bench acquisition", () => {
+  const players = (slots: string[]) => slots.map((slot, index) => ({ playerId: index + 1, slot }))
+
+  test("rejects a full bench even when active roster capacity remains", () => {
+    const roster = players(["BN", "BN", "C", "W"])
+    expect(hasRoomForBenchAcquisition(roster, 6, 2)).toBe(false)
+    expect(hasRoomForBenchAcquisition(roster, 6, 2, 3)).toBe(false) // dropping a starter frees no bench spot
+    expect(hasRoomForBenchAcquisition(roster, 6, 2, 1)).toBe(true)
+  })
+
+  test("checks active roster cap, excluding the reserve slots", () => {
+    const roster = players(["C", "BN", "TAXI", "IR"])
+    expect(hasRoomForBenchAcquisition(roster, 2, 2)).toBe(false)
+    expect(hasRoomForBenchAcquisition(roster, 2, 2, 1)).toBe(true)
+    expect(hasRoomForBenchAcquisition(roster, 2, 2, 3)).toBe(false)
+  })
+
+  test("rejects invalid bench capacity configuration", () => {
+    expect(hasRoomForBenchAcquisition(players([]), 27, 0)).toBe(false)
   })
 })
 

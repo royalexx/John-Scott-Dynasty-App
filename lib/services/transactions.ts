@@ -5,7 +5,7 @@ import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
-import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, isReserveSlot, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
+import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
@@ -98,15 +98,9 @@ export interface SubmitWaiverClaimParams {
 export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
   if (!Number.isInteger(params.bidAmount) || params.bidAmount < 0) throw new Error("Bid amount must be a non-negative integer")
   return prisma.$transaction(async (tx) => {
-    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true } } } })
+    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true, rosterPositions: true } } } })
     if (!team) throw new Error("Team not found")
     if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
-    // A drop is optional while the team has an open roster spot; it is only required when the roster is full.
-    if (params.playerToDropId == null) {
-      const rosterSlots = await tx.rosterSlot.findMany({ where: { teamId: params.teamId }, select: { slot: true } })
-      if (countActiveRosterSlots(rosterSlots) >= team.league.rosterSize) throw new Error("Roster is full. You must select a player to drop.")
-    }
-
     await ensurePlayerFromRegistry(tx, params.playerToAddId)
     const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: params.playerToAddId, team: { leagueId: team.leagueId } }, select: { id: true } })
     if (alreadyRostered) throw new Error("Player is already on a league roster")
@@ -116,6 +110,15 @@ export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
         select: { slot: true },
       })
       if (!dropSlot) throw new Error("Dropped player must be on your roster")
+    }
+    const currentSlots = await tx.rosterSlot.findMany({
+      where: { teamId: params.teamId }, select: { playerId: true, slot: true },
+    })
+    const positions = (team.league.rosterPositions ?? {}) as Record<string, number>
+    if (!hasRoomForBenchAcquisition(
+      currentSlots, team.league.rosterSize, positions.BN ?? DEFAULT_BENCH_CAPACITY, params.playerToDropId,
+    )) {
+      throw new Error("A bench slot and an active roster spot must be available after the selected drop.")
     }
     return tx.waiverClaim.create({
       data: {
@@ -143,6 +146,8 @@ export async function processWaiversForLeague(leagueId: string, now: Date = new 
     let processed = 0
     for (const claim of claims) {
       if (claimedPlayers.has(claim.playerToAddId)) continue
+      // Coordinate awards with interactive roster moves for this team.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${claim.teamId}))`
       const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true } })
       if (!team || team.leagueId !== leagueId) {
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
@@ -160,13 +165,17 @@ export async function processWaiversForLeague(leagueId: string, now: Date = new 
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.DROP_MISSING } })
         continue
       }
-      if (!dropSlot) {
-        const rosterSlots = await tx.rosterSlot.findMany({ where: { teamId: claim.teamId }, select: { slot: true } })
-        const league = await tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true } })
-        if (!league || countActiveRosterSlots(rosterSlots) >= league.rosterSize) {
-          await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ROSTER_FULL } })
-          continue
-        }
+      // Recheck at award time. Claims made earlier may no longer have capacity.
+      const [rosterSlots, league] = await Promise.all([
+        tx.rosterSlot.findMany({ where: { teamId: claim.teamId }, select: { playerId: true, slot: true } }),
+        tx.league.findUnique({ where: { id: leagueId }, select: { rosterSize: true, rosterPositions: true } }),
+      ])
+      const rosterPositions = (league?.rosterPositions ?? {}) as Record<string, number>
+      if (!league || !hasRoomForBenchAcquisition(
+        rosterSlots, league.rosterSize, rosterPositions.BN ?? DEFAULT_BENCH_CAPACITY, claim.playerToDropId,
+      )) {
+        await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED, resolution: WAIVER_RESOLUTIONS.ROSTER_FULL } })
+        continue
       }
 
       // A failed roster insert aborts the Postgres transaction. The savepoint lets this claim fail without undoing earlier awards.
@@ -289,11 +298,17 @@ export async function createTradeOffer(params: {
 
 export async function executeTrade(tradeOfferId: string) {
   const result = await prisma.$transaction(async (tx) => {
+    // Do not let two concurrent acceptances process the same offer twice.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tradeOfferId}))`
     const offer = await tx.tradeOffer.findUnique({
       where: { id: tradeOfferId },
-      include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true, rosterSize: true, tradeSettings: true } } },
+      include: { assets: true, league: { select: { currentSeason: true, lineupLockMode: true, rosterSize: true, rosterPositions: true, taxiSlots: true, irSlots: true, tradeSettings: true } } },
     })
     if (!offer || offer.status !== TradeStatus.PENDING) throw new Error("Trade offer is not pending")
+    // Lock both teams in stable order, matching roster moves and waiver awards.
+    for (const teamId of [offer.proposingTeamId, offer.receivingTeamId].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${teamId}))`
+    }
     const teams = await tx.team.findMany({
       where: { id: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
       select: { id: true, name: true, leagueId: true, faabBalance: true },
@@ -330,16 +345,22 @@ export async function executeTrade(tradeOfferId: string) {
       where: { teamId: { in: [offer.proposingTeamId, offer.receivingTeamId] } },
       select: { teamId: true, playerId: true, slot: true },
     })
-    const activeCount = new Map(teams.map((team) => [team.id, countActiveRosterSlots(rosterSlots.filter((slot) => slot.teamId === team.id))]))
-    for (const asset of offer.assets) {
-      if (asset.assetType !== AssetType.PLAYER || asset.playerId == null) continue
-      const current = rosterSlots.find((slot) => slot.teamId === asset.fromTeamId && slot.playerId === asset.playerId)
-      if (current && !isReserveSlot(current.slot)) activeCount.set(asset.fromTeamId, (activeCount.get(asset.fromTeamId) ?? 0) - 1)
-      activeCount.set(asset.toTeamId, (activeCount.get(asset.toTeamId) ?? 0) + 1)
-    }
+    // Every incoming traded player is placed on BN, regardless of their old slot.
+    // Simulate both sides of the trade before writing anything so swaps are
+    // validated simultaneously, not by temporary intermediate roster state.
+    const resulting = previewPlayerTransfers(
+      rosterSlots,
+      teams.map((team) => team.id),
+      offer.assets.filter((asset) => asset.assetType === AssetType.PLAYER && asset.playerId != null).map((asset) => ({
+        fromTeamId: asset.fromTeamId, toTeamId: asset.toTeamId, playerId: asset.playerId as number,
+      })),
+      SlotType.BN,
+    )
     for (const team of teams) {
-      if ((activeCount.get(team.id) ?? 0) > offer.league.rosterSize) {
-        throw new Error(`${team.name} would be over the ${offer.league.rosterSize}-player roster limit.`)
+      try {
+        assertRosterWithinCapacity(offer.league, resulting.get(team.id) ?? [])
+      } catch (error: unknown) {
+        throw new Error(`${team.name}: ${error instanceof Error ? error.message : "Invalid roster after trade"}`)
       }
     }
     for (const asset of offer.assets) {
