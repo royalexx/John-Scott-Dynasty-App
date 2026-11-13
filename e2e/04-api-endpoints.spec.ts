@@ -20,11 +20,18 @@ test("players API returns players", async ({ request }) => {
   expect(body.length).toBeGreaterThan(0)
 })
 
-test("/api/cron/sync accepts the configured query secret", async ({ request }) => {
-  test.setTimeout(120_000)
-  const response = await request.get("/api/cron/sync?secret=super-secret-hockey-key-123")
-  expect(response.status()).toBe(200)
-  expect(await response.json()).toEqual(expect.objectContaining({ success: true }))
+test("cron routes reject URL credentials without executing jobs", async ({ playwright, baseURL }) => {
+  const anonymous = await playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+  })
+  // Use a dummy value: never place a real secret in a test request URL.
+  const querySecret = "legacy-query-only-test-token"
+  for (const endpoint of ["/api/cron/sync", "/api/cron/waivers"]) {
+    const response = await anonymous.get(`${endpoint}?secret=${querySecret}`)
+    expect(response.status()).toBe(403)
+  }
+  await anonymous.dispose()
 })
 
 // Deliberately does NOT run waivers: that processes real pending claims in the shared database.
