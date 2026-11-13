@@ -155,14 +155,15 @@ e2e/                         Playwright specs
 
 ## Tests
 
-Playwright starts `npm run dev` unless one is already running outside CI. The setup project signs in as Montreal Monarchs with PIN `1234` and writes `e2e/.auth/manager.json`. Specs run in Chromium at 430×932.
+Playwright always starts its own Next.js server on `http://localhost:3100` and refuses to reuse an existing application server. The setup project signs in to the **disposable test league** as Montreal Monarchs using the test PIN `1234` and stores its authenticated browser state at `e2e/.auth/manager.json`. Chromium specs use a 430×932 viewport.
 
 ```bash
+export TEST_DATABASE_URL="postgresql://johnscott:johnscott@127.0.0.1:5432/johnscott_e2e"
 npm run test:e2e
 npx tsc --noEmit
 ```
 
-The database must already be seeded. Specs hit the real league, including roster moves, trades, and waivers.
+The E2E suite requires a separately initialized local test database; some scenarios intentionally mutate test data. Never point the suite at a shared or hosted league. GitHub Actions provisions and destroys an independent PostgreSQL instance for smoke tests.
 
 ## Safe end-to-end testing
 
