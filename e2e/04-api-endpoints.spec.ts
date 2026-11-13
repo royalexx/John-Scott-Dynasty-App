@@ -45,3 +45,22 @@ for (const endpoint of ["/api/cron/waivers", "/api/trades"]) {
     await anonymous.dispose()
   })
 }
+test("failed manager PIN attempts are limited across requests", async ({ playwright, baseURL }) => {
+  const anonymous = await playwright.request.newContext({
+    baseURL,
+    storageState: { cookies: [], origins: [] },
+    extraHTTPHeaders: { "x-forwarded-for": "198.51.100.72" },
+  })
+  const data = { managerId: "11111111-1111-4111-8111-111111111112", pin: "9999" }
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await anonymous.post("/api/auth/login", { data })
+      expect(response.status()).toBe(401)
+    }
+    const limited = await anonymous.post("/api/auth/login", { data })
+    expect(limited.status()).toBe(429)
+    expect(Number(limited.headers()["retry-after"])).toBeGreaterThan(0)
+  } finally {
+    await anonymous.dispose()
+  }
+})
