@@ -168,3 +168,32 @@ test("Phase 6: draft player and queue tabs render real portraits without mutatio
   await capture(page, info, "phase-06-draft-queue")
   expect(writes).toEqual([])
 })
+
+for (const width of [320, 390]) {
+  test(`Phase 6: preview-only trade fixture completes all three steps at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: width === 320 ? 700 : 844 })
+    const attemptedWrites: string[] = []
+    page.on("request", request => {
+      if (request.method() !== "GET" && /\\/api\\/(trades|waivers|draft)/.test(request.url())) attemptedWrites.push(request.url())
+    })
+    await page.goto("/ui-design-system")
+    await page.getByRole("button", { name: "Review trade workflow" }).click()
+    const dialog = page.getByRole("dialog").last()
+    const progress = dialog.getByRole("progressbar", { name: "Trade builder step" })
+    await expect(progress).toHaveAttribute("aria-valuenow", "1")
+    await dialog.getByRole("button", { name: /Sample Opponent/ }).click()
+    await expect(progress).toHaveAttribute("aria-valuenow", "2")
+    const player = dialog.getByRole("checkbox", { name: /^Select / }).first()
+    await player.check()
+    await expect(player).toBeChecked()
+    await expect(dialog.locator('[data-slot="player-portrait"] img').first()).toHaveAttribute("src", /\\/api\\/headshot|assets\\.nhle\\.com/)
+    await capture(page, info, `phase-06-trade-assets-${width}`)
+    await dialog.getByRole("button", { name: "Review proposal" }).click()
+    await expect(progress).toHaveAttribute("aria-valuenow", "3")
+    await expect(dialog.getByRole("textbox", { name: "Optional trade note" })).toBeVisible()
+    await capture(page, info, `phase-06-trade-review-${width}`)
+    await dialog.getByRole("button", { name: "Send trade" }).click()
+    await expect(page.getByTestId("gallery-action-feedback")).toHaveText("Preview only · No trade saved")
+    expect(attemptedWrites).toEqual([])
+  })
+}
