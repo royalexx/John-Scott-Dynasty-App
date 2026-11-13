@@ -121,19 +121,19 @@ export function TradeBuilderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="mx-auto flex h-[90vh] max-h-[90vh] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none" showCloseButton={false}>
+      <DialogContent className="mx-auto flex h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none" showCloseButton={false}>
         <div className="flex shrink-0 items-center justify-between border-b border-[#172338] px-4 py-3">
           <div className="flex items-center gap-2">
-            {step > 1 && <button type="button" onClick={() => setStep((step - 1) as Step)} aria-label="Previous step" className="rounded-full p-1.5 text-[#8ba0c7] hover:bg-[#172338]"><ArrowLeft className="size-4" /></button>}
+            {step > 1 && <button type="button" onClick={() => setStep((step - 1) as Step)} aria-label="Previous step" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><ArrowLeft className="size-4" /></button>}
             <div>
               <DialogTitle className="text-base font-black text-white">Trade Builder</DialogTitle>
               <DialogDescription className="mt-1 text-xs text-[#5e7090]">Step {step} of 3 · {step === 1 ? "Choose a trade partner" : step === 2 ? "Select assets" : "Review and send"}</DialogDescription>
             </div>
           </div>
-          <button type="button" onClick={close} aria-label="Close trade builder" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><X className="size-4" /></button>
+          <button type="button" onClick={close} aria-label="Close trade builder" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><X className="size-4" /></button>
         </div>
 
-        <div className="flex shrink-0 gap-1 px-4 pt-3" aria-label="Trade progress">
+        <div role="progressbar" aria-label="Trade builder step" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} className="flex shrink-0 gap-1 px-4 pt-3">
           {[1, 2, 3].map((item) => <div key={item} className={cn("h-1 flex-1 rounded-full", item <= step ? "bg-[#19ffff]" : "bg-[#1b2842]")} />)}
         </div>
 
@@ -174,14 +174,14 @@ export function TradeBuilderDialog({
                 <ReviewColumn title={`You receive · ${partner?.name}`} assets={proposal.receiving} />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You send: ${proposal.faabFrom ?? 0} FAAB</div><div className="rounded-lg bg-[#101829] p-3 text-amber-300">You receive: ${proposal.faabTo ?? 0} FAAB</div></div>
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note to the manager (optional)" className="mt-3 min-h-16 w-full rounded-lg border border-[#263858] bg-[#101829] p-3 text-xs text-white outline-none placeholder:text-[#5e7090]" />
+              <textarea aria-label="Optional trade note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note to the manager (optional)" className="mt-3 min-h-16 w-full rounded-lg border border-[#263858] bg-[#101829] p-3 text-xs text-white outline-none placeholder:text-[#5e7090]" />
               <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-200">⚠️ You will have {team.players.filter((player) => !["IR", "IR_PLUS", "TAXI"].includes(player.slot)).length - proposal.offering.filter((asset) => asset.kind === "player" && !["IR", "IR_PLUS", "TAXI"].includes(asset.player.slot)).length + proposal.receiving.filter((asset) => asset.kind === "player" && !["IR", "IR_PLUS", "TAXI"].includes(asset.player.slot)).length}/27 players if accepted.</div>
               {!proposal.offering.length && !proposal.receiving.length && <div className="mt-3 flex gap-2 rounded-lg bg-[#172338] p-3 text-xs text-[#8ba0c7]"><CircleHelp className="size-4 shrink-0 text-[#19ffff]" />Add at least one asset to make a trade.</div>}
             </section>
           )}
         </div>
 
-        <div className="shrink-0 flex gap-2 border-t border-[#1a263d] bg-[#070a12] p-4">
+        <div className="shrink-0 flex gap-2 border-t border-[#1a263d] bg-[#070a12] px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3">
           {step === 1 && <button type="button" disabled={!partnerId} onClick={() => setStep(2)} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Choose assets <ChevronRight className="size-4" /></button>}
           {step === 2 && <div className="flex w-full flex-col gap-2"><p className="text-center text-xs font-bold text-[#8ba0c7]">Sending {offering.length} · Receiving {receiving.length}</p><button type="button" disabled={!partner || (!offering.length && !receiving.length)} onClick={() => setStep(3)} className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Review proposal <ChevronRight className="size-4" /></button></div>}
           {step === 3 && <button type="button" disabled={!proposal || (!proposal.offering.length && !proposal.receiving.length)} onClick={() => { if (proposal) { onSendTrade(proposal); close() } }} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-[#19ffff] text-sm font-bold text-[#080c14] disabled:opacity-40">Send trade <Handshake className="size-4" /></button>}
@@ -231,9 +231,9 @@ function AssetList({ title, owner, selected, side, onToggle, onPlayerClick, faab
   return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto overscroll-contain"><div className="sticky top-0 z-20 mb-2 shrink-0 border-b border-[#1a263d] bg-[#070a12] pb-2 pt-1"><div className={cn("flex items-center gap-1 text-xs font-black uppercase tracking-wider", receive ? "text-rose-400" : "text-[#19ffff]")}><TeamAvatar team={owner} /><span className="truncate">{title}</span></div><div className="flex items-center justify-between gap-1"><p className="truncate text-xs font-bold text-white">{owner.name}</p><span className="shrink-0 rounded bg-[#172338] px-1.5 py-0.5 text-xs text-[#8ba0c7]">{assetCount} selected</span></div></div>
     {groups.map(([label, players]) => <section key={label}><SectionHeader label={label} count={players.length} />{players.length ? <div className="space-y-1.5">{players.map((player) => <CompactTradePlayerRow key={player.id} player={player} selected={selected.includes(player.id)} owner={owner} onToggle={() => onToggle(player.id, side)} onPlayerClick={onPlayerClick} />)}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}</section>)}
     <SectionHeader label="DRAFT PICKS" count={picks.length} />
-    {picks.length ? <div className="grid grid-cols-1 gap-1 px-1 py-1">{picks.map((pick) => { const checked = selected.includes(pick.id); return <button type="button" key={pick.id} onClick={() => onToggle(pick.id, side)} className={cn("flex items-center justify-between rounded border p-1.5 text-xs font-bold transition-colors", checked ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7] hover:border-[#2a3f66]")}>{pick.label}<span>{checked ? "✓" : ""}</span></button> })}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}
+    {picks.length ? <div className="grid grid-cols-1 gap-1 px-1 py-1">{picks.map((pick) => { const checked = selected.includes(pick.id); return <button type="button" key={pick.id} onClick={() => onToggle(pick.id, side)} aria-pressed={checked} className={cn("flex min-h-11 items-center justify-between rounded border px-2 py-1.5 text-xs font-bold transition-colors", checked ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7] hover:border-[#2a3f66]")}>{pick.label}<span>{checked ? "✓" : ""}</span></button> })}</div> : <p className="px-1.5 py-1 text-xs italic text-[#3e4c63]">None</p>}
     <SectionHeader label="FAAB BUDGET" count={owner.faabAvailable ?? 100} />
-    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-xs font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="w-10 bg-transparent py-1 text-right text-xs outline-none" /></span></label><p className="mt-1 text-xs text-[#5e7090]">${owner.faabAvailable ?? 100} available</p>{(owner.committedFaab ?? 0) > 0 && <p className="mt-1 text-xs text-[#8ba0c7]">${owner.committedFaab} FAAB committed to pending claims</p>}</div>
+    <div className="mx-1 mt-1 rounded-lg border border-[#16233b] bg-[#0a0f1a] p-2"><label className="flex items-center justify-between gap-1 text-xs font-bold text-[#8ba0c7]">FAAB Included <span className="flex items-center border border-[#263858] bg-[#101829] px-1.5 text-white">$<input type="number" min={0} max={owner.faabAvailable ?? 100} value={faab} onChange={(event) => onFaabChange(Math.max(0, Math.min(owner.faabAvailable ?? 100, Number(event.target.value) || 0)))} className="min-h-11 w-10 bg-transparent py-1 text-right text-xs outline-none focus-visible:outline-2 focus-visible:outline-ring" /></span></label><p className="mt-1 text-xs text-[#5e7090]">${owner.faabAvailable ?? 100} available</p>{(owner.committedFaab ?? 0) > 0 && <p className="mt-1 text-xs text-[#8ba0c7]">${owner.committedFaab} FAAB committed to pending claims</p>}</div>
   </div>
 }
 

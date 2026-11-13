@@ -73,6 +73,7 @@ export function PlayerDetailDialog({
 }) {
   const [tab, setTab] = useState<Tab>("summary")
   const [news, setNews] = useState<PlayerNews[]>([])
+  useEffect(() => { if (open) setTab("summary") }, [open, player?.name])
   useEffect(() => {
     if (!player || !open) return
     fetch(`/api/news?player=${encodeURIComponent(player.name)}`, { cache: "no-store" })
@@ -99,14 +100,14 @@ export function PlayerDetailDialog({
 
   return (
     <Sheet open={open} onOpenChange={(value) => { if (!value) { setTab("summary"); onOpenChange(false) } }}>
-      <SheetContent side="bottom" spring="gentle" className="mx-auto flex h-[92vh] max-h-[92vh] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none">
+      <SheetContent side="bottom" spring="gentle" className="mx-auto flex h-[92dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none">
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[#2a3548]" />
         <header className="flex shrink-0 items-center justify-between px-2 py-1">
-          <button type="button" onClick={() => onOpenChange(false)} aria-label="Close player" className="rounded-full p-2 text-[#8ba0c7] active:bg-[#172338]">
+          <button type="button" onClick={() => { setTab("summary"); onOpenChange(false) }} aria-label="Close player" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">
             <X className="size-5" />
           </button>
           {player.owned && onToggleTradeBlock && (
-            <button type="button" onClick={() => onToggleTradeBlock(player)} className={cn("rounded-full px-3 py-1.5 text-xs font-bold", tradeBlockActive ? "bg-[#19ffff]/15 text-[#19ffff]" : "text-[#8ba0c7]")}>
+            <button type="button" onClick={() => onToggleTradeBlock(player)} aria-pressed={Boolean(tradeBlockActive)} className={cn("min-h-11 rounded-full px-3 py-2 text-xs font-bold focus-visible:outline-2 focus-visible:outline-ring", tradeBlockActive ? "bg-[#19ffff]/15 text-[#19ffff]" : "text-[#8ba0c7]")}>
               {tradeBlockActive ? "On block" : "Trade block"}
             </button>
           )}
@@ -137,7 +138,7 @@ export function PlayerDetailDialog({
 
         <nav className="flex shrink-0 border-b border-[#172338]" aria-label="Player sections">
           {tabs.map((item) => (
-            <button key={item} type="button" onClick={() => setTab(item)} className={cn("relative flex-1 py-3 text-[13px] font-bold", tab === item ? "text-white" : "text-[#5e7090]")}>
+            <button key={item} type="button" aria-pressed={tab === item} onClick={() => setTab(item)} className={cn("relative min-h-11 flex-1 text-[13px] font-bold focus-visible:outline-2 focus-visible:outline-ring", tab === item ? "text-foreground" : "text-text-secondary hover:bg-surface-hover")}>
               {tabLabel[item]}
               {tab === item && <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-[#19ffff]" />}
             </button>

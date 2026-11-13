@@ -69,9 +69,9 @@ function Stepper({ label, hint, value, onChange, min = 0, max = 999, step = 1, d
     <div className={cn("flex items-center justify-between gap-3 rounded-xl border border-[#1c2c48] bg-[#0a1120] px-3 py-2", disabled && "opacity-50")}>
       <div className="min-w-0"><p className="truncate text-xs font-bold text-white">{label}</p>{hint && <p className="truncate text-xs text-[#5e7090]">{hint}</p>}</div>
       <div className="flex shrink-0 items-center gap-1">
-        <button type="button" aria-label={`Decrease ${label}`} onClick={() => onChange(clamp(value - step))} disabled={disabled || value <= min} className="flex size-7 items-center justify-center rounded-full bg-[#172338] text-[#8ba0c7] transition active:scale-90 disabled:opacity-30"><Minus className="size-3.5" /></button>
-        <input aria-label={label} type="number" inputMode="decimal" step={step} disabled={disabled} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(clamp(Number(event.target.value)))} className="w-14 rounded-md bg-transparent py-1 text-center text-sm font-black tabular-nums text-[#19ffff] outline-none focus:bg-[#172338] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed" />
-        <button type="button" aria-label={`Increase ${label}`} onClick={() => onChange(clamp(value + step))} disabled={disabled || value >= max} className="flex size-7 items-center justify-center rounded-full bg-[#172338] text-[#8ba0c7] transition active:scale-90 disabled:opacity-30"><Plus className="size-3.5" /></button>
+        <button type="button" aria-label={`Decrease ${label}`} onClick={() => onChange(clamp(value - step))} disabled={disabled || value <= min} className="ui-touch-target flex shrink-0 items-center justify-center rounded-lg bg-surface-raised text-text-secondary transition hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30"><Minus className="size-3.5" /></button>
+        <input aria-label={label} type="number" inputMode="decimal" step={step} disabled={disabled} value={Number.isFinite(value) ? value : 0} onChange={(event) => onChange(clamp(Number(event.target.value)))} className="min-h-11 w-14 rounded-md bg-transparent py-1 text-center text-sm font-black tabular-nums text-brand outline-none focus-visible:outline-2 focus-visible:outline-ring focus:bg-[#172338] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none disabled:cursor-not-allowed" />
+        <button type="button" aria-label={`Increase ${label}`} onClick={() => onChange(clamp(value + step))} disabled={disabled || value >= max} className="ui-touch-target flex shrink-0 items-center justify-center rounded-lg bg-surface-raised text-text-secondary transition hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30"><Plus className="size-3.5" /></button>
       </div>
     </div>
   )
@@ -82,7 +82,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
     <div className="rounded-xl border border-[#1c2c48] bg-[#0a1120] p-2">
       <p className="px-1 pb-1.5 text-xs font-bold text-white">{label}</p>
       <div className="flex gap-1" role="radiogroup" aria-label={label}>
-        {options.map((option) => <button key={option.value} type="button" role="radio" aria-checked={value === option.value} onClick={() => onChange(option.value)} className={cn("flex-1 rounded-lg px-2 py-2 text-xs font-black transition", value === option.value ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{option.label}</button>)}
+        {options.map((option) => <button key={option.value} type="button" role="radio" aria-checked={value === option.value} onClick={() => onChange(option.value)} className={cn("min-h-11 flex-1 rounded-lg px-2 py-2 text-xs font-black transition focus-visible:outline-2 focus-visible:outline-ring", value === option.value ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{option.label}</button>)}
       </div>
     </div>
   )
@@ -90,7 +90,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
 
 function Toggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (value: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#1c2c48] bg-[#0a1120] px-3 py-2.5 text-left">
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-[#1c2c48] bg-[#0a1120] px-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-ring">
       <span><span className="block text-xs font-bold text-white">{label}</span>{hint && <span className="block text-xs text-[#5e7090]">{hint}</span>}</span>
       <span className={cn("relative h-5 w-9 shrink-0 rounded-full transition", checked ? "bg-amber-400" : "bg-[#263858]")}><span className={cn("absolute top-0.5 size-4 rounded-full bg-white transition-all", checked ? "left-[18px]" : "left-0.5")} /></span>
     </button>
@@ -207,7 +207,7 @@ export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boole
           {dirty && <span className="rounded-full bg-amber-400/15 px-2 py-1 text-xs font-black uppercase text-amber-300">Unsaved</span>}
         </div>
         <div role="tablist" className="flex shrink-0 gap-1 overflow-x-auto border-b border-[#172338] p-2">
-          {tabs.map((item) => <button key={item} role="tab" aria-selected={tab === item} type="button" onClick={() => setTab(item)} className={cn("shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition", tab === item ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{item}</button>)}
+          {tabs.map((item) => <button key={item} role="tab" aria-selected={tab === item} type="button" onClick={() => setTab(item)} className={cn("min-h-11 shrink-0 rounded-full px-3.5 py-2 text-xs font-bold transition focus-visible:outline-2 focus-visible:outline-ring", tab === item ? "bg-amber-400 text-[#080c14]" : "bg-[#172338] text-[#8ba0c7] hover:text-white")}>{item}</button>)}
         </div>
 
         <div className={cn("min-h-0 flex-1 space-y-5 overflow-y-auto p-4", loading && "pointer-events-none opacity-60")}>
@@ -277,8 +277,8 @@ export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boole
           {status && <p role="status" className={cn("text-xs font-bold", status.tone === "error" ? "text-rose-400" : status.tone === "ok" ? "text-emerald-400" : "text-[#8ba0c7]")}>{status.text}</p>}
           {!status && problems.length > 0 && <p role="status" className="text-xs font-bold text-rose-400">{problems[0]}</p>}
           <div className="flex gap-2">
-            <button type="button" disabled={!dirty || saving} onClick={() => { setSettings(saved); setStatus(null) }} className="flex items-center justify-center gap-1.5 rounded-full border border-[#263858] px-4 py-2.5 text-xs font-bold text-[#8ba0c7] transition enabled:hover:text-white disabled:opacity-30"><RotateCcw className="size-3.5" />Discard</button>
-            <button type="button" disabled={!dirty || saving || problems.length > 0} onClick={() => void save()} className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-amber-400 py-2.5 text-xs font-black text-[#080c14] transition active:scale-[0.98] disabled:opacity-40">{status?.tone === "ok" ? <Check className="size-4" /> : <Save className="size-4" />}Save Rulebook Settings</button>
+            <button type="button" disabled={!dirty || saving} onClick={() => { setSettings(saved); setStatus(null) }} className="flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-[#263858] px-4 py-2.5 text-xs font-bold text-[#8ba0c7] transition enabled:hover:text-white disabled:opacity-30"><RotateCcw className="size-3.5" />Discard</button>
+            <button type="button" disabled={!dirty || saving || problems.length > 0} onClick={() => void save()} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-amber-400 py-2.5 text-xs font-black text-[#080c14] transition active:scale-[0.98] disabled:opacity-40">{status?.tone === "ok" ? <Check className="size-4" /> : <Save className="size-4" />}Save Rulebook Settings</button>
           </div>
         </div>
       </SheetContent>

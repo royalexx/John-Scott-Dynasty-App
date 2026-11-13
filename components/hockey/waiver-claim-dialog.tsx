@@ -36,8 +36,10 @@ function DropRow({ player, selected, onSelect }: { player: Player; selected: boo
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={selected}
+      aria-label={`Drop ${player.name}${selected ? " (selected)" : ""}`}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2.5 border-b border-[#172338] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-[#0f1828]/80",
+        "flex min-h-12 w-full cursor-pointer items-center gap-2.5 border-b border-border px-3 py-2.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring",
         selected && "bg-[#0c2231]"
       )}
     >
@@ -174,7 +176,7 @@ export function WaiverClaimDialog({
       <SheetContent
         side="bottom"
         spring="snappy"
-        className="mx-auto flex h-[90vh] max-h-[90vh] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none"
+        className="mx-auto flex h-[90dvh] max-h-[calc(100dvh-env(safe-area-inset-top))] max-w-[430px] flex-col rounded-t-3xl border-t border-[#1a263d] bg-[#070a12] p-0 text-white outline-none"
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[#5e7090]" />
 
@@ -182,7 +184,7 @@ export function WaiverClaimDialog({
           <>
             <header className="flex shrink-0 items-center justify-between border-b border-[#172338] px-4 py-3">
               <div className="flex items-center gap-2">
-                <span className="flex size-9 items-center justify-center rounded-full bg-[#1b2842]">🏒</span>
+                <PlayerPortrait player={player} name={player.name} className="size-10 shrink-0" />
                 <div>
                   <h2 className="text-sm font-black">+ ADD {player.name}</h2>
                   <p className="text-xs text-[#5e7090]">
@@ -190,7 +192,7 @@ export function WaiverClaimDialog({
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={close} aria-label="Close">
+              <button type="button" onClick={close} aria-label="Close waiver claim" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">
                 <X className="size-5 text-[#8ba0c7]" />
               </button>
             </header>
@@ -209,7 +211,7 @@ export function WaiverClaimDialog({
                   onChange={(e) =>
                     setBid(Math.max(0, Math.min(userFaab, Number(e.target.value) || 0)))
                   }
-                  className="w-20 bg-transparent py-2 text-center text-2xl font-black text-white outline-none"
+                  className="min-h-11 w-20 bg-transparent py-2 text-center text-2xl font-black text-white outline-none focus-visible:outline-2 focus-visible:outline-ring"
                 />
               </div>
               <p className="mt-1 text-xs text-[#5e7090]">${userFaab} remaining</p>
@@ -223,7 +225,7 @@ export function WaiverClaimDialog({
             </div>
 
             <div className="px-3 pb-3">
-              {!rosterFull && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-left text-xs font-bold text-emerald-300">+ Do not drop any player ({openSpots} open roster spot{openSpots === 1 ? "" : "s"})</button>}
+              {!rosterFull && <button type="button" onClick={() => { setDropId(null); setStep(2) }} className="mb-2 min-h-11 w-full rounded-lg border border-success/30 bg-success-surface px-3 py-2.5 text-left text-xs font-bold text-success focus-visible:outline-2 focus-visible:outline-ring">+ Do not drop any player ({openSpots} open roster spot{openSpots === 1 ? "" : "s"})</button>}
               <p className="mt-4 px-1 text-xs font-black uppercase tracking-wider text-[#5e7090]">
                 Select Player to Drop
               </p>
@@ -243,7 +245,7 @@ export function WaiverClaimDialog({
             </div>
             </div>
 
-            <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] p-4">
+            <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3">
               <button
                 type="button"
                 disabled={rosterFull && !dropped}
@@ -256,12 +258,13 @@ export function WaiverClaimDialog({
           </>
         ) : (
           <>
-            <header className="flex shrink-0 items-center justify-between border-b border-[#172338] px-4 py-3">
-              <div>
+            <header className="flex shrink-0 items-center justify-between gap-2 border-b border-[#172338] px-3 py-2">
+              <button type="button" onClick={() => { setError(null); setStep(1) }} aria-label="Back to waiver selection" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><ChevronLeft className="size-5" /></button>
+              <div className="min-w-0 flex-1">
                 <h2 className="text-lg font-black">Confirm Transaction</h2>
                 <p className="text-xs text-[#5e7090]">Add player to your roster</p>
               </div>
-              <button type="button" onClick={close} aria-label="Close">
+              <button type="button" onClick={close} aria-label="Close waiver claim" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">
                 <X className="size-5 text-[#8ba0c7]" />
               </button>
             </header>
@@ -299,11 +302,12 @@ export function WaiverClaimDialog({
               <WaiverTiming weekLocked={weekLocked} />
               {error && <p role="alert" className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 p-3 text-xs font-bold text-rose-300">{error}</p>}
             </div>
-            <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] p-4">
+            <div className="shrink-0 border-t border-[#1a263d] bg-[#070a12] px-4 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3">
               <button
                 type="button"
                 onClick={confirm}
                 disabled={submitting}
+                aria-label={submitting ? "Submitting waiver claim" : "Confirm waiver claim"}
                 className="h-12 w-full cursor-pointer rounded-full bg-[#19ffff] text-sm font-black text-[#080c14] transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
               >
                 Confirm
