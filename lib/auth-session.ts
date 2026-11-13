@@ -1,4 +1,4 @@
-﻿import { createHmac, timingSafeEqual } from "node:crypto"
+﻿import { createHmac, randomBytes, timingSafeEqual } from "node:crypto"
 import { cookies } from "next/headers"
 import { prisma } from "@/lib/prisma"
 
@@ -10,16 +10,20 @@ export type ManagerSession = {
   isCommissioner: boolean
 }
 
-const DEV_SESSION_SECRET = "john-scott-dynasty-default-secret"
+// Unique to this development process, not a public hard-coded signing key.
+const DEV_SESSION_SECRET = randomBytes(32).toString("base64url")
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30
 
-type SignedSession = Partial<ManagerSession> & { iat?: number; exp?: number }
+type SignedSession = Partial<ManagerSession> & { iat?: number; exp?: number; credentialVersion?: string }
 
 function sessionSecret() {
-  const secret = process.env.SESSION_SECRET ?? process.env.CRON_SECRET
-  if (secret) return secret
+  const secret = process.env.SESSION_SECRET
+  if (secret) {
+    if (secret.length < 32) throw new Error("SESSION_SECRET must contain at least 32 characters")
+    return secret
+  }
   if (process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET or CRON_SECRET must be set in production")
+    throw new Error("A dedicated SESSION_SECRET must be set in production")
   }
   return DEV_SESSION_SECRET
 }
@@ -33,14 +37,15 @@ export function verifyCronSecret(provided: string | null | undefined): boolean {
   return timingSafeEqual(providedBytes, secretBytes)
 }
 
-export function signManagerSession(payload: ManagerSession): string {
+export function signManagerSession(payload: ManagerSession, credentialVersion: string): string {
+  if (!credentialVersion) throw new Error("Missing credential version for session")
   const issuedAt = Math.floor(Date.now() / 1000)
-  const encoded = Buffer.from(JSON.stringify({ ...payload, iat: issuedAt, exp: issuedAt + SESSION_TTL_SECONDS })).toString("base64url")
+  const encoded = Buffer.from(JSON.stringify({ ...payload, credentialVersion, iat: issuedAt, exp: issuedAt + SESSION_TTL_SECONDS })).toString("base64url")
   const signature = createHmac("sha256", sessionSecret()).update(encoded).digest("base64url")
   return `${encoded}.${signature}`
 }
 
-export function verifyManagerSessionCookie(rawCookie: string): Partial<ManagerSession> | null {
+export function verifyManagerSessionCookie(rawCookie: string): SignedSession | null {
   const separator = rawCookie.indexOf(".")
   if (separator <= 0 || rawCookie.indexOf(".", separator + 1) !== -1) return null
   const encoded = rawCookie.slice(0, separator)
@@ -53,12 +58,10 @@ export function verifyManagerSessionCookie(rawCookie: string): Partial<ManagerSe
     if (!parsed || typeof parsed !== "object") return null
     const session = parsed as SignedSession
     const now = Math.floor(Date.now() / 1000)
-    if ("exp" in session && session.exp !== undefined) {
-      if (typeof session.exp !== "number" || !Number.isFinite(session.exp) || session.exp <= now) return null
-    }
-    if ("iat" in session && session.iat !== undefined) {
-      if (typeof session.iat !== "number" || !Number.isFinite(session.iat) || session.iat > now) return null
-    }
+    if (typeof session.exp !== "number" || !Number.isFinite(session.exp) || session.exp <= now) return null
+    if (typeof session.iat !== "number" || !Number.isFinite(session.iat) || session.iat > now) return null
+    if (session.exp - session.iat !== SESSION_TTL_SECONDS) return null
+    if (typeof session.credentialVersion !== "string" || !session.credentialVersion) return null
     return session
   } catch {
     return null
@@ -73,9 +76,9 @@ export async function getManagerSession(): Promise<ManagerSession | null> {
     if (!session || typeof session.managerId !== "string" || typeof session.teamId !== "string") return null
     const team = await prisma.team.findFirst({
       where: { id: session.teamId, managerId: session.managerId },
-      select: { id: true, name: true, manager: { select: { isCommissioner: true, handle: true } } },
+      select: { id: true, name: true, manager: { select: { isCommissioner: true, handle: true, updatedAt: true } } },
     })
-    if (!team) return null
+    if (!team || session.credentialVersion !== team.manager.updatedAt.toISOString()) return null
     return {
       managerId: session.managerId,
       teamId: team.id,
