@@ -28,7 +28,40 @@ function playerStatus(value: string | null | undefined): PlayerStatus {
   return PlayerStatus.HEALTHY
 }
 
+/**
+ * This script creates the initial demo league. It is intentionally NOT a re-seed or
+ * synchronization tool: rerunning the old implementation reset credentials,
+ * rosters, FAAB, fixtures and traded draft picks.
+ */
+async function assertSafeInitialSeed() {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    throw new Error("Initial demo seeding is forbidden in production.")
+  }
+  if (process.env.SEED_EMPTY_LEAGUE !== "YES_I_HAVE_VERIFIED_THE_DATABASE") {
+    throw new Error(
+      "Initial seeding is destructive. Point DATABASE_URL to an isolated, empty development database and set SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE.",
+    )
+  }
+
+  // Read-only checks must complete before ANY player upsert or league write.
+  const [users, leagues, teams, rosters, matchups, picks, drafts] = await prisma.$transaction([
+    prisma.user.count(),
+    prisma.league.count(),
+    prisma.team.count(),
+    prisma.rosterSlot.count(),
+    prisma.matchup.count(),
+    prisma.draftPick.count(),
+    prisma.draft.count(),
+  ])
+  if ([users, leagues, teams, rosters, matchups, picks, drafts].some((count) => count !== 0)) {
+    throw new Error(
+      "Refusing to seed: the database already contains league, manager, roster, matchup or draft state. Seeding would overwrite existing information.",
+    )
+  }
+}
+
 async function main() {
+  await assertSafeInitialSeed()
   const source = await readFile(join(process.cwd(), "public", "data", "nhl-players.json"), "utf8")
   const registry = JSON.parse(source) as RegistryPlayer[]
 
