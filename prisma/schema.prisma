@@ -134,6 +134,7 @@ model Team {
   activityLogs    ActivityLog[]
   weekLineups     WeekLineup[]
   draftSlots      DraftSlot[]
+  lineupPlans     LineupPlan[]
 
   @@unique([leagueId, managerId])
   @@index([leagueId])
@@ -155,6 +156,7 @@ model Player {
   gameStats         PlayerGameStat[]
   weekLineups       WeekLineup[]
   draftSlots        DraftSlot[]
+  lineupPlanEntries LineupPlanEntry[]
 
   @@index([teamAbbrev])
   @@index([injuryStatus])
@@ -192,6 +194,35 @@ model WeekLineup {
   @@unique([teamId, season, week, playerId])
   @@index([season, week])
   @@index([teamId, season, week])
+}
+
+/// Complete team-specific future lineup; kept separate from current roster and frozen results.
+model LineupPlan {
+  id          String            @id @default(uuid()) @db.Uuid
+  teamId      String            @db.Uuid
+  season      Int
+  week        Int
+  status      String            @default("PENDING")
+  activatedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  team        Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  entries     LineupPlanEntry[]
+
+  @@unique([teamId, season, week])
+  @@index([season, week, status])
+}
+
+model LineupPlanEntry {
+  id       String     @id @default(uuid()) @db.Uuid
+  planId   String     @db.Uuid
+  playerId Int
+  slot     SlotType
+  plan     LineupPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  player   Player     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, playerId])
+  @@index([playerId])
 }
 
 /// Live snake draft. Separate from tradable future DraftPick assets.
