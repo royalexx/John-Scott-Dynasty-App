@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
 import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
-import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
+import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, FUTURE_LINEUP_PREVIEW_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
 type TransactionClient = Prisma.TransactionClient
 const injuredStatuses = new Set<PlayerStatus>([PlayerStatus.IR, PlayerStatus.O, PlayerStatus.DTD])
@@ -440,7 +440,10 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
     const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
     const selectedWeek = week ?? lock.week
     if (isWeekLineupLocked(lock, selectedWeek)) throw new Error(FUTURE_LINEUP_LOCK_MESSAGE)
-    const arrangingFutureWeek = selectedWeek > lock.week
+    // A future-week selection must never move the current live RosterSlot. Until
+    // future plans have their own persisted state, this view is read-only.
+    if (selectedWeek > lock.week) throw new Error(FUTURE_LINEUP_PREVIEW_MESSAGE)
+    const arrangingFutureWeek = false
     // An injured (IR-status) starter may always be moved onto IR, even while starters are locked.
     const injuredToIr = slot.player.injuryStatus === "IR" && (targetSlot === SlotType.IR || targetSlot === SlotType.IR_PLUS)
     if (!arrangingFutureWeek && !injuredToIr && (isSlotLocked(lock, slot.slot, slot.player.teamAbbrev) || (lock.mode === "WEEKLY" && isSlotLocked(lock, targetSlot, slot.player.teamAbbrev)))) {
