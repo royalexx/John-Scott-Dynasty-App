@@ -7,10 +7,11 @@ type Props = {
   capacities: Record<string, number>
   irSlots: number
   lock?: { mode: "WEEKLY" | "DAILY"; locked: boolean; weekEndDate: string }
+  onReview?: () => void
 }
 
-/** Sleeper-style lineup health check: injured starters, empty starting slots and IR players parked elsewhere. */
-export function LineupAlerts({ roster, capacities, irSlots, lock }: Props) {
+/** Lineup health check: injured starters, empty slots and ineligible placements. */
+export function LineupAlerts({ roster, capacities, irSlots, lock, onReview }: Props) {
   const issues: string[] = []
   const starters = roster.filter((player) => isStarterSlot(player.slot))
   const injured = starters.filter((player) => player.status === "O" || player.status === "IR")
@@ -31,18 +32,19 @@ export function LineupAlerts({ roster, capacities, irSlots, lock }: Props) {
   for (const player of healthyOnIr) issues.push(`${player.name} is healthy and can be activated from IR`)
 
   const lockBanner = lock?.locked
-    ? <div role="status" data-testid="lineup-lock-banner" className="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-sky-400/30 bg-sky-400/5 px-3 py-2 text-xs font-bold text-sky-300"><Lock className="size-4 shrink-0" />{lock.mode === "WEEKLY" ? "Starters are locked until Monday (first game of the week has started)" : "Players whose game has started are locked today"}</div>
+    ? <div role="status" data-testid="lineup-lock-banner" className="mx-3 mt-3 flex items-start gap-2 rounded-xl border border-border-strong bg-surface-raised px-4 py-3 text-xs font-semibold leading-5 text-text-secondary"><Lock className="size-4 shrink-0" />{lock.mode === "WEEKLY" ? "Starters are locked until Monday (first game of the week has started)" : "Players whose game has started are locked today"}</div>
     : null
 
   if (issues.length === 0) {
-    return <>{lockBanner}<div role="status" className="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/5 px-3 py-2 text-xs font-bold text-emerald-300"><CheckCircle2 className="size-4 shrink-0" />Lineup is set</div></>
+    return <>{lockBanner}<div role="status" className="mx-3 mt-3 flex items-center gap-2 rounded-xl border border-success/30 bg-success-surface px-4 py-3 text-sm font-semibold text-success"><CheckCircle2 className="size-4 shrink-0" />Lineup is set</div></>
   }
   return (
     <>
     {lockBanner}
-    <div role="alert" className="mx-3 mt-3 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2">
-      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-300"><AlertTriangle className="size-4 shrink-0" />Lineup needs attention</p>
-      <ul className="mt-1 space-y-0.5 pl-6 text-xs text-[#c9b27a]">{issues.map((issue) => <li key={issue} className="list-disc">{issue}</li>)}</ul>
+    <div role="alert" className="mx-3 mt-3 rounded-2xl border border-warning/40 bg-warning-surface p-4">
+      <p className="flex items-center gap-2 text-sm font-bold text-warning"><AlertTriangle className="size-4 shrink-0" />Lineup needs attention</p>
+      <ul className="mt-2 space-y-1 pl-5 text-xs leading-5 text-text-secondary">{issues.map((issue) => <li key={issue} className="list-disc">{issue}</li>)}</ul>
+      {onReview && <button type="button" onClick={onReview} className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-warning/40 bg-background px-4 text-sm font-bold text-warning hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">Review starters</button>}
     </div>
     </>
   )
