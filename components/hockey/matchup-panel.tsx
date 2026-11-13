@@ -25,23 +25,24 @@ import { SwipePager, SwipeSurface } from "@/components/hockey/swipe-gestures"
 import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
 import { MatchupBanner } from "@/components/hockey/matchup-banner"
 import { PlayerRow } from "@/components/hockey/player-row"
+import { PlayerPortrait } from "@/components/hockey/player-portrait"
 
 type ReserveSlot = "BN" | "TAXI" | "IR"
 /** A selected lineup player; `ownerName` is set when the player belongs to the opposing team. */
 export type LineupPlayerSelection = Player & { ownerName?: string }
 
 const slotColors: Record<StarterSlot, string> = {
-  C: "bg-[#3b4cca]",
-  W: "bg-[#0d9488]",
-  F: "bg-[#7c3aed]",
-  D: "bg-[#b45309]",
-  G: "bg-[#0284c7]",
+  C: "bg-position-c text-white",
+  W: "bg-position-w text-white",
+  F: "bg-position-f text-white",
+  D: "bg-position-d text-position-ink",
+  G: "bg-position-g text-position-ink",
 }
 const statusStyles: Record<string, string> = {
-  IR: "bg-[#3b1824] text-[#ff2a85]",
-  TAXI: "bg-[#1a253b] text-[#5e7090]",
-  O: "bg-[#3b1824] text-[#ff2a85]",
-  DTD: "bg-amber-400/15 text-amber-300",
+  IR: "bg-danger-surface text-danger",
+  TAXI: "bg-warning-surface text-warning",
+  O: "bg-danger-surface text-danger",
+  DTD: "bg-warning-surface text-warning",
 }
 
 export function getYetToPlayText(teamRoster: Player[]): string {
@@ -149,28 +150,28 @@ const PlayerSide = React.memo(function PlayerSide({
   nickname?: string
 }) {
   if (player.empty) {
-    return <div className={cn("min-w-0 text-xs text-[#5e7090]", align === "left" ? "text-right" : "text-left")}>Empty slot</div>
+    return <div className={cn("min-w-0 text-xs text-text-muted", align === "left" ? "text-right" : "text-left")}>Empty slot</div>
   }
   return (
     <button
       type="button"
       data-testid={align === "right" ? "away-player" : "home-player"}
       onClick={() => onSelect(player)}
-      className={cn("w-full min-w-0 rounded-md px-1 py-1 hover:bg-[#101a2e]", align === "left" ? "text-right" : "text-left")}
+      className={cn("flex min-h-11 w-full min-w-0 items-center gap-1 rounded-lg px-0.5 py-1 hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring", align === "left" ? "flex-row-reverse text-right" : "text-left")}
     >
-      <div className={cn("flex items-center gap-1.5", align === "left" ? "justify-end" : "justify-start")}>
-        {align === "left" && player.status && <span className={cn("rounded px-1 py-0.5 text-xs font-black", statusStyles[player.status])}>{player.status}</span>}
-        <span className="truncate text-sm font-bold text-white">{player.name}</span>
-        {align === "right" && player.status && <span className={cn("rounded px-1 py-0.5 text-xs font-black", statusStyles[player.status])}>{player.status}</span>}
-      </div>
-      {nickname && <p className="truncate text-xs italic text-[#5e7090]">{nickname}</p>}
-      <p className="truncate text-xs text-[#5e7090]">
-        {player.schedule
-          ? align === "left"
-            ? `${player.schedule.day} ${player.schedule.time} · ${player.schedule.opponent} · ${player.team}`
-            : `${player.team} · ${player.schedule.opponent} · ${player.schedule.day} ${player.schedule.time}`
-          : "No game this week"}
-      </p>
+      <PlayerPortrait player={player} name={player.name} className="size-7" />
+      <span className="min-w-0 flex-1">
+        <span className={cn("flex min-w-0 items-center gap-1", align === "left" && "justify-end")}>
+          <span className="min-w-0 truncate text-xs font-bold text-foreground" title={player.name}>{player.name}</span>
+          {player.status && <span className={cn("shrink-0 rounded px-1 text-[10px] font-bold", statusStyles[player.status])}>{player.status}</span>}
+        </span>
+        {nickname && <span className="block truncate text-[11px] italic text-text-muted">{nickname}</span>}
+        <span className="block truncate text-[11px] text-text-secondary">
+          {player.schedule
+            ? `${player.team} · ${player.schedule.opponent} · ${player.schedule.day} ${player.schedule.time}`
+            : "No game this week"}
+        </span>
+      </span>
     </button>
   )
 })
@@ -190,10 +191,10 @@ export function getProjectedPoints(player: MatchupPlayer | Player | null, week?:
 
 const Score = React.memo(function Score({ player, align, week }: { player: MatchupPlayer; align: "left" | "right"; week: number }) {
   return (
-    <div className={cn("w-full shrink-0", align === "left" ? "pr-2 text-right" : "pl-2 text-left")}>
-      <p className="text-sm font-bold tabular-nums text-white">{player.empty ? "—" : getActualPoints(player, week)}</p>
-      <p className="text-xs leading-tight text-[#5e7090]">
-        <span className="block">proj</span>
+    <div className={cn("w-full shrink-0", align === "left" ? "pr-1 text-right" : "pl-1 text-left")}>
+      <p className="ui-stat-number text-sm font-extrabold text-foreground">{player.empty ? "—" : getActualPoints(player, week)}</p>
+      <p className="text-[11px] leading-tight text-text-muted">
+        <span className="block uppercase tracking-wide">proj</span>
         <span className="block tabular-nums">{player.empty ? "—" : getProjectedPoints(player, week)}</span>
       </p>
     </div>
@@ -219,7 +220,7 @@ const PlayerStats = React.memo(function PlayerStats({ player, align }: { player:
         game ? game.gameWinningGoals > 0 ? `${game.gameWinningGoals} GWG` : null : (current?.gameWinningGoals ?? 0) > 0 ? `${current?.gameWinningGoals} GWG` : null,
       ].filter(Boolean).join(", ")
   return (
-    <p className={cn("truncate text-xs text-[#5e7090]", align === "left" ? "text-right" : "text-left")}>
+    <p className={cn("truncate text-xs text-text-muted", align === "left" ? "text-right" : "text-left")}>
       {stats || "No game stats"}
     </p>
   )
@@ -249,26 +250,26 @@ const Reserves = React.memo(function Reserves({
     { slot: "IR", label: "Injured Reserve" },
   ]
   return (
-    <section className="overflow-hidden border-y border-[#111929] bg-[#080c14]">
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex w-full items-center justify-between border-b border-[#111929] px-3 py-3 text-left">
-        <span><b className="block text-sm text-white">Bench & Reserves</b><small className="text-xs text-[#5e7090]">BN · TAXI · IR</small></span>
-        <ChevronDown className={cn("size-5 text-[#5e7090] transition-transform", open && "rotate-180")} />
+    <section data-testid="match-reserves" className="mx-3 overflow-hidden rounded-2xl border border-border bg-surface">
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="flex min-h-14 w-full items-center justify-between border-b border-border px-4 py-3 text-left hover:bg-surface-hover">
+        <span><b className="block text-sm text-foreground">Bench & Reserves</b><small className="text-xs text-text-muted">BN · TAXI · IR</small></span>
+        <ChevronDown className={cn("size-5 text-text-secondary transition-transform", open && "rotate-180")} />
       </button>
       {open && (
         <>
-          <div className="grid grid-cols-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span>{teamName}</span><span className="text-right">{opponentName}</span></div>
+          <div className="grid grid-cols-2 border-b border-border px-3 py-2 text-xs font-bold text-text-secondary"><span>{teamName}</span><span className="text-right">{opponentName}</span></div>
           {groups.map(({ slot, label }) => {
             const home = homeRoster.filter((player) => player.slot === slot)
             const away = awayRoster.filter((player) => player.slot === slot)
             return (
-              <div key={slot} className="grid grid-cols-2 border-b border-[#111929] last:border-0">
-                <div className="border-r border-[#111929]">
-                  <p className="px-3 py-2 text-xs font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
-                  {home.length ? home.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectHome} onEditSlot={() => onEdit(player)} />) : <p className="px-3 pb-3 text-xs text-[#5e7090]">Empty</p>}
+              <div key={slot} className="grid grid-cols-2 border-b border-border last:border-0">
+                <div className="border-r border-border">
+                  <p className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-text-muted">{label}</p>
+                  {home.length ? home.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectHome} onEditSlot={() => onEdit(player)} />) : <p className="px-3 pb-3 text-xs text-text-muted">Empty</p>}
                 </div>
                 <div>
-                  <p className="px-3 py-2 text-right text-xs font-black uppercase tracking-wider text-[#5e7090]">{label}</p>
-                  {away.length ? away.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectAway} />) : <p className="px-3 pb-3 text-right text-xs text-[#5e7090]">Empty</p>}
+                  <p className="px-3 py-2 text-right text-xs font-bold uppercase tracking-wider text-text-muted">{label}</p>
+                  {away.length ? away.map((player) => <PlayerRow key={player.id} player={player} onSelect={onSelectAway} />) : <p className="px-3 pb-3 text-right text-xs text-text-muted">Empty</p>}
                 </div>
               </div>
             )
@@ -386,45 +387,45 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   if (!card) return null
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 pb-4">
-      <SwipePager zone="matchup" activeIndex={matchupIndex} itemCount={weekSchedule.length} onIndexChange={selectMatchup} peekPx={14} gapPx={10} className="min-w-0 px-3">
+    <div data-testid="match-content" className="flex min-w-0 flex-col gap-4 pb-4 pt-3">
+      <SwipePager zone="matchup" activeIndex={matchupIndex} itemCount={weekSchedule.length} onIndexChange={selectMatchup} peekPx={14} gapPx={10} className="min-w-0 pl-3 pr-3">
         {cards.map((entry, index) => (
           <div key={entry.id} aria-hidden={index === matchupIndex ? undefined : true} className="h-full">
             <MatchupBanner summary={entry.banner} projectedHome={entry.projectedHome} projectedAway={entry.projectedAway} week={week} homeGamesLeft={entry.homeGamesLeft} awayGamesLeft={entry.awayGamesLeft} active={index === matchupIndex} />
           </div>
         ))}
       </SwipePager>
-      <div className="grid grid-cols-2 gap-3 px-3 text-[11px] font-semibold leading-snug text-[#8ba0c7]">
+      <div className="grid grid-cols-2 gap-3 px-4 text-xs font-medium leading-snug text-text-secondary">
         <p className="min-w-0">{getYetToPlayText(homeRoster)}</p>
         <p className="min-w-0 text-right">{getYetToPlayText(awayRoster)}</p>
       </div>
       <div data-swipe-ignore="true" className="flex touch-pan-x items-center gap-2 overflow-x-auto px-3 pb-1" aria-label="League matchups">
-        <button type="button" onClick={previousMatchup} aria-label="Previous matchup" className="shrink-0 text-[#5e7090]"><ChevronLeft className="size-4" /></button>
+        <button type="button" onClick={previousMatchup} aria-label="Previous matchup" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover"><ChevronLeft className="size-4" /></button>
         {weekSchedule.map((matchup, index) => (
-          <button key={matchup.id} type="button" onClick={() => selectMatchup(index)} aria-label={`Matchup ${index + 1}: ${matchup.homeTeam} vs ${matchup.awayTeam}`} className={cn("flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-black", matchup.id === selectedMatchupId ? "border-[#19ffff] bg-[#19ffff]/10 text-[#19ffff]" : "border-[#172338] bg-[#0d1424] text-[#5e7090]")}>
-            <span className="flex size-6 items-center justify-center rounded-full bg-[#172338] text-xs">{matchup.homeTeam.slice(0, 1)}</span>
+          <button key={matchup.id} type="button" onClick={() => selectMatchup(index)} aria-label={`Matchup ${index + 1}: ${matchup.homeTeam} vs ${matchup.awayTeam}`} className={cn("flex min-h-11 shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-xs font-bold", matchup.id === selectedMatchupId ? "border-brand bg-brand/10 text-brand" : "border-border bg-surface text-text-secondary hover:bg-surface-hover")}>
+            <span className="flex size-6 items-center justify-center rounded-full bg-surface-raised text-xs">{matchup.homeTeam.slice(0, 1)}</span>
             <span>vs</span>
-            <span className="flex size-6 items-center justify-center rounded-full bg-[#3b1824] text-xs">{matchup.awayTeam.slice(0, 1)}</span>
+            <span className="flex size-6 items-center justify-center rounded-full bg-surface-raised text-xs">{matchup.awayTeam.slice(0, 1)}</span>
           </button>
         ))}
-        <button type="button" onClick={nextMatchup} aria-label="Next matchup" className="shrink-0 text-[#5e7090]"><ChevronRight className="size-4" /></button>
+        <button type="button" onClick={nextMatchup} aria-label="Next matchup" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover"><ChevronRight className="size-4" /></button>
       </div>
-      <section className="overflow-hidden border-y border-[#111929] bg-[#080c14]">
-        <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
-          <h2 className="text-sm font-black text-white">Starters ({rows.filter((row) => !row.home.empty).length}) <ChevronDown className="inline size-3.5 text-[#5e7090]" /></h2>
-          <SwipeSurface zone="week" onSwipeLeft={() => onWeekChange(week + 1)} onSwipeRight={() => onWeekChange(Math.max(1, week - 1))} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
-            <button type="button" onClick={() => onWeekChange(Math.max(1, week - 1))} aria-label="Previous scoring week" className="rounded p-1 hover:bg-[#172338]">
+      <section data-testid="match-starters" className="mx-3 overflow-hidden rounded-2xl border border-border bg-surface">
+        <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
+          <h2 className="text-base font-bold text-foreground">Starting lineups <span className="text-xs font-semibold text-text-muted">({rows.filter((row) => !row.home.empty).length})</span></h2>
+          <SwipeSurface zone="week" onSwipeLeft={() => onWeekChange(week + 1)} onSwipeRight={() => onWeekChange(Math.max(1, week - 1))} className="flex items-center gap-1 rounded-xl border border-border bg-background text-xs font-bold text-brand">
+            <button type="button" onClick={() => onWeekChange(Math.max(1, week - 1))} aria-label="Previous scoring week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover">
               <ChevronLeft className="size-3.5" />
             </button>
             <span>Week {week}</span>
-            <button type="button" onClick={() => onWeekChange(week + 1)} aria-label="Next scoring week" className="rounded p-1 hover:bg-[#172338]">
+            <button type="button" onClick={() => onWeekChange(week + 1)} aria-label="Next scoring week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover">
               <ChevronRight className="size-3.5" />
             </button>
           </SwipeSurface>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-b border-[#111929] px-3 py-2 text-xs font-bold text-[#5e7090]"><span className="min-w-0 truncate text-left">{card.banner.homeTeam}</span><span className="min-w-0 truncate text-right">{card.banner.awayTeam}</span></div>
+        <div className="grid grid-cols-2 gap-2 border-b border-border bg-background px-3 py-2 text-xs font-bold text-text-secondary"><span className="min-w-0 truncate text-left">{card.banner.homeTeam}</span><span className="min-w-0 truncate text-right">{card.banner.awayTeam}</span></div>
         {rows.map((row, index) => (
-          <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_34px_44px_minmax(0,1fr)] items-center border-b border-[#111929] bg-[#0d1424] px-2 py-2 last:border-0 hover:bg-[#101a2e]">
+          <div key={`${row.slot}-${index}`} className="grid grid-cols-[minmax(0,1fr)_44px_44px_44px_minmax(0,1fr)] items-center border-b border-border bg-surface px-2 py-2 last:border-0 hover:bg-surface-hover">
             <div className="min-w-0 text-right">
               <PlayerSide
                 player={row.home}
@@ -439,7 +440,8 @@ export const MatchupPanel = React.memo(function MatchupPanel({
               type="button"
               disabled={row.home.empty || !isUserMatchup}
               onClick={() => row.homeSource && startEdit(row.homeSource)}
-              className={cn("flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-black text-white", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-40")}
+              aria-label={`Edit ${row.slot} starting slot`}
+              className={cn("flex min-h-11 min-w-11 items-center justify-center rounded-lg p-1 text-xs font-extrabold", slotColors[row.slot], (row.home.empty || !isUserMatchup) && "cursor-default opacity-45")}
             >{row.slot}</button>
             <Score player={row.away} align="right" week={week} />
             <div className="min-w-0 text-left">
