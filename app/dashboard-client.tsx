@@ -858,7 +858,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 </SwipeSurface>
               </div>
               {(weekView?.locked ?? weekView?.frozen) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
+                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week's starting lineup is locked. Frozen starters cannot be changed.</p>
               ) : week > (initialData.lineupLock?.week ?? week) ? (
                 <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
               ) : null}
