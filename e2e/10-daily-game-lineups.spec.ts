@@ -80,3 +80,22 @@ test("DAILY historical recomputation cannot invent missing game-day assignments"
     await prisma.league.update({ where: { id: league.id }, data: { lineupLockMode: league.lineupLockMode } })
   }
 })
+
+test("week lineup response exposes persisted matchup totals for the DAILY scoreboard", async ({ request }) => {
+  const league = await prisma.league.findFirstOrThrow()
+  const week = getCurrentFantasyWeek(league.currentSeason)
+  const matchup = await prisma.matchup.findFirstOrThrow({
+    where: { leagueId: league.id, season: league.currentSeason, week },
+    include: { homeTeam: true, awayTeam: true },
+  })
+  const response = await request.get(`/api/roster/week?week=${week}`)
+  expect(response.status()).toBe(200)
+  const data = await response.json() as {
+    matchupResults: Array<{ week: number; homeTeam: string; awayTeam: string; homeScore: number; awayScore: number; isFinal: boolean }>
+  }
+  const shown = data.matchupResults.find((entry) => entry.homeTeam === matchup.homeTeam.name && entry.awayTeam === matchup.awayTeam.name)
+  expect(shown).toEqual({
+    week, homeTeam: matchup.homeTeam.name, awayTeam: matchup.awayTeam.name,
+    homeScore: Number(matchup.homeScore ?? 0), awayScore: Number(matchup.awayScore ?? 0), isFinal: matchup.isFinal,
+  })
+})
