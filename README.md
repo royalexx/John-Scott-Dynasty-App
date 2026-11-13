@@ -37,7 +37,7 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 CRON_SECRET="any-long-random-string"
 ```
 
-`DATABASE_URL` is required. `CRON_SECRET` is required only for the NHL sync and waiver cron routes.
+`DATABASE_URL` is required. `SESSION_SECRET` is required in production for signed manager sessions (at least 32 characters). Use a distinct `CRON_SECRET` for the sync and waiver endpoints. Previously issued sessions without a credential-version claim will be invalidated when session hardening is deployed; managers must sign in again. Updating a PIN invalidates older sessions on other devices.
 
 There is no `prisma/migrations` folder. Push the schema, then seed the league:
 
