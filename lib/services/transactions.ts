@@ -4,7 +4,7 @@ import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Position, Prisma,
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
-import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
+import { assertTradePreservesReservedFaab, nextWaiverProcessAt, validateFaabReservation, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
 import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, FUTURE_LINEUP_PREVIEW_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
@@ -99,9 +99,14 @@ export interface SubmitWaiverClaimParams {
 export async function submitWaiverClaim(params: SubmitWaiverClaimParams) {
   if (!Number.isInteger(params.bidAmount) || params.bidAmount < 0) throw new Error("Bid amount must be a non-negative integer")
   return prisma.$transaction(async (tx) => {
-    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true, rosterPositions: true } } } })
+    // Serialize waiver reservations against trades, claim cancellations and awards.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${params.teamId}))`
+    const team = await tx.team.findUnique({ where: { id: params.teamId }, select: { leagueId: true, faabBalance: true, league: { select: { rosterSize: true, currentSeason: true, rosterPositions: true, waiverSettings: true } } } })
     if (!team) throw new Error("Team not found")
-    if (team.faabBalance < params.bidAmount) throw new Error("Insufficient FAAB balance")
+    const settings = (team.league.waiverSettings ?? {}) as Record<string, unknown>
+    const minimum = typeof settings.minBid === "number" && Number.isInteger(settings.minBid) ? settings.minBid : 0
+    const pending = await tx.waiverClaim.aggregate({ where: { teamId: params.teamId, status: ClaimStatus.PENDING }, _sum: { bidAmount: true } })
+    validateFaabReservation(team.faabBalance, pending._sum.bidAmount ?? 0, params.bidAmount, minimum)
     await ensurePlayerFromRegistry(tx, params.playerToAddId)
     const alreadyRostered = await tx.rosterSlot.findFirst({ where: { playerId: params.playerToAddId, team: { leagueId: team.leagueId } }, select: { id: true } })
     if (alreadyRostered) throw new Error("Player is already on a league roster")
@@ -349,9 +354,21 @@ export async function executeTrade(tradeOfferId: string) {
         if (asset.draftPickId == null || !(await tx.draftPick.findFirst({ where: { id: asset.draftPickId, currentTeamId: asset.fromTeamId } }))) throw new Error("A traded pick is no longer owned by the sending team")
       } else {
         const amount = asset.faabAmount ?? 0
-        if (amount < 0 || (balances.get(asset.fromTeamId) ?? 0) < amount) throw new Error("Insufficient FAAB for trade")
+        if (!Number.isSafeInteger(amount) || amount < 0 || (balances.get(asset.fromTeamId) ?? 0) < amount) throw new Error("Insufficient FAAB for trade")
         balances.set(asset.fromTeamId, (balances.get(asset.fromTeamId) ?? 0) - amount)
         balances.set(asset.toTeamId, (balances.get(asset.toTeamId) ?? 0) + amount)
+      }
+    }
+    if (offer.assets.some((asset) => asset.assetType === AssetType.FAAB)) {
+      // Same-team advisory locks cover both pending waiver reservations and trades.
+      const commitments = await tx.waiverClaim.groupBy({
+        by: ["teamId"],
+        where: { teamId: { in: teams.map((team) => team.id) }, status: ClaimStatus.PENDING },
+        _sum: { bidAmount: true },
+      })
+      const reserved = new Map(commitments.map((entry) => [entry.teamId, entry._sum.bidAmount ?? 0]))
+      for (const team of teams) {
+        assertTradePreservesReservedFaab(balances.get(team.id) ?? team.faabBalance, reserved.get(team.id) ?? 0)
       }
     }
     const rosterSlots = await tx.rosterSlot.findMany({
