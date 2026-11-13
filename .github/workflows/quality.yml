@@ -69,7 +69,7 @@ jobs:
       - name: Initialize disposable PostgreSQL schema
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
-        run: npx prisma db push --skip-generate
+        run: npx prisma migrate deploy
       - name: Seed disposable league fixture
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
