@@ -115,7 +115,7 @@ test.describe("audit regressions", () => {
     }
 
     // Preflight was read-only; the eligible roster state is already established.
-    const before = new Map(preflight.map((entry) => [entry.playerId, entry.slot]))
+    const before = new Map(preflight.map((entry) => [entry.playerId, entry.slot] as const))
 
     const swapped = await move(SHESTERKIN, "IR")
     expect(swapped.status()).toBe(200)
