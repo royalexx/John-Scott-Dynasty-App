@@ -8,6 +8,7 @@ import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
 import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, FUTURE_LINEUP_PREVIEW_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
+import { captureStartedDailyGamesForTeam } from "@/lib/services/daily-game-lineups"
 
 type TransactionClient = Prisma.TransactionClient
 const injuredStatuses = new Set<PlayerStatus>([PlayerStatus.IR, PlayerStatus.O, PlayerStatus.DTD])
@@ -148,10 +149,15 @@ export async function processWaiversForLeague(leagueId: string, now: Date = new 
       if (claimedPlayers.has(claim.playerToAddId)) continue
       // Coordinate awards with interactive roster moves for this team.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${claim.teamId}))`
-      const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true } })
+      const team = await tx.team.findUnique({ where: { id: claim.teamId }, select: { leagueId: true, league: { select: { currentSeason: true, lineupLockMode: true } } } })
       if (!team || team.leagueId !== leagueId) {
         await tx.waiverClaim.update({ where: { id: claim.id }, data: { status: ClaimStatus.FAILED } })
         continue
+      }
+      if (team.league.lineupLockMode === "DAILY") {
+        // Capture started-game membership before dropping or awarding players.
+        // Use the actual wall clock, not the historical processDate cutoff.
+        await captureStartedDailyGamesForTeam(tx, claim.teamId, team.league.currentSeason)
       }
       const existingAdd = await tx.rosterSlot.findFirst({ where: { playerId: claim.playerToAddId, team: { leagueId } }, select: { id: true } })
       if (existingAdd) {
@@ -325,6 +331,13 @@ export async function executeTrade(tradeOfferId: string) {
     }
     const lock = await getLockSummary(offer.league.currentSeason, offer.league.lineupLockMode)
     if (lock.mode === "WEEKLY" && lock.weekStarted) await freezeWeekLineup(tx, offer.leagueId, offer.league.currentSeason, lock.week)
+    if (lock.mode === "DAILY") {
+      // Both team locks are held. Preserve all started-game assignments before a
+      // trade changes ownership, even when the player has finished today's game.
+      for (const teamId of [offer.proposingTeamId, offer.receivingTeamId].sort()) {
+        await captureStartedDailyGamesForTeam(tx, teamId, offer.league.currentSeason)
+      }
+    }
     const balances = new Map(teams.map((team) => [team.id, team.faabBalance]))
     for (const asset of offer.assets) {
       if (![offer.proposingTeamId, offer.receivingTeamId].includes(asset.fromTeamId) || ![offer.proposingTeamId, offer.receivingTeamId].includes(asset.toTeamId) || asset.fromTeamId === asset.toTeamId) {
@@ -437,6 +450,9 @@ export async function updateRosterPlacement(teamId: string, playerId: number, ta
     const slot = await tx.rosterSlot.findUnique({ where: { teamId_playerId: { teamId, playerId } }, include: { player: true, team: { include: { league: true } } } })
     if (!slot) throw new Error("Player is not on this roster")
     const league = slot.team.league
+    if (league.lineupLockMode === "DAILY") {
+      await captureStartedDailyGamesForTeam(tx, teamId, league.currentSeason)
+    }
     const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
     const selectedWeek = week ?? lock.week
     if (isWeekLineupLocked(lock, selectedWeek)) throw new Error(FUTURE_LINEUP_LOCK_MESSAGE)
