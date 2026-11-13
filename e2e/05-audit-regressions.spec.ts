@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
-import { getCurrentFantasyWeek } from "../lib/season-calendar"
-import { PrismaClient } from "@prisma/client"
+import { PlayerStatus, SlotType } from "@prisma/client"
+import { previewFutureMove } from "../lib/services/future-lineup-plans"
 
 test.describe("audit regressions", () => {
   test("players market: F/W/G filters and goalie sort controls", async ({ page }) => {
@@ -82,54 +82,27 @@ test.describe("audit regressions", () => {
     await expect(page.getByRole("button", { name: "Show 50 more" })).toBeVisible()
   })
 
-  test("roster move: swapping an injured player into a full IR slot persists, and is reversible", async ({ request }) => {
-    const BEDARD = 8484144
-    const SHESTERKIN = 8478048
-    const session = await (await request.get("/api/auth/session")).json() as { user?: { teamId: string } }
-    const teamId = session.user!.teamId
-    type Row = { playerId: number; slot: string }
-    // Only exercise this historical regression when both named fixture players
-    // are IR-eligible and assigned to the same team. Never issue a mutation
-    // merely to discover preconditions: that can corrupt the test fixture.
-    const database = new PrismaClient()
-    const preflight = await database.rosterSlot.findMany({
-      where: { teamId, playerId: { in: [BEDARD, SHESTERKIN] } },
-      include: { player: true },
-    })
-    await database.$disconnect()
-    const initialBedard = preflight.find((entry) => entry.playerId === BEDARD)
-    const initialShesterkin = preflight.find((entry) => entry.playerId === SHESTERKIN)
-    test.skip(
-      !initialBedard || initialBedard.slot !== "IR" ||
-      initialBedard.player.injuryStatus !== "IR" ||
-      !initialShesterkin || initialShesterkin.slot === "IR" ||
-      initialShesterkin.player.injuryStatus !== "IR",
-      "Requires two IR-eligible players in the specific historical starting slots.",
-    )
-    // The current week locks starters once the first game starts. Arrange next week so the IR swap can still run.
-    const openWeek = getCurrentFantasyWeek() + 1
-    const move = (playerId: number, targetSlot: string) => request.post("/api/roster/move", { data: { teamId, playerId, targetSlot, week: openWeek } })
-    const slotsOf = async (response: Awaited<ReturnType<typeof move>>) => {
-      expect(response.ok(), await response.text()).toBe(true)
-      return new Map(((await response.json()) as { roster: Row[] }).roster.map((row) => [row.playerId, row.slot]))
+  test("future plan: IR-for-IR swap safely displaces ineligible player to the bench and reverses", () => {
+    // Deterministic, independent of live fixture injuries and current-week locks.
+    // A center displaced from IR must never be assigned the goalie's vacated G slot.
+    const makePlayer = (name: string, position: "C" | "G", status: PlayerStatus) =>
+      ({ name, position, injuryStatus: status, nhlGamesPlayed: 30 })
+    const limits = {
+      rosterPositions: { C: 1, W: 0, F: 0, D: 0, G: 1, BN: 2 },
+      rosterSize: 4, taxiSlots: 0, irSlots: 1, taxiMaxGames: 50,
     }
-
-    // Preflight was read-only; the eligible roster state is already established.
-    const before = new Map(preflight.map((entry) => [entry.playerId, entry.slot] as const))
-
-    const swapped = await move(SHESTERKIN, "IR")
-    expect(swapped.status()).toBe(200)
-    const after = await slotsOf(swapped)
-    expect(after.get(SHESTERKIN)).toBe("IR")
-    expect(after.get(BEDARD)).not.toBe("IR")
-    // Bedard is a center. Coming off IR must not drop him into Shesterkin's goalie slot.
-    if (before.get(SHESTERKIN) === "G") expect(after.get(BEDARD)).not.toBe("G")
-
-    // Revert so the shared database is left exactly as it was found.
-    const restoredMover = await slotsOf(await move(SHESTERKIN, before.get(SHESTERKIN) ?? "G"))
-    expect(restoredMover.get(SHESTERKIN)).toBe(before.get(SHESTERKIN))
-    const reverted = await slotsOf(await move(BEDARD, "IR"))
-    expect(reverted.get(BEDARD)).toBe("IR")
+    const original = [
+      { playerId: 1, slot: SlotType.IR, player: makePlayer("Injured center", "C", PlayerStatus.IR) },
+      { playerId: 2, slot: SlotType.G, player: makePlayer("Injured goalie", "G", PlayerStatus.IR) },
+      { playerId: 3, slot: SlotType.BN, player: makePlayer("Healthy center", "C", PlayerStatus.HEALTHY) },
+    ]
+    const swapped = previewFutureMove(original, limits, 2, SlotType.IR, 1)
+    expect(swapped.find((entry) => entry.playerId === 2)?.slot).toBe(SlotType.IR)
+    expect(swapped.find((entry) => entry.playerId === 1)?.slot).toBe(SlotType.BN)
+    expect(original.find((entry) => entry.playerId === 1)?.slot).toBe(SlotType.IR)
+    const goalieRestored = previewFutureMove(swapped, limits, 2, SlotType.G)
+    const restored = previewFutureMove(goalieRestored, limits, 1, SlotType.IR)
+    expect(restored.map((entry) => entry.slot)).toEqual(original.map((entry) => entry.slot))
   })
 
   test("roster move: healthy players cannot be placed on IR", async ({ request }) => {
