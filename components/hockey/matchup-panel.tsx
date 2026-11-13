@@ -394,6 +394,11 @@ export const MatchupPanel = React.memo(function MatchupPanel({
           </div>
         ))}
       </SwipePager>
+      {weekLineup?.source === "unavailable" && (
+        <div data-testid="historical-matchup-lineup-unavailable" role="status" className="mx-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+          Historical starters were not recorded for this week. Archived results are preserved; current rosters are not substituted.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 px-3 text-[11px] font-semibold leading-snug text-[#8ba0c7]">
         <p className="min-w-0">{getYetToPlayText(homeRoster)}</p>
         <p className="min-w-0 text-right">{getYetToPlayText(awayRoster)}</p>
