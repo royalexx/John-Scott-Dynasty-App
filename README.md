@@ -34,10 +34,11 @@ Create `.env` with:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
-CRON_SECRET="any-long-random-string"
+SESSION_SECRET="a-unique-random-string-at-least-32-chars"
+CRON_SECRET="a-different-long-random-string"
 ```
 
-`DATABASE_URL` is required. `SESSION_SECRET` is required in production for signed manager sessions (at least 32 characters). Use a distinct `CRON_SECRET` for the sync and waiver endpoints. Previously issued sessions without a credential-version claim will be invalidated when session hardening is deployed; managers must sign in again. Updating a PIN invalidates older sessions on other devices.
+`DATABASE_URL` is required. `SESSION_SECRET` is required in all environments for signed manager sessions (at least 32 characters). Use a distinct `CRON_SECRET` for the sync and waiver endpoints. Previously issued sessions without a credential-version claim will be invalidated when session hardening is deployed; managers must sign in again. Updating a PIN invalidates older sessions on other devices.
 
 There is no `prisma/migrations` folder. Push the schema, then seed the league:
 
