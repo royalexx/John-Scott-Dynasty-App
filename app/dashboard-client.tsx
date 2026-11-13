@@ -155,6 +155,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
 
   const [week, setWeek] = useState(getCurrentFantasyWeek())
   const [weekView, setWeekView] = useState<WeekLineupView | null>(null)
+  const [storedMatchupResults, setStoredMatchupResults] = useState(initialData.matchupResults ?? [])
   const weekRef = useRef(week)
   weekRef.current = week
   const [roster, setRoster] = useState<Player[]>(initialRoster)
@@ -288,12 +289,31 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const waiverBudgetSync = useRef(0)
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
-      .then((data) => { if (!cancelled) setWeekView(data) })
-      .catch((error: unknown) => console.error("Could not load the week lineup", error))
-    return () => { cancelled = true }
-  }, [week])
+    const loadWeek = () => {
+      void fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
+        .then((data) => {
+          if (cancelled || !data) return
+          setWeekView(data)
+          if (data.matchupResults) {
+            // Persisted matchup totals are authoritative for DAILY mode.
+            // Refresh selected-week scores without discarding other weeks.
+            setStoredMatchupResults((current) => [
+              ...current.filter((row) => row.week !== week), ...data.matchupResults,
+            ])
+          }
+        })
+        .catch((error: unknown) => console.error("Could not load the week lineup or scores", error))
+    }
+    loadWeek()
+    const poll = initialData.league?.lineupLockMode === "DAILY" && week === getCurrentFantasyWeek()
+      ? window.setInterval(loadWeek, 30_000)
+      : null
+    return () => {
+      cancelled = true
+      if (poll !== null) window.clearInterval(poll)
+    }
+  }, [week, initialData.league?.lineupLockMode])
   const [userFaab, setUserFaab] = useState(initialData.userFaab ?? fallbackFaabBudget)
   const refreshWaiverBudget = useCallback(async () => {
     if (!initialData.teamId) return
@@ -853,7 +873,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           className="relative z-0 min-h-0 min-w-0 flex-1 pointer-events-auto"
         >
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "MATCH"} inert={activeTab !== "MATCH"}>
-            <MatchupPanel matchupResults={initialData.matchupResults} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
+            <MatchupPanel matchupResults={storedMatchupResults} lineupLockMode={initialData.league?.lineupLockMode} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
