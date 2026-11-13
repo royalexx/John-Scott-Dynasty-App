@@ -1,4 +1,4 @@
-import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "@/lib/scoring"
+import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "./scoring"
 import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | "HEALTHY" | null
