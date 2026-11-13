@@ -58,6 +58,17 @@ Open [http://localhost:3000](http://localhost:3000). The disposable development 
 
 If the league is missing or database hydration fails, the dashboard shows a neutral unavailable state, not demonstration rosters or scores.
 
+## Production release checklist
+
+The consolidated backend audit is staged as draft PR #43. Before merging or running
+any migrations on a hosted database, follow
+[the non-destructive migration and Vercel release runbook](docs/backend-production-release.md).
+Use `node scripts/migration-preflight.mjs` for a read-only hosted database
+inventory; an existing database created with `prisma db push` must be
+structurally reconciled before resolving the initial migration as already
+applied. The legacy `User.pin` SQL default is removed by a dedicated
+incremental migration without rewriting existing credentials.
+
 ## Scripts
 
 | Command | What it does |
