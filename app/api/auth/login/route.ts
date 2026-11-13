@@ -2,68 +2,10 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession, signManagerSession } from "@/lib/auth-session"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "@/lib/pin-crypto"
+import { verifyWithPinThrottle } from "@/lib/pin-rate-limit"
 
-const MAX_FAILED_ATTEMPTS = 5
-const WINDOW_MS = 5 * 60 * 1000
-const PIN_PATTERN = /^\d{4}$/
+const PIN_PATTERN = /^\\d{4}$/
 const MANAGER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-type AttemptBucket = { failures: number; resetAt: number }
-
-const pinRateLimitState = globalThis as typeof globalThis & {
-  __dynastyPinAttempts?: Map<string, AttemptBucket>
-}
-const pinAttempts = pinRateLimitState.__dynastyPinAttempts ?? new Map<string, AttemptBucket>()
-pinRateLimitState.__dynastyPinAttempts = pinAttempts
-
-function attemptKey(scope: "manager" | "ip", id: string) {
-  return `${scope}:${id}`
-}
-
-function clientIp(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-  if (forwarded) return forwarded
-  const realIp = request.headers.get("x-real-ip")?.trim()
-  return realIp || "unknown"
-}
-
-function activeBucket(key: string, now: number) {
-  const bucket = pinAttempts.get(key)
-  if (!bucket || bucket.resetAt <= now) {
-    if (bucket) pinAttempts.delete(key)
-    return null
-  }
-  return bucket
-}
-
-function retryAfterSeconds(keys: string[], now: number) {
-  let wait = 0
-  for (const key of keys) {
-    const bucket = activeBucket(key, now)
-    if (bucket && bucket.failures >= MAX_FAILED_ATTEMPTS) {
-      wait = Math.max(wait, Math.ceil((bucket.resetAt - now) / 1000))
-    }
-  }
-  return wait
-}
-
-function recordFailure(key: string, now: number) {
-  const bucket = activeBucket(key, now)
-  if (!bucket) {
-    pinAttempts.set(key, { failures: 1, resetAt: now + WINDOW_MS })
-    return
-  }
-  bucket.failures += 1
-  if (pinAttempts.size > 500) {
-    for (const [storedKey, stored] of pinAttempts) {
-      if (stored.resetAt <= now) pinAttempts.delete(storedKey)
-    }
-  }
-}
-
-function clearFailures(keys: string[]) {
-  for (const key of keys) pinAttempts.delete(key)
-}
 
 function retryMessage(seconds: number) {
   if (seconds < 60) {
@@ -82,51 +24,38 @@ function tooManyAttempts(seconds: number) {
 }
 
 
-function attemptKeys(request: Request, managerId: string) {
-  return [attemptKey("manager", managerId), attemptKey("ip", clientIp(request))]
-}
-
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { managerId?: unknown; pin?: unknown } | null
   if (typeof body?.managerId !== "string" || typeof body.pin !== "string" || !PIN_PATTERN.test(body.pin)) {
     return NextResponse.json({ error: "A manager and 4-digit PIN are required." }, { status: 400 })
   }
 
-  const keys = attemptKeys(request, body.managerId)
-  const wait = retryAfterSeconds(keys, Date.now())
-  if (wait > 0) return tooManyAttempts(wait)
+  const result = await verifyWithPinThrottle(request, body.managerId, async (tx) => {
+    const user = MANAGER_ID_PATTERN.test(body.managerId as string)
+      ? await tx.user.findUnique({ where: { id: body.managerId as string } })
+      : null
+    if (!user || !verifyManagerPin(user.pin, body.pin as string)) return { valid: false as const }
 
-  const user = MANAGER_ID_PATTERN.test(body.managerId)
-    ? await prisma.user.findUnique({ where: { id: body.managerId } })
-    : null
-  const pinOk = verifyManagerPin(user?.pin ?? "0000", body.pin)
-  if (!user || !pinOk) {
-    const now = Date.now()
-    for (const key of keys) recordFailure(key, now)
-    return NextResponse.json({ error: "Incorrect PIN." }, { status: 401 })
-  }
-
-  clearFailures(keys)
-
-  // Opportunistically migrate legacy plaintext manager credentials on a
-  // successful login, without accepting stale credentials after a concurrent
-  // PIN change. Updating the row also revokes previously issued sessions.
-  let credentialVersion = user.updatedAt.toISOString()
-  if (!isHashedManagerPin(user.pin)) {
-    const upgraded = await prisma.user.updateMany({
-      where: { id: user.id, pin: user.pin },
-      data: { pin: hashManagerPin(body.pin) },
-    })
-    if (upgraded.count !== 1) return NextResponse.json({ error: "Credentials changed; sign in again." }, { status: 401 })
-    const migrated = await prisma.user.findUnique({ where: { id: user.id }, select: { updatedAt: true } })
-    if (!migrated) return NextResponse.json({ error: "Manager unavailable." }, { status: 401 })
-    credentialVersion = migrated.updatedAt.toISOString()
-  }
-
-  const team = await prisma.team.findFirst({
-    where: { managerId: user.id },
-    orderBy: { name: "asc" },
+    // Opportunistically migrate legacy plaintext credentials. The manager
+    // lock prevents overlapping sign-ins from using a stale credential hash.
+    let credentialVersion = user.updatedAt.toISOString()
+    if (!isHashedManagerPin(user.pin)) {
+      const upgraded = await tx.user.updateMany({
+        where: { id: user.id, pin: user.pin },
+        data: { pin: hashManagerPin(body.pin as string) },
+      })
+      if (upgraded.count !== 1) return { valid: false as const }
+      const migrated = await tx.user.findUnique({ where: { id: user.id }, select: { updatedAt: true } })
+      if (!migrated) return { valid: false as const }
+      credentialVersion = migrated.updatedAt.toISOString()
+    }
+    const team = await tx.team.findFirst({ where: { managerId: user.id }, orderBy: { name: "asc" } })
+    return { valid: true as const, value: { user, team, credentialVersion } }
   })
+  if (result.kind === "limited") return tooManyAttempts(result.retryAfterSeconds)
+  if (result.kind === "invalid") return NextResponse.json({ error: "Incorrect PIN." }, { status: 401 })
+
+  const { user, team, credentialVersion } = result.value
   if (!team) return NextResponse.json({ error: "No team is assigned to this manager." }, { status: 404 })
 
   const session = signManagerSession({
@@ -161,27 +90,22 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Current PIN and new PIN must be 4 digits." }, { status: 400 })
   }
 
-  const keys = attemptKeys(request, session.managerId)
-  const wait = retryAfterSeconds(keys, Date.now())
-  if (wait > 0) return tooManyAttempts(wait)
-
-  const user = await prisma.user.findUnique({ where: { id: session.managerId } })
-  const currentOk = verifyManagerPin(user?.pin ?? "0000", body.currentPin)
-  if (!user || !currentOk) {
-    const now = Date.now()
-    for (const key of keys) recordFailure(key, now)
-    return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 401 })
-  }
-
-  clearFailures(keys)
-  const updated = await prisma.user.update({
-    where: { id: session.managerId },
-    data: { pin: hashManagerPin(body.newPin) },
-    select: { updatedAt: true },
+  const result = await verifyWithPinThrottle(request, session.managerId, async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: session.managerId } })
+    if (!user || !verifyManagerPin(user.pin, body.currentPin as string)) return { valid: false as const }
+    const updated = await tx.user.update({
+      where: { id: session.managerId },
+      data: { pin: hashManagerPin(body.newPin as string) },
+      select: { updatedAt: true },
+    })
+    return { valid: true as const, value: { updatedAt: updated.updatedAt.toISOString() } }
   })
+  if (result.kind === "limited") return tooManyAttempts(result.retryAfterSeconds)
+  if (result.kind === "invalid") return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 401 })
+
   // The updatedAt credential version invalidates every previously issued cookie.
   // Reissue only this device's session so a successful PIN change does not log it out.
-  const refreshed = signManagerSession(session, updated.updatedAt.toISOString())
+  const refreshed = signManagerSession(session, result.value.updatedAt)
   const response = NextResponse.json({ success: true })
   response.cookies.set("dynasty_manager", refreshed, {
     httpOnly: true,
