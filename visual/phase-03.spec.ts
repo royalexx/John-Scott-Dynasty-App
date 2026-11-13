@@ -152,7 +152,9 @@ test("Phase 3: horizontal finger-style swipe still changes main destinations", a
   const box = await page.locator('[data-swipe="tab"]').boundingBox()
   expect(box).not.toBeNull()
   if (!box) return
-  const y = box.y + Math.min(120, box.height / 3)
+  // Use the unclaimed 6px content gutter: redesigned cards contain nested interactions
+  // that intentionally take ownership of drags starting inside them.
+  const y = box.y + 6
   const startX = box.x + box.width * 0.3
   await page.mouse.move(startX, y)
   await page.mouse.down()
