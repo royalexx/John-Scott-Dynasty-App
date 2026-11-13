@@ -912,7 +912,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
               </div>
               {taxi.length ? taxi.map((player) => (
                 <div key={player.id} className={(player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES) ? "bg-danger-surface/40" : ""}>
-                  <PlayerItem player={player} fallbackSlot="TAXI" onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
+                  <PlayerItem player={player} fallbackSlot="TAXI" onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} invalidOverride={(player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)} />
                 </div>
               )) : <p className="px-4 py-4 text-sm text-text-muted">No players on the taxi squad</p>}
               </section>
