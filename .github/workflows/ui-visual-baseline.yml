@@ -16,6 +16,10 @@ on:
       - "package-lock.json"
   workflow_dispatch:
 
+concurrency:
+  group: ui-visual-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -37,6 +41,10 @@ jobs:
         run: npm ci
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+      - name: Typecheck UI and visual test tooling
+        run: npx tsc --noEmit
+      - name: Verify E2E safety guard without running tests
+        run: node scripts/verify-e2e-guard.mjs
       - name: Capture read-only baseline
         run: npm run test:visual
       - name: Upload screenshots, layout measurements and traces
