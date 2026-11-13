@@ -151,7 +151,7 @@ export function LeagueFeed({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[#070a12] text-white">
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-3 pb-24 space-y-5">
         <DraftCard players={players} isCommissioner={isCommissioner} />
         <WeeklyPodium week={week} matchups={displayMatchups} />
         <MatchupsSection week={week} matchups={displayMatchups} teamName={teamName} teamLogo={teamLogo} onSelect={(matchup) => onSelectMatchup?.(matchup.id)} onWeekChange={onWeekChange} />
@@ -195,20 +195,13 @@ export function LeagueFeed({
   )
 }
 
-/** Home win % from projected totals (which already include points banked so far); 50% when no projection exists. */
-function winProbability(matchup: DisplayMatchup) {
-  const home = matchup.projectedHome ?? matchup.homeScore
-  const away = matchup.projectedAway ?? matchup.awayScore
-  if (matchup.status === "Final") return matchup.homeScore === matchup.awayScore ? 50 : matchup.homeScore > matchup.awayScore ? 100 : 0
-  if (home + away <= 0) return 50
-  const spread = Math.max(10, 0.12 * (home + away))
-  return Math.min(95, Math.max(5, Math.round(100 / (1 + Math.exp(-(home - away) / spread)))))
-}
 
 function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatchup[] }) {
+  // Never rank one team by actuals and another by projections.
+  const showActual = matchups.some((matchup) => matchup.status !== "Scheduled")
   const teams = matchups.flatMap((matchup) => [
-    { team: matchup.homeTeam, owner: matchup.homeOwner, points: matchup.homeScore > 0 ? matchup.homeScore : matchup.projectedHome ?? 0, projected: !(matchup.homeScore > 0) },
-    { team: matchup.awayTeam, owner: matchup.awayOwner, points: matchup.awayScore > 0 ? matchup.awayScore : matchup.projectedAway ?? 0, projected: !(matchup.awayScore > 0) },
+    { team: matchup.homeTeam, owner: matchup.homeOwner, points: showActual ? matchup.homeScore : matchup.projectedHome ?? 0 },
+    { team: matchup.awayTeam, owner: matchup.awayOwner, points: showActual ? matchup.awayScore : matchup.projectedAway ?? 0 },
   ]).sort((a, b) => b.points - a.points).slice(0, 3).map((team, index) => ({
     ...team,
     place: index + 1,
@@ -216,7 +209,7 @@ function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatch
     order: `order-${index + 1}${index === 0 ? " -mt-5" : ""}`,
   }))
   return <section className="rounded-2xl border border-[#16233b] bg-[#0d1424] px-3 pb-3 pt-2">
-    <div className="mx-auto w-fit rounded-full border border-[#294463] bg-[#102642] px-3 py-1 text-xs font-black uppercase tracking-widest text-[#19ffff]">🏆 Week {week} Report</div>
+    <div className="mx-auto w-fit rounded-full border border-[#294463] bg-[#102642] px-3 py-1 text-xs font-black uppercase tracking-widest text-[#19ffff]">🏆 Week {week} · {showActual ? "Actual points" : "Projected points"}</div>
     <div className="mt-5 flex items-end justify-center gap-2">
       {teams.map((team) => <div key={team.place} className={cn("flex w-1/3 flex-col items-center text-center", team.order)}>
         <div className={cn("mb-1 flex size-8 items-center justify-center rounded-full border-2 border-current bg-[#172338] text-xs font-black", team.color)}>#{team.place}</div>
@@ -224,7 +217,7 @@ function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatch
         <p className="mt-2 w-full truncate text-xs font-black">{team.team}</p>
         <p className="truncate text-xs text-[#6d86ab]">{team.owner}</p>
         <p className={cn("mt-1 text-sm font-black tabular-nums", team.color)}>{team.points.toFixed(2)}</p>
-        {team.projected && <p className="text-xs font-black uppercase tracking-wider text-[#5e7090]">projected</p>}
+        <p className="text-xs font-bold uppercase tracking-wider text-[#8ba0c7]">{showActual ? "Actual" : "Projected"}</p>
       </div>)}
     </div>
   </section>
@@ -234,22 +227,21 @@ function MatchupsSection({ week, matchups, teamName, teamLogo, onSelect, onWeekC
   return <section>
     <div className="mb-2 flex items-center justify-between"><h2 className="text-lg font-black">Matchups</h2><SwipeSurface zone="week" onSwipeLeft={() => onWeekChange?.(week + 1)} onSwipeRight={() => onWeekChange?.(Math.max(1, week - 1))} className="flex items-center gap-2 text-xs font-bold text-[#19ffff]"><button type="button" onClick={() => onWeekChange?.(Math.max(1, week - 1))} aria-label="Previous league week" className="rounded p-1 hover:bg-[#172338]"><ChevronLeft className="size-4" /></button><span>Week {week}</span><button type="button" onClick={() => onWeekChange?.(week + 1)} aria-label="Next league week" className="rounded p-1 hover:bg-[#172338]"><ChevronRight className="size-4" /></button></SwipeSurface></div>
     <div className="space-y-2">{matchups.map((matchup) => {
-      const homeWin = winProbability(matchup)
       const homeResult = matchup.status === "Scheduled" ? undefined : matchup.homeScore === matchup.awayScore ? "TIE" : matchup.homeScore > matchup.awayScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
       const awayResult = matchup.status === "Scheduled" ? undefined : matchup.awayScore === matchup.homeScore ? "TIE" : matchup.awayScore > matchup.homeScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
       return <button key={matchup.id} type="button" onClick={() => onSelect(matchup)} className="w-full rounded-2xl border border-[#16233b] bg-[#0d1424] p-3 text-left transition-colors hover:bg-[#111c2e]">
         <div className="grid grid-cols-[1fr_36px_1fr] items-center gap-2">
-          <TeamMatchup team={matchup.homeTeam} logo={matchup.homeTeam === teamName ? teamLogo : undefined} owner={matchup.homeOwner} record={matchup.homeRecord} result={homeResult} score={matchup.homeScore} projected={matchup.projectedHome} win={homeWin} align="left" />
+          <TeamMatchup team={matchup.homeTeam} logo={matchup.homeTeam === teamName ? teamLogo : undefined} owner={matchup.homeOwner} record={matchup.homeRecord} result={homeResult} score={matchup.homeScore} projected={matchup.projectedHome} align="left" />
           <div className="flex size-8 items-center justify-center rounded-full border border-[#294463] bg-[#102642] text-xs font-black text-[#8ba0c7]">VS</div>
-          <TeamMatchup team={matchup.awayTeam} logo={matchup.awayTeam === teamName ? teamLogo : undefined} owner={matchup.awayOwner} record={matchup.awayRecord} result={awayResult} score={matchup.awayScore} projected={matchup.projectedAway} win={100 - homeWin} align="right" />
+          <TeamMatchup team={matchup.awayTeam} logo={matchup.awayTeam === teamName ? teamLogo : undefined} owner={matchup.awayOwner} record={matchup.awayRecord} result={awayResult} score={matchup.awayScore} projected={matchup.projectedAway} align="right" />
         </div>
       </button>
     })}</div>
   </section>
 }
 
-function TeamMatchup({ team, logo, owner, record, result, score, projected, win, align }: { team: string; logo?: string; owner: string; record: string; result?: string; score: number; projected?: number; win: number; align: "left" | "right" }) {
-  return <div className={cn("min-w-0", align === "right" && "text-right")}><div className={cn("flex items-center gap-2", align === "right" && "flex-row-reverse")}><div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#172338]">{logo ? <img src={logo} alt="" className="size-full object-cover" /> : "🏒"}</div><p className="truncate text-xs font-black">{team}</p></div><p className="mt-1 truncate text-xs text-[#6d86ab]">{owner} · {record}{result ? ` · ${result}` : ""}</p><span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-xs font-black", win >= 50 ? "bg-emerald-400/10 text-emerald-300" : "bg-rose-400/10 text-rose-300")}>{win}% WIN</span><p className="mt-1 text-lg font-black tabular-nums">{score.toFixed(2)}</p><p className="text-xs text-[#5e7090]">{projected === undefined && !result ? "projection unavailable" : `proj. ${(projected ?? score).toFixed(2)}`}</p></div>
+function TeamMatchup({ team, logo, owner, record, result, score, projected, align }: { team: string; logo?: string; owner: string; record: string; result?: string; score: number; projected?: number; align: "left" | "right" }) {
+  return <div className={cn("min-w-0", align === "right" && "text-right")}><div className={cn("flex items-center gap-2", align === "right" && "flex-row-reverse")}><div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#172338]">{logo ? <img src={logo} alt="" className="size-full object-cover" /> : "🏒"}</div><p className="truncate text-xs font-black">{team}</p></div><p className="mt-1 truncate text-xs text-[#6d86ab]">{owner} · {record}{result ? ` · ${result}` : ""}</p><p className="mt-1 text-lg font-black tabular-nums">{score.toFixed(2)}</p><p className="text-xs text-[#5e7090]">{projected === undefined && !result ? "projection unavailable" : `proj. ${(projected ?? score).toFixed(2)}`}</p></div>
 }
 
 function StandingsSection({ standings, results, teamName, playoffMode, onToggle, onDetails, onTrade }: { standings: StandingRow[]; results: MatchupResult[]; teamName: string; playoffMode: boolean; onToggle: () => void; onDetails: () => void; onTrade?: (team: StandingRow) => void }) {
@@ -320,7 +312,7 @@ function MatchupSheet({ week, matchup, roster, players = [], onClose, onSelectPl
   if (!open) return null
   const home = matchup ? getTeamRoster(matchup.homeTeam, roster, players) : []
   const away = matchup ? getTeamRoster(matchup.awayTeam, roster, players) : []
-  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[92vh] max-h-[92vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Week {week} Matchup</h2><button type="button" onClick={onClose} className="rounded-full bg-[#172338] p-2"><X className="size-4" /></button></div>{matchup && <div className="mt-3 grid grid-cols-3 items-center text-center"><div><p className="truncate text-xs font-black">{matchup.homeTeam}</p><b className="text-xl">{matchup.homeScore.toFixed(2)}</b><p className="text-xs text-emerald-300">{winProbability(matchup as DisplayMatchup)}% WIN</p></div><span className="text-xs font-black text-[#5e7090]">VS</span><div><p className="truncate text-xs font-black">{matchup.awayTeam}</p><b className="text-xl">{matchup.awayScore.toFixed(2)}</b><p className="text-xs text-emerald-300">{100 - winProbability(matchup as DisplayMatchup)}% WIN</p></div></div>}</div>{matchup && <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"><p className="mb-2 text-xs font-black uppercase tracking-widest text-[#5e7090]">Starter comparison · 20 slots</p>{starterSlots.map((slot, index) => { const left = home.filter((player) => player.slot === slot)[index % Math.max(home.filter((player) => player.slot === slot).length, 1)]; const right = away.filter((player) => player.slot === slot)[index % Math.max(away.filter((player) => player.slot === slot).length, 1)]; return <div key={`${slot}-${index}`} className="grid grid-cols-[1fr_32px_1fr] items-center gap-2 border-b border-[#111929] py-2"><button type="button" disabled={!left} onClick={() => left && onSelectPlayer?.(left)} className="min-w-0 text-left disabled:opacity-50"><b className="block truncate text-xs">{left?.name ?? "Empty slot"}</b><span className="text-xs text-[#6d86ab]">{left ? `${slot} · ${(left.todayPts ?? left.projPts).toFixed(1)} FPTS` : slot}</span></button><span className={cn("mx-auto flex size-5 items-center justify-center rounded text-xs font-black text-white", badgeColors[slot])}>{slot}</span><button type="button" disabled={!right} onClick={() => right && onSelectPlayer?.(right)} className="min-w-0 text-right disabled:opacity-50"><b className="block truncate text-xs">{right?.name ?? "Empty slot"}</b><span className="text-xs text-[#6d86ab]">{right ? `${slot} · ${(right.todayPts ?? right.projPts).toFixed(1)} FPTS` : slot}</span></button></div> })}</div>}</SheetContent></Sheet>
+  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[92vh] max-h-[92vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="shrink-0 border-b border-[#1a263d] p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">Week {week} Matchup</h2><button type="button" onClick={onClose} className="rounded-full bg-[#172338] p-2"><X className="size-4" /></button></div>{matchup && <div className="mt-3 grid grid-cols-3 items-center text-center"><div><p className="truncate text-xs font-black">{matchup.homeTeam}</p><b className="text-xl">{matchup.homeScore.toFixed(2)}</b><p className="text-xs text-[#8ba0c7]">Actual points</p></div><span className="text-xs font-black text-[#5e7090]">VS</span><div><p className="truncate text-xs font-black">{matchup.awayTeam}</p><b className="text-xl">{matchup.awayScore.toFixed(2)}</b><p className="text-xs text-[#8ba0c7]">Actual points</p></div></div>}</div>{matchup && <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"><p className="mb-2 text-xs font-black uppercase tracking-widest text-[#5e7090]">Starter comparison · 20 slots</p>{starterSlots.map((slot, index) => { const left = home.filter((player) => player.slot === slot)[index % Math.max(home.filter((player) => player.slot === slot).length, 1)]; const right = away.filter((player) => player.slot === slot)[index % Math.max(away.filter((player) => player.slot === slot).length, 1)]; return <div key={`${slot}-${index}`} className="grid grid-cols-[1fr_32px_1fr] items-center gap-2 border-b border-[#111929] py-2"><button type="button" disabled={!left} onClick={() => left && onSelectPlayer?.(left)} className="min-w-0 text-left disabled:opacity-50"><b className="block truncate text-xs">{left?.name ?? "Empty slot"}</b><span className="text-xs text-[#6d86ab]">{left ? `${slot} · ${(left.todayPts ?? left.projPts).toFixed(1)} FPTS` : slot}</span></button><span className={cn("mx-auto flex size-5 items-center justify-center rounded text-xs font-black text-white", badgeColors[slot])}>{slot}</span><button type="button" disabled={!right} onClick={() => right && onSelectPlayer?.(right)} className="min-w-0 text-right disabled:opacity-50"><b className="block truncate text-xs">{right?.name ?? "Empty slot"}</b><span className="text-xs text-[#6d86ab]">{right ? `${slot} · ${(right.todayPts ?? right.projPts).toFixed(1)} FPTS` : slot}</span></button></div> })}</div>}</SheetContent></Sheet>
 }
 
 function StandingsSheet({ open, standings, onClose }: { open: boolean; standings: StandingRow[]; onClose: () => void }) {

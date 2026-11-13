@@ -13,6 +13,7 @@ on:
       - "visual/**"
       - "playwright.visual.config.ts"
       - "playwright.preview.config.ts"
+      - "playwright.production-no-db.config.ts"
       - "proxy.ts"
       - "package.json"
       - "package-lock.json"
@@ -51,6 +52,10 @@ jobs:
         run: npm run test:visual
       - name: Verify database-free hosted preview refuses mutations
         run: npm run test:preview
+      - name: Verify production unavailable state without PostgreSQL
+        run: npm run test:production-no-db
+      - name: Validate production build
+        run: npm run build
       - name: Upload screenshots, layout measurements and traces
         if: always()
         uses: actions/upload-artifact@v4

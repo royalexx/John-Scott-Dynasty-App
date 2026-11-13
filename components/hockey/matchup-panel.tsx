@@ -386,7 +386,7 @@ export const MatchupPanel = React.memo(function MatchupPanel({
   if (!card) return null
 
   return (
-    <div className="flex min-w-0 flex-col gap-3 pb-16">
+    <div className="flex min-w-0 flex-col gap-3 pb-24">
       <SwipePager zone="matchup" activeIndex={matchupIndex} itemCount={weekSchedule.length} onIndexChange={selectMatchup} peekPx={14} gapPx={10} className="min-w-0 px-3">
         {cards.map((entry, index) => (
           <div key={entry.id} aria-hidden={index === matchupIndex ? undefined : true} className="h-full">

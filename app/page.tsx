@@ -10,6 +10,7 @@ import { formatActivity } from "@/lib/activity-format"
 import { getManagerSession } from "@/lib/auth-session"
 import { PinGate, type PinGateTeam } from "@/components/auth/pin-gate"
 import DashboardClient from "./dashboard-client"
+import { LeagueUnavailable } from "@/components/hockey/league-unavailable"
 
 function getOrdinal(n: number) {
   const s = ["th", "st", "nd", "rd"]
@@ -34,7 +35,7 @@ export default async function Page() {
 
   try {
     const league = await getLeague("00000000-0000-0000-0000-000000000001")
-    if (!league) return <DashboardClient initialData={initialDashboardData} />
+    if (!league) return <LeagueUnavailable reason="missing" />
 
     const gateTeams: PinGateTeam[] = league.teams.map((candidate) => ({
       id: candidate.id,
@@ -220,7 +221,7 @@ export default async function Page() {
       />
     )
   } catch (error: unknown) {
-    console.error("Database dashboard hydration failed; using placeholder data", error)
-    return <DashboardClient initialData={initialDashboardData} />
+    console.error("Database dashboard hydration failed", error)
+    return <LeagueUnavailable reason="connection" />
   }
 }

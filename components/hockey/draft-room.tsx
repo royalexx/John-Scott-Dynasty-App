@@ -231,14 +231,16 @@ function DraftRoom({ open, onOpenChange, draft, players, isCommissioner, remaini
               </div>
               <ul>
                 {available.map((player) => (
-                  <li key={player.nhlId}>
-                    <button type="button" onClick={() => setArmed(player.nhlId ?? null)} className={cn("flex w-full items-center gap-3 border-b border-[#172338] px-3 py-3 text-left", armed === player.nhlId && "bg-[#10283a]")}>
+                  <li key={player.nhlId} className={cn("flex items-center border-b border-[#172338] px-3 py-1", armed === player.nhlId && "bg-[#10283a]")}>
+                    <button type="button" onClick={() => setArmed(player.nhlId ?? null)} aria-pressed={armed === player.nhlId} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left focus-visible:rounded-md focus-visible:outline-2 focus-visible:outline-[#19ffff]">
                       <span className={cn("flex h-7 min-w-7 items-center justify-center rounded-md px-1 text-xs font-black text-white", positionBar[player.position])}>{player.position}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-bold">{player.name}</span>
                         <span className="block text-xs text-[#8ba0c7]">{player.team}</span>
                       </span>
-                      <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); if (player.nhlId == null) return; void act({ action: draft.queue.includes(player.nhlId) ? "queue-remove" : "queue-add", playerId: player.nhlId }) }} className="text-xs font-bold text-[#19ffff]">{player.nhlId != null && draft.queue.includes(player.nhlId) ? "Queued" : "Queue"}</span>
+                    </button>
+                    <button type="button" disabled={busy || player.nhlId == null} aria-label={`${player.nhlId != null && draft.queue.includes(player.nhlId) ? "Remove" : "Queue"} ${player.name}`} aria-pressed={player.nhlId != null && draft.queue.includes(player.nhlId)} onClick={() => { if (player.nhlId == null) return; void act({ action: draft.queue.includes(player.nhlId) ? "queue-remove" : "queue-add", playerId: player.nhlId }) }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md px-1 text-xs font-bold text-[#19ffff] focus-visible:outline-2 focus-visible:outline-[#19ffff] disabled:opacity-40">
+                      {player.nhlId != null && draft.queue.includes(player.nhlId) ? "Queued" : "Queue"}
                     </button>
                   </li>
                 ))}

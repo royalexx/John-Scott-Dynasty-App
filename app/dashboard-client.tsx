@@ -114,12 +114,12 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const benchCapacity = configuredSlots?.BN ?? DEFAULT_BENCH_CAPACITY
   const startingSlots = useMemo(() => (Object.keys(slotCapacities) as Array<keyof typeof slotCapacities>).map((slot) => ({ slot, capacity: slotCapacities[slot] })), [slotCapacities])
   const rosterSize = initialData.league?.rosterSize ?? DEFAULT_ROSTER_SIZE
-  const initialRoster = initialData.roster.length > 0 ? initialData.roster : fallbackRoster
-  const standings = initialData.standings.length > 0 ? initialData.standings : fallbackStandings
+  const initialRoster = initialData.teamId ? initialData.roster : initialData.roster.length > 0 ? initialData.roster : fallbackRoster
+  const standings = initialData.teamId ? initialData.standings : initialData.standings.length > 0 ? initialData.standings : fallbackStandings
   // Register authoritative DB rosters before any child derives opponent lineups from them.
   setLeagueContext(initialData.teamName, initialData.leagueRosters)
-  const draftPicks = initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
-  const [activities, setActivities] = useState<ActivityItem[]>(initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
+  const draftPicks = initialData.teamId ? initialData.draftPicks : initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
+  const [activities, setActivities] = useState<ActivityItem[]>(initialData.teamId ? initialData.activities : initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
   const [activeTab, setActiveTab] = useState<MainTab>("TEAM")
   const [allDynastyPlayers, setAllDynastyPlayers] = useState<MarketPlayer[]>([])
   const [scheduleGames, setScheduleGames] = useState<NhlScheduleGame[]>([])
@@ -278,7 +278,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const [teamDrawer, setTeamDrawer] = useState<"schedule" | "team-settings" | "settings" | "transactions" | "news" | null>(null)
   const [playerNicknames, setPlayerNicknames] = useState<Record<string, string>>({})
-  const [tradeMode, setTradeMode] = useState(false)
+  const [tradeNavigationRequest, setTradeNavigationRequest] = useState(0)
   const [teamName, setTeamName] = useState(initialData.teamName)
   const [teamLogo, setTeamLogo] = useState(initialData.teamLogo ?? "")
   const [pendingClaims, setPendingClaims] = useState<WaiverClaim[]>([])
@@ -833,19 +833,17 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
-            <div className="flex flex-col pb-16">
+            <div className="flex flex-col pb-24">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
-                  setTradeMode(true)
+                  setTradeNavigationRequest((request) => request + 1)
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
               <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
-                <button type="button" className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">
-                  <span>Starters ({startersCount})</span>
-                </button>
+                <span className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">Starters ({startersCount})</span>
                 <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
                   <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="rounded p-1 hover:bg-[#172338]">
                     <ChevronLeft className="size-3.5" />
@@ -933,8 +931,8 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             </div>
           </div>
 
-          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
-            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain pb-24" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
+            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeRequestId={tradeNavigationRequest} />
           </div>
           <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
             <LeagueFeed matchupResults={initialData.matchupResults} week={week} teamName={teamName} teamLogo={teamLogo} isCommissioner={initialData.isCommissioner} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />
@@ -942,7 +940,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         </SwipePager>
 
         <div className="absolute inset-x-3 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
-          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
+          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex min-h-11 w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
             <MessageSquare className="size-3.5 shrink-0 text-[#19ffff]" />
             <span className="truncate text-xs text-[#8ba0c7]"><b className="text-white">Chat:</b> {chatPreview}</span>
           </button>

@@ -199,10 +199,13 @@ function CompactTradePlayerRow({ player, selected, owner, onToggle, onPlayerClic
   const position = player.slot === "IR" ? "IR" : player.slot === "TAXI" ? "TAXI" : player.slot === "F" ? "F" : player.position
   const positionClass = position === "G" ? "bg-sky-500 text-white" : position === "D" ? "bg-amber-600 text-white" : position === "C" ? "bg-blue-600 text-white" : position === "IR" ? "bg-rose-700 text-white" : position === "TAXI" ? "bg-amber-800 text-white" : position === "F" ? "bg-violet-600 text-white" : "bg-teal-600 text-white"
   const shortName = player.name.split(" ").slice(-1)[0]
-  return <div role="button" tabIndex={0} onClick={onToggle} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onToggle() }} className={cn("flex w-full cursor-pointer items-center gap-1.5 rounded-lg border p-1.5 transition-colors", selected ? "border-[#19ffff]/50 bg-[#0c2231] text-white" : "border-[#141e33] bg-[#0d1424] text-[#cbd5e1] hover:bg-[#111c2e]")}>
-    <input type="checkbox" checked={selected} onChange={(event) => { event.stopPropagation(); onToggle() }} onClick={(event) => event.stopPropagation()} aria-label={`Select ${player.name}`} className="size-3.5 shrink-0 rounded accent-[#19ffff]" />
-    <span className={cn("flex size-5 shrink-0 items-center justify-center rounded text-xs font-black", positionClass)}>{position === "LW" || position === "RW" ? "W" : position}</span>
-    <button type="button" onClick={(event) => { event.stopPropagation(); onPlayerClick?.(player, owner) }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left"><PlayerAvatar player={player} /><span className="min-w-0"><b className="block truncate text-xs font-bold leading-tight text-white">{shortName}</b>    <small className="block text-xs tabular-nums text-[#5e7090]">{(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)}</small></span></button>
+  return <div className={cn("flex w-full items-center gap-1.5 rounded-lg border p-1.5 transition-colors", selected ? "border-[#19ffff]/50 bg-[#0c2231] text-white" : "border-[#141e33] bg-[#0d1424] text-[#cbd5e1] hover:bg-[#111c2e]")}>
+    <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-1.5">
+      <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${player.name}`} className="size-4 shrink-0 rounded accent-[#19ffff] focus-visible:outline-2 focus-visible:outline-[#19ffff]" />
+      <span className={cn("flex size-5 shrink-0 items-center justify-center rounded text-xs font-black", positionClass)}>{position === "LW" || position === "RW" ? "W" : position}</span>
+      <span className="min-w-0"><b className="block truncate text-xs font-bold leading-tight text-white">{shortName}</b><small className="block text-xs tabular-nums text-[#8ba0c7]">{(player.schedule?.weekProjectedFantasyPoints ?? player.projPts).toFixed(1)} proj.</small></span>
+    </label>
+    {onPlayerClick && <button type="button" onClick={() => onPlayerClick(player, owner)} aria-label={`View ${player.name} details`} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-[#19ffff]"><PlayerAvatar player={player} /></button>}
   </div>
 }
 
