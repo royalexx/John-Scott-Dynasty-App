@@ -13,7 +13,7 @@ export function PlayerPortrait({
   name: string
   className?: string
 }) {
-  const [hasError, setHasError] = useState(false)
+  const [failedPhoto, setFailedPhoto] = useState<string | null>(null)
   const source = player ?? { name }
   const photo = getPlayerPhoto(source)
   const initials = name
@@ -23,11 +23,12 @@ export function PlayerPortrait({
     .slice(0, 2)
     .toUpperCase()
 
-  if (!photo || hasError) {
+  if (!photo || failedPhoto === photo) {
     return (
       <span
+        data-slot="player-portrait"
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full bg-[#1b2842] text-xs font-black text-[#8ba0c7]",
+          "flex shrink-0 items-center justify-center rounded-full border border-border bg-surface-raised text-xs font-bold text-text-secondary",
           className
         )}
       >
@@ -38,8 +39,9 @@ export function PlayerPortrait({
 
   return (
     <span
+      data-slot="player-portrait"
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1b2842]",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-surface-raised",
         className
       )}
     >
@@ -47,7 +49,7 @@ export function PlayerPortrait({
         src={photo}
         alt=""
         className="size-full scale-[1.35] object-cover object-[50%_18%]"
-        onError={() => setHasError(true)}
+        onError={() => setFailedPhoto(photo)}
       />
     </span>
   )
