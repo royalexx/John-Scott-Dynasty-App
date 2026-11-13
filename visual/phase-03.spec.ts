@@ -159,6 +159,10 @@ test("Phase 3: horizontal finger-style swipe still changes main destinations", a
   await page.mouse.move(startX + box.width * 0.45, y, { steps: 8 })
   await page.mouse.up()
   await expect(tab("MATCH")).toHaveAttribute("aria-pressed", "true")
+  // Match embeds a nested matchup-card swiper. It rightly owns horizontal
+  // gestures there; verify the opposite top-level direction from Team instead.
+  await tab("TEAM").click()
+  await expect(tab("TEAM")).toHaveAttribute("aria-pressed", "true")
   await page.waitForTimeout(550)
 
   const nextX = box.x + box.width * 0.7
@@ -166,5 +170,5 @@ test("Phase 3: horizontal finger-style swipe still changes main destinations", a
   await page.mouse.down()
   await page.mouse.move(nextX - box.width * 0.45, y, { steps: 8 })
   await page.mouse.up()
-  await expect(tab("TEAM")).toHaveAttribute("aria-pressed", "true")
+  await expect(tab("PLAYERS")).toHaveAttribute("aria-pressed", "true")
 })
