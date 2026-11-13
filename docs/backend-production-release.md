@@ -68,4 +68,4 @@ A database with **existing migration history** must be handled according to its 
 The schema modifications are additive except removal of the insecure default PIN value. Rolling the application code back to the last known working commit is generally safer than reversing migrations. Do not drop new tables or reset the hosted database as a first rollback step. Reconcile any lineup plans activated in the live roster before retrying release.
 
 ## Deliberate exclusions
-This release does not backfill unrecorded historical DAILY lineups or fabricate past box scores. Four fixture-dependent tests may remain skipped on isolated E2E data; their coverage is partially supplemented by pure and synthetic database tests. Historical reconstruction requires independently verified source data and separate approval.
+This release does not backfill unrecorded historical DAILY lineups or fabricate past box scores. Fixture-dependent historical NHL tests may remain skipped on isolated E2E data; their coverage is partially supplemented by pure and synthetic database tests. Historical reconstruction requires independently verified source data and separate approval.
