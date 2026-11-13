@@ -5,6 +5,7 @@ import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type Lo
 import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
 import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
+import { validateFaabReservation } from "../lib/waiver-run"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
 
@@ -223,6 +224,21 @@ test.describe("trade roster projection", () => {
       { fromTeamId: "A", toTeamId: "B", playerId: 1 },
       { fromTeamId: "A", toTeamId: "B", playerId: 1 },
     ], "BN")).toThrow(/Duplicate or unavailable/)
+  })
+})
+
+test.describe("FAAB reservations", () => {
+  test("rejects bids exceeding uncommitted FAAB even when the total balance is larger", () => {
+    expect(() => validateFaabReservation(100, 80, 21, 0)).toThrow(/uncommitted/)
+    expect(() => validateFaabReservation(100, 80, 20, 0)).not.toThrow()
+  })
+  test("respects the league minimum waiver bid", () => {
+    expect(() => validateFaabReservation(100, 0, 0, 1)).toThrow(/Minimum/)
+    expect(() => validateFaabReservation(100, 0, 1, 1)).not.toThrow()
+  })
+  test("rejects fractional or negative balances and commitments", () => {
+    expect(() => validateFaabReservation(100, -1, 2, 0)).toThrow(/non-negative integers/)
+    expect(() => validateFaabReservation(100, 0.5, 2, 0)).toThrow(/non-negative integers/)
   })
 })
 
