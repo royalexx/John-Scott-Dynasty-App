@@ -52,7 +52,6 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql://ci:ci-local-test-only@127.0.0.1:5432/johnscott_e2e
       TEST_DATABASE_URL: postgresql://ci:ci-local-test-only@127.0.0.1:5432/johnscott_e2e
       SESSION_SECRET: ci-only-session-signing-secret-that-is-not-used-in-production
       CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
@@ -68,8 +67,12 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Initialize disposable PostgreSQL schema
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: npx prisma db push --skip-generate
       - name: Seed disposable league fixture
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: npm run prisma:seed
       - name: Verify database-backed API and deterministic rules
         run: npx playwright test e2e/04-api-endpoints.spec.ts e2e/06-rules-engine.spec.ts --project=chromium
