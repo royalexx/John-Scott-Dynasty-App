@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { ArrowLeftRight, Award, Check, Plus, Search } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
@@ -41,8 +41,9 @@ function marketStat(player: MarketPlayer, stat: "gp" | "goals" | "assists" | "so
   if (stat === "ppp") return "ppp" in stats ? stats.ppp ?? 0 : 0
   return player.currentSeasonStats?.plusMinus ?? 0
 }
-export const PlayersMarketView = React.memo(function PlayersMarketView({ teamName, roster, players: dynastyPlayers, allLeagueRosterIds, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeMode = false }: { teamName: string; roster: Player[]; players: MarketPlayer[]; allLeagueRosterIds?: Set<number | string>; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeMode?: boolean }) {
-  const [subTab, setSubTab] = useState<"search" | "available" | "leaders" | "trade">(tradeMode ? "trade" : "available")
+export const PlayersMarketView = React.memo(function PlayersMarketView({ teamName, roster, players: dynastyPlayers, allLeagueRosterIds, tradeBlock, tradeOffers, onAcceptTrade, onDeclineTrade, onCounterTrade, onInitiateTrade, onSelect, onClaim, onOpenTradeBuilder, activeTradeFilter, setActiveTradeFilter, tradeRequestId = 0 }: { teamName: string; roster: Player[]; players: MarketPlayer[]; allLeagueRosterIds?: Set<number | string>; tradeBlock: TradeBlockEntry[]; tradeOffers: LeagueTradeOffer[]; onAcceptTrade: (tradeId: string) => void; onDeclineTrade: (tradeId: string) => void; onCounterTrade: (trade: LeagueTradeOffer) => void; onInitiateTrade: (player: PlayerDialogTarget) => void; onSelect: (player: PlayerDialogTarget) => void; onClaim: (player: MarketPlayer) => void; onOpenTradeBuilder: () => void; activeTradeFilter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED"; setActiveTradeFilter: (filter: "ALL" | "ACTIVE" | "ACCEPTED" | "REJECTED") => void; tradeRequestId?: number }) {
+  const [subTab, setSubTab] = useState<"search" | "available" | "leaders" | "trade">("available")
+  useEffect(() => { if (tradeRequestId > 0) setSubTab("trade") }, [tradeRequestId])
   const [filter, setFilter] = useState<PositionFilter>("ALL")
   const [availability, setAvailability] = useState<"ALL" | "FA" | "W">("ALL")
   const [settings, setSettings] = useState<PlayerGridSettings>({ viewType: "Projections", period: "This Week", year: "2026" })
@@ -100,12 +101,12 @@ export const PlayersMarketView = React.memo(function PlayersMarketView({ teamNam
   const selectPlayer = (p: MarketPlayer) => onSelect({ name: p.name, position: p.position, team: p.team, opponent: p.schedule?.opponent ?? "—", status: p.injuryStatus ?? null, todayPts: p.fpts, projPts: horizonMode === "projections" ? getProjectedFPTS(p, horizon === "This Week" ? 3.5 : horizon === "Next 14 Days" ? 7 : 28) : p.fpts, marketPlayer: p })
   return (
     <div className="flex flex-col">
-      <div className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
-        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" onClick={() => setSubTab(id)} className={cn("relative flex w-full cursor-pointer flex-col items-center gap-1 py-1 text-xs font-bold", subTab === id && "text-[#19ffff]")}>{subTab === id && <span className="absolute inset-x-3 -bottom-2 h-0.5 rounded-full bg-[#19ffff]" />}<Icon className="size-4" />{label}</button>)}
+      <div role="tablist" aria-label="Player market sections" className="grid grid-cols-4 border-b border-[#141e33] px-1 py-2 text-[#5e7090]">
+        {[{ id: "search" as const, label: "Search", Icon: Search }, { id: "available" as const, label: "Available", Icon: Check }, { id: "leaders" as const, label: "Leaders", Icon: Award }, { id: "trade" as const, label: "Trade", Icon: ArrowLeftRight }].map(({ id, label, Icon }) => <button key={label} type="button" role="tab" aria-selected={subTab === id} onClick={() => setSubTab(id)} className={cn("relative flex w-full cursor-pointer flex-col items-center gap-1 py-1 text-xs font-bold", subTab === id && "text-[#19ffff]")}>{subTab === id && <span className="absolute inset-x-3 -bottom-2 h-0.5 rounded-full bg-[#19ffff]" />}<Icon className="size-4" />{label}</button>)}
       </div>
       {subTab !== "available" ? <PlayersSubTabView teamName={teamName} tab={subTab} roster={roster} players={dynastyPlayers} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTrade} onDeclineTrade={onDeclineTrade} onCounterTrade={onCounterTrade} onInitiateTrade={onInitiateTrade} horizonMode={horizonMode} horizon={horizon} onHorizonChange={(mode, next) => { setHorizonMode(mode); setHorizon(next); setSettings({ ...settings, viewType: mode === "stats" ? "Stats" : "Projections", period: next }) }} onSelect={onSelect} onClaim={onClaim} onOpenTradeBuilder={onOpenTradeBuilder} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} /> : <>
       <div className="flex items-center justify-between border-b border-[#111929] px-3 py-3">
-        <h2 className="text-base font-black text-white">{tradeMode ? "Trade Center" : "Available"}</h2>
+        <h2 className="text-base font-black text-white">Available</h2>
         <button type="button" aria-label="Filters" onClick={() => setFiltersOpen(true)} className="rounded-full bg-[#172338] px-3 py-1.5 text-[13px] font-bold text-white">{filter === "ALL" ? "All" : filter} · {availableSort}</button>
       </div>
       <ul>
