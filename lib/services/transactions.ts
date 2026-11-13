@@ -4,7 +4,7 @@ import { ActivityAction, AssetType, ClaimStatus, PlayerStatus, Position, Prisma,
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
-import { nextWaiverProcessAt, validateFaabReservation, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
+import { assertTradePreservesReservedFaab, nextWaiverProcessAt, validateFaabReservation, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
 import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
@@ -345,9 +345,22 @@ export async function executeTrade(tradeOfferId: string) {
         if (asset.draftPickId == null || !(await tx.draftPick.findFirst({ where: { id: asset.draftPickId, currentTeamId: asset.fromTeamId } }))) throw new Error("A traded pick is no longer owned by the sending team")
       } else {
         const amount = asset.faabAmount ?? 0
-        if (amount < 0 || (balances.get(asset.fromTeamId) ?? 0) < amount) throw new Error("Insufficient FAAB for trade")
+        if (!Number.isSafeInteger(amount) || amount < 0 || (balances.get(asset.fromTeamId) ?? 0) < amount) throw new Error("Insufficient FAAB for trade")
         balances.set(asset.fromTeamId, (balances.get(asset.fromTeamId) ?? 0) - amount)
         balances.set(asset.toTeamId, (balances.get(asset.toTeamId) ?? 0) + amount)
+      }
+    }
+    if (offer.assets.some((asset) => asset.assetType === AssetType.FAAB)) {
+      // The same per-team advisory locks protect this read from concurrent
+      // waiver submissions, cancellations and awards.
+      const commitments = await tx.waiverClaim.groupBy({
+        by: ["teamId"],
+        where: { teamId: { in: teams.map((team) => team.id) }, status: ClaimStatus.PENDING },
+        _sum: { bidAmount: true },
+      })
+      const reserved = new Map(commitments.map((entry) => [entry.teamId, entry._sum.bidAmount ?? 0]))
+      for (const team of teams) {
+        assertTradePreservesReservedFaab(balances.get(team.id) ?? team.faabBalance, reserved.get(team.id) ?? 0)
       }
     }
     const rosterSlots = await tx.rosterSlot.findMany({
