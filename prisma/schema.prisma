@@ -73,7 +73,7 @@ model User {
   email            String          @unique
   name             String
   handle           String          @unique
-  pin              String          @default("1234")
+  pin              String
   isCommissioner     Boolean         @default(false)
   avatarUrl        String?
   createdAt        DateTime        @default(now())
