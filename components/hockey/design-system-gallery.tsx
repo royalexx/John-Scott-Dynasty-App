@@ -7,6 +7,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { HockeySurface, HockeySectionHeading, HockeyStatus, HockeyStat, PositionBadge } from "@/components/ui/hockey"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
+import { TradeBuilderDialog, type TradeTeam } from "@/components/hockey/trade-builder-dialog"
+import { roster } from "@/lib/hockey-data"
+
+// Component-only sample managers. The entire gallery is inaccessible in Production.
+const demoSender: TradeTeam = {
+  id: "preview-home", name: "Sample Home", players: roster.slice(0, 5),
+  faabAvailable: 75,
+  draftPicks: [{ id: "demo-home-pick", label: "2027 1st Round" }],
+}
+const demoPartner: TradeTeam = {
+  id: "preview-away", name: "Sample Opponent", players: roster.slice(5, 10),
+  faabAvailable: 60,
+  draftPicks: [{ id: "demo-away-pick", label: "2027 2nd Round" }],
+}
 
 const palette = [
   { label: "Canvas", token: "--ds-canvas" },
@@ -28,6 +42,7 @@ const palette = [
  */
 export function DesignSystemGallery() {
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [tradeOpen, setTradeOpen] = useState(false)
   const [message, setMessage] = useState("Select a button to check its interaction state.")
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -125,6 +140,12 @@ export function DesignSystemGallery() {
         </section>
 
         <HockeySurface className="space-y-3">
+          <HockeySectionHeading title="Trade workflow" eyebrow="Read-only fixture, no persistence" />
+          <p className="text-xs text-text-secondary">Preview the real three-step builder with sample managers, players and picks.</p>
+          <Button onClick={() => setTradeOpen(true)}>Review trade workflow</Button>
+        </HockeySurface>
+
+        <HockeySurface className="space-y-3">
           <HockeySectionHeading title="Type scale" eyebrow="Labels to screen titles" />
           <p className="text-2xl font-bold">Screen heading · 24px</p>
           <p className="text-lg font-bold">Section heading · 18px</p>
@@ -134,6 +155,13 @@ export function DesignSystemGallery() {
         <footer className="text-center text-xs text-text-muted">Review fixture only. Fantasy data, portraits and actions in the real app are unchanged.</footer>
       </main>
 
+      <TradeBuilderDialog
+        open={tradeOpen}
+        onOpenChange={setTradeOpen}
+        team={demoSender}
+        partners={[demoPartner]}
+        onSendTrade={() => { setTradeOpen(false); setMessage("Preview only · No trade saved") }}
+      />
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="mx-auto w-full max-w-[430px] rounded-t-2xl border-t border-border bg-popover p-4 text-foreground">
           <SheetHeader className="px-0"><SheetTitle>Example bottom sheet</SheetTitle></SheetHeader>
