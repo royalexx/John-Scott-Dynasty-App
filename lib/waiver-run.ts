@@ -12,6 +12,16 @@ export function validateFaabReservation(balance: number, committed: number, bid:
   if (committed + bid > balance) throw new Error("Insufficient uncommitted FAAB to cover this bid")
 }
 
+/** A FAAB trade must not consume money already committed to pending auction bids. */
+export function assertTradePreservesReservedFaab(projectedBalance: number, committed: number): void {
+  if (![projectedBalance, committed].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    throw new Error("FAAB amounts must be non-negative safe integers")
+  }
+  if (projectedBalance < committed) {
+    throw new Error("Trade would spend FAAB reserved for pending waiver claims")
+  }
+}
+
 export const WAIVER_RESOLUTIONS = {
   WON: "WON",
   OUTBID: "OUTBID",
