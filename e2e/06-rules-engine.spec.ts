@@ -7,6 +7,7 @@ import { isWeekFinal, scoreTeams, scoreTeamsByGame } from "../lib/matchup-scorin
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
+import { assertTradePreservesReservedFaab, validateFaabReservation } from "../lib/waiver-run"
 import { missingSnapshotTeamIds } from "../lib/services/week-lineups"
 import { PlayerStatus, SlotType } from "@prisma/client"
 import { previewFutureMove, rosterMatchesPlan } from "../lib/services/future-lineup-plans"
@@ -361,5 +362,23 @@ test.describe("DAILY-mode game-scoped scoring", () => {
     expect(missingDailyGameCoverage([100, 101], ["A", "B"], coverage)).toEqual([{ gameId: 101, teamId: "B" }])
     expect(missingDailyGameCoverage([100], ["A", "B"], coverage)).toEqual([])
     expect(missingDailyGameCoverage([], ["A", "B"], [])).toEqual([])
+  })
+})
+
+test.describe("consolidated waiver and trade FAAB commitments", () => {
+  test("reserved pending bids reduce the money available to new claims", () => {
+    expect(() => validateFaabReservation(100, 80, 20, 0)).not.toThrow()
+    expect(() => validateFaabReservation(100, 80, 21, 0)).toThrow(/uncommitted/)
+    expect(() => validateFaabReservation(100, 0, 0, 1)).toThrow(/Minimum/)
+    expect(() => validateFaabReservation(100, 0, 1, 1)).not.toThrow()
+    expect(() => validateFaabReservation(100, -1, 2, 0)).toThrow(/non-negative integers/)
+    expect(() => validateFaabReservation(100, 0.5, 2, 0)).toThrow(/non-negative integers/)
+  })
+  test("FAAB trade must preserve existing claim commitments", () => {
+    expect(() => assertTradePreservesReservedFaab(80, 80)).not.toThrow()
+    expect(() => assertTradePreservesReservedFaab(100, 20)).not.toThrow()
+    expect(() => assertTradePreservesReservedFaab(79, 80)).toThrow(/reserved/)
+    expect(() => assertTradePreservesReservedFaab(-1, 0)).toThrow(/non-negative/)
+    expect(() => assertTradePreservesReservedFaab(100.5, 5)).toThrow(/safe integers/)
   })
 })
