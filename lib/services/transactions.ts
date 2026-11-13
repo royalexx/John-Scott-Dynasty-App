@@ -350,7 +350,7 @@ export async function executeTrade(tradeOfferId: string) {
     // validated simultaneously, not by temporary intermediate roster state.
     const resulting = new Map(teams.map((team) => [
       team.id, rosterSlots.filter((row) => row.teamId === team.id).map((row) => ({ playerId: row.playerId, slot: row.slot })),
-    ]))
+    ] as const))
     for (const asset of offer.assets) {
       if (asset.assetType !== AssetType.PLAYER || asset.playerId == null) continue
       const source = resulting.get(asset.fromTeamId)
