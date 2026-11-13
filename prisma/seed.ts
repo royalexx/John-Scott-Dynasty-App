@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
 import { DEFAULT_LEAGUE_SCORING } from "../lib/scoring"
+import { hashManagerPin } from "../lib/pin-crypto"
 
 type RegistryPlayer = {
   nhlId: number
@@ -126,14 +127,16 @@ async function main() {
     const handle = standing.owner === "You" || standing.team === "Montreal Monarchs" ? "commissioner" : standing.owner.replace(/^@/, "")
     const isCommish = handle === "commissioner"
     const name = isCommish ? "Commissioner" : handle
+    // Fixed initial PIN is only for disposable test fixtures; never store it in plaintext.
+    const fixturePinHash = hashManagerPin("1234")
     const user = await prisma.user.upsert({
       where: { handle },
-      update: { name, pin: "1234", isCommissioner: isCommish },
+      update: { name, pin: fixturePinHash, isCommissioner: isCommish },
       create: {
         email: `${handle}@example.com`,
         name,
         handle,
-        pin: "1234",
+        pin: fixturePinHash,
         isCommissioner: isCommish,
       },
     })
