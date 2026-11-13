@@ -75,7 +75,7 @@ jobs:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: npm run prisma:seed
       - name: Verify database-backed API and deterministic rules
-        run: npx playwright test e2e/04-api-endpoints.spec.ts e2e/06-rules-engine.spec.ts --project=chromium
+        run: npx playwright test --project=chromium
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
