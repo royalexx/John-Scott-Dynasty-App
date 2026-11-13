@@ -59,13 +59,13 @@ function HockeyStatus({ label, tone = "neutral", className }: {
 
 /** Standard compact hockey position indicator; does not replace player photos. */
 const positionClasses: Record<string, string> = {
-  C: "bg-[#2857a8] text-white",
-  W: "bg-[#0c726e] text-white",
-  LW: "bg-[#0c726e] text-white",
-  RW: "bg-[#0c726e] text-white",
-  F: "bg-[#6334a5] text-white",
-  D: "bg-[#e9aa53] text-[#08121d]",
-  G: "bg-[#4aa1cc] text-[#08121d]",
+  C: "bg-position-c text-white",
+  W: "bg-position-w text-white",
+  LW: "bg-position-w text-white",
+  RW: "bg-position-w text-white",
+  F: "bg-position-f text-white",
+  D: "bg-position-d text-position-ink",
+  G: "bg-position-g text-position-ink",
   BN: "bg-surface-hover text-text-secondary",
   TAXI: "bg-warning-surface text-warning",
   IR: "bg-danger-surface text-danger",
