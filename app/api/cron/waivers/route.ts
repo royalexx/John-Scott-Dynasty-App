@@ -17,7 +17,8 @@ async function run(request: NextRequest) {
   const commissionerAuthorized = commissioner?.isCommissioner === true
   const authorization = (await headers()).get("authorization")
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null
-  const authorized = verifyCronSecret(bearerToken) || verifyCronSecret(request.nextUrl.searchParams.get("secret"))
+  // Never accept CRON_SECRET in query parameters.
+  const authorized = verifyCronSecret(bearerToken)
   if (!authorized && !commissionerAuthorized) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const now = new Date()

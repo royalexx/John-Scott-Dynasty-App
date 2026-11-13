@@ -37,7 +37,7 @@ DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
 CRON_SECRET="any-long-random-string"
 ```
 
-`DATABASE_URL` is required. `CRON_SECRET` is required only for the NHL sync and waiver cron routes.
+`DATABASE_URL` is required. `CRON_SECRET` is required only for the NHL sync and waiver cron routes. Set a separate `SESSION_SECRET` for user sessions; use different unpredictable values for the two secrets. Automated cron calls must use `Authorization: Bearer <CRON_SECRET>`, never `?secret=` in a URL.
 
 There is no `prisma/migrations` folder. Push the schema, then seed the league:
 
