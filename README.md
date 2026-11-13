@@ -150,11 +150,25 @@ e2e/                         Playwright specs
 
 ## Tests
 
-Playwright starts `npm run dev` unless one is already running outside CI. The setup project signs in as Montreal Monarchs with PIN `1234` and writes `e2e/.auth/manager.json`. Specs run in Chromium at 430×932.
+The full Playwright E2E suite starts its own `npm run dev` server and refuses to attach to an existing local server. It requires a disposable loopback `*_e2e` or `*_test` PostgreSQL database and `E2E_ALLOW_MUTATION=1`. The setup project signs in as Montreal Monarchs with the local seed PIN and writes `e2e/.auth/manager.json`. Specs run in Chromium at 430×932.
 
 ```bash
 npm run test:e2e
 npx tsc --noEmit
 ```
 
-The database must already be seeded. Specs hit the real league, including roster moves, trades, and waivers.
+The database must already be seeded. Specs can change seeded league data (including roster moves and commissioner settings). Never point them at a shared or production database.
+
+## UI visual baseline and safe E2E testing
+
+Phase 0 of the UI modernization uses a **read-only** local fixture and Playwright screenshot capture, separate from the database-backed E2E suite:
+
+```bash
+npm run test:visual
+```
+
+Open the associated GitHub Actions **UI visual baseline** run to review Match, Team, Players, League, modal and PIN screenshots at multiple mobile widths. See [Phase 0 documentation](docs/PHASE_00_BASELINE_AND_PREVIEW.md).
+
+**Warning:** The normal `npm run test:e2e` suite can modify settings, rosters and sync data. It now requires `E2E_ALLOW_MUTATION=1` and an explicitly named **local loopback** `*_e2e` / `*_test` PostgreSQL database, and refuses to reuse an arbitrary running dev server. Never run the mutation-capable suite against production/shared Neon. Vercel previews are **not** assumed isolated until their Preview environment database is verified.
+
+No NHL player portrait sources or images are removed by Phase 0.

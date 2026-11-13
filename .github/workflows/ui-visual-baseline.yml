@@ -1,0 +1,64 @@
+name: UI visual baseline (read-only)
+
+on:
+  push:
+    branches: ["ui/phase-*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/ui-visual-baseline.yml"
+      - "app/**"
+      - "components/**"
+      - "lib/**"
+      - "visual/**"
+      - "playwright.visual.config.ts"
+      - "playwright.preview.config.ts"
+      - "proxy.ts"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+concurrency:
+  group: ui-visual-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  visual-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout PR content
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Typecheck UI and visual test tooling
+        run: npx tsc --noEmit
+      - name: Verify E2E safety guard without running tests
+        run: node scripts/verify-e2e-guard.mjs
+      - name: Capture read-only baseline
+        run: npm run test:visual
+      - name: Verify database-free hosted preview refuses mutations
+        run: npm run test:preview
+      - name: Upload screenshots, layout measurements and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baseline-${{ github.run_id }}
+          path: |
+            test-results/visual/
+            playwright-visual-report/
+            playwright-preview-report/
+          if-no-files-found: warn
+          retention-days: 14

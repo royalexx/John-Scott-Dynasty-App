@@ -20,6 +20,18 @@ function getOrdinal(n: number) {
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
+  // Read-only, deterministic UI fixtures for local visual regression capture only.
+  // This is intentionally unavailable in production and every Vercel deployment.
+  if (process.env.NODE_ENV === "development" && process.env.UI_VISUAL_FIXTURES === "1" && !process.env.VERCEL) {
+    return <DashboardClient initialData={initialDashboardData} />
+  }
+
+  // A hosted PR preview without database credentials is a visual demo only.
+  // Unlike production's historical catch/fallback, it is explicitly labeled.
+  if (process.env.VERCEL_ENV === "preview" && !process.env.DATABASE_URL) {
+    return <DashboardClient initialData={{ ...initialDashboardData, isPreviewFixture: true }} />
+  }
+
   try {
     const league = await getLeague("00000000-0000-0000-0000-000000000001")
     if (!league) return <DashboardClient initialData={initialDashboardData} />

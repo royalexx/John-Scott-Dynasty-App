@@ -23,3 +23,5 @@ repomix-output.xml
 test-results/
 playwright-report/
 _FOR_REFERENCE_ONLY/
+playwright-visual-report/
+playwright-preview-report/

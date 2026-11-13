@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test"
+import { assertIsolatedE2EDatabase } from "./scripts/e2e-test-safety"
+
+assertIsolatedE2EDatabase()
 
 export default defineConfig({
   testDir: "./e2e",
@@ -32,7 +35,8 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: !process.env.CI,
+    // Never attach test automation to an already running, possibly production-backed server.
+    reuseExistingServer: false,
     timeout: 120 * 1000,
   },
 })
