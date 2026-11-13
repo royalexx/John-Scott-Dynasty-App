@@ -27,6 +27,8 @@ export interface LineupLockInfo {
 }
 
 export interface DashboardInitialData {
+  /** No persistent database, read-only hosted UI preview. */
+  isPreviewFixture?: boolean
   matchupResults?: MatchupResult[]
   lineupLock?: LineupLockInfo
   leagueId?: string
