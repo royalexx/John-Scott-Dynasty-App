@@ -840,6 +840,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
+              {weekView?.source === "unavailable" && (
+                <div data-testid="historical-lineup-unavailable" role="status" className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                  Historical lineup unavailable: this week's roster was not recorded. Current players are intentionally not shown as past starters.
+                </div>
+              )}
               <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
