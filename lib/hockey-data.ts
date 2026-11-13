@@ -1,4 +1,4 @@
-import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "@/lib/scoring"
+import { DEFAULT_LEAGUE_SCORING, scoreCountingLine } from "./scoring"
 import { getFantasyWeekDates, getCurrentFantasyWeek } from "./season-calendar"
 
 export type PlayerStatus = "IR" | "TAXI" | "O" | "DTD" | "HEALTHY" | null
@@ -597,7 +597,7 @@ function playerFromMarket(entry: LeagueRosterEntry, market: MarketPlayer): Playe
 /** A saved snapshot replaces the live roster. So does any week other than the current one. The current live week keeps the roster the manager is editing. */
 export function weekAssignmentsReplaceLiveRoster(
   week: number,
-  view: { source?: "snapshot" | "live"; currentWeek?: number } | null | undefined,
+  view: { source?: "snapshot" | "live" | "plan" | "unavailable"; currentWeek?: number } | null | undefined,
 ): boolean {
   if (!view) return false
   return view.source === "snapshot" || week !== view.currentWeek

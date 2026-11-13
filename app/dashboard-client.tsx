@@ -57,7 +57,7 @@ import {
   type PlayerGameLog,
 } from "@/lib/hockey-data"
 import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
-import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import { getCurrentFantasyWeek, MAX_FANTASY_WEEK } from "@/lib/season-calendar"
 import { useStableCallback } from "@/lib/use-stable-callback"
 import { MatchupPanel } from "@/components/hockey/matchup-panel"
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
@@ -155,6 +155,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
 
   const [week, setWeek] = useState(getCurrentFantasyWeek())
   const [weekView, setWeekView] = useState<WeekLineupView | null>(null)
+  const [storedMatchupResults, setStoredMatchupResults] = useState(initialData.matchupResults ?? [])
   const weekRef = useRef(week)
   weekRef.current = week
   const [roster, setRoster] = useState<Player[]>(initialRoster)
@@ -288,12 +289,31 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const waiverBudgetSync = useRef(0)
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
-      .then((data) => { if (!cancelled) setWeekView(data) })
-      .catch((error: unknown) => console.error("Could not load the week lineup", error))
-    return () => { cancelled = true }
-  }, [week])
+    const loadWeek = () => {
+      void fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
+        .then((data) => {
+          if (cancelled || !data) return
+          setWeekView(data)
+          if (data.matchupResults) {
+            // Persisted matchup totals are authoritative for DAILY mode.
+            // Refresh selected-week scores without discarding other weeks.
+            setStoredMatchupResults((current) => [
+              ...current.filter((row) => row.week !== week), ...data.matchupResults,
+            ])
+          }
+        })
+        .catch((error: unknown) => console.error("Could not load the week lineup or scores", error))
+    }
+    loadWeek()
+    const poll = initialData.league?.lineupLockMode === "DAILY" && week === getCurrentFantasyWeek()
+      ? window.setInterval(loadWeek, 30_000)
+      : null
+    return () => {
+      cancelled = true
+      if (poll !== null) window.clearInterval(poll)
+    }
+  }, [week, initialData.league?.lineupLockMode])
   const [userFaab, setUserFaab] = useState(initialData.userFaab ?? fallbackFaabBudget)
   const refreshWaiverBudget = useCallback(async () => {
     if (!initialData.teamId) return
@@ -493,8 +513,37 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
     const target = resolvedTargetId ? visibleRoster.find((player) => player.id === resolvedTargetId) ?? roster.find((player) => player.id === resolvedTargetId) : undefined
     if (!source) return
+    if (week > (weekView?.currentWeek ?? getCurrentFantasyWeek())) {
+      if (!initialData.teamId) return
+      const targetNhlId = target ? Number(target.nhlId) : undefined
+      const playerNhlId = Number(source.nhlId)
+      if (!Number.isInteger(playerNhlId) || (target && !Number.isInteger(targetNhlId))) {
+        setToast("Cannot plan an unregistered player.")
+        return
+      }
+      // A future plan is an independent database record, not an optimistic
+      // mutation of the live roster. The server returns the authoritative view.
+      void fetch("/api/roster/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: initialData.teamId, playerId: playerNhlId, targetSlot: target ? target.slot : destSlot,
+          week, ...(targetNhlId !== undefined ? { targetPlayerId: targetNhlId } : {}),
+        }),
+      }).then(async (response) => {
+        const body = await response.json().catch(() => null) as { error?: string; lineup?: WeekLineupView } | null
+        if (!response.ok) throw new Error(body?.error ?? "Could not save future lineup")
+        if (!body?.lineup) throw new Error("Missing saved lineup")
+        if (weekRef.current === week) setWeekView(body.lineup)
+        setToast(`Week ${week} lineup saved; today's roster is unchanged.`)
+      }).catch((error: unknown) => {
+        console.error("Future lineup save failed", error)
+        setToast(error instanceof Error ? error.message : "Future lineup save failed")
+      }).finally(() => window.setTimeout(() => setToast(null), 4000))
+      return
+    }
     if (weekView?.locked ?? weekView?.frozen) {
-      setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
+      setToast("This week's starting lineup is locked. Frozen starters cannot be changed.")
       window.setTimeout(() => setToast(null), 4000)
       return
     }
@@ -764,7 +813,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const activeTabIndex = mainTabs.indexOf(activeTab)
   const tabProgress = useMotionValue(activeTabIndex)
   const underlineX = useTransform(tabProgress, (value) => `${value * 100}%`)
-  const shiftWeek = (step: number) => setWeek((current) => Math.max(1, current + step))
+  const shiftWeek = (step: number) => setWeek((current) => Math.min(MAX_FANTASY_WEEK, Math.max(1, current + step)))
   const renderRosterRow = (player: Player) => (
     <PlayerItem key={player.id} player={player} fallbackSlot={player.slot} onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
   )
@@ -824,7 +873,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           className="relative z-0 min-h-0 min-w-0 flex-1 pointer-events-auto"
         >
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "MATCH"} inert={activeTab !== "MATCH"}>
-            <MatchupPanel matchupResults={initialData.matchupResults} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
+            <MatchupPanel matchupResults={storedMatchupResults} lineupLockMode={initialData.league?.lineupLockMode} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
@@ -835,6 +884,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
+              {weekView?.source === "unavailable" && (
+                <div data-testid="historical-lineup-unavailable" role="status" className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                  Historical lineup unavailable: this week's roster was not recorded. Current players are intentionally not shown as past starters.
+                </div>
+              )}
               <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
@@ -853,9 +907,11 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 </SwipeSurface>
               </div>
               {(weekView?.locked ?? weekView?.frozen) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
-              ) : week > (initialData.lineupLock?.week ?? week) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
+                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week's starting lineup is locked. Frozen starters cannot be changed.</p>
+              ) : week > (weekView?.currentWeek ?? getCurrentFantasyWeek()) ? (
+                <p data-testid="future-lineup-plan-banner" className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">
+                  {weekView?.source === "plan" ? `Week ${week} planned lineup saved. It will apply automatically before this week's first NHL game if your roster is unchanged.` : `Week ${week} shows your current roster. Move players to save an independent future-week plan.`}
+                </p>
               ) : null}
 
               {/* Starters Rows */}

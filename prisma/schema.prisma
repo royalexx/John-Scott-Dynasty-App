@@ -73,7 +73,7 @@ model User {
   email            String          @unique
   name             String
   handle           String          @unique
-  pin              String          @default("1234")
+  pin              String
   isCommissioner     Boolean         @default(false)
   avatarUrl        String?
   createdAt        DateTime        @default(now())
@@ -134,6 +134,8 @@ model Team {
   activityLogs    ActivityLog[]
   weekLineups     WeekLineup[]
   draftSlots      DraftSlot[]
+  lineupPlans     LineupPlan[]
+  dailyGameLineups DailyGameLineup[]
 
   @@unique([leagueId, managerId])
   @@index([leagueId])
@@ -155,6 +157,8 @@ model Player {
   gameStats         PlayerGameStat[]
   weekLineups       WeekLineup[]
   draftSlots        DraftSlot[]
+  lineupPlanEntries LineupPlanEntry[]
+  dailyGameLineupEntries DailyGameLineupEntry[]
 
   @@index([teamAbbrev])
   @@index([injuryStatus])
@@ -192,6 +196,65 @@ model WeekLineup {
   @@unique([teamId, season, week, playerId])
   @@index([season, week])
   @@index([teamId, season, week])
+}
+
+/// Complete team-specific future lineup; kept separate from current roster and frozen results.
+model LineupPlan {
+  id          String            @id @default(uuid()) @db.Uuid
+  teamId      String            @db.Uuid
+  season      Int
+  week        Int
+  status      String            @default("PENDING")
+  activatedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  team        Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  entries     LineupPlanEntry[]
+
+  @@unique([teamId, season, week])
+  @@index([season, week, status])
+}
+
+model LineupPlanEntry {
+  id       String     @id @default(uuid()) @db.Uuid
+  planId   String     @db.Uuid
+  playerId Int
+  slot     SlotType
+  plan     LineupPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  player   Player     @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, playerId])
+  @@index([playerId])
+}
+
+/// Per-fantasy-team, per-NHL-game record of assigned players when the game locks.
+/// A header with zero entries is valid evidence of no rostered players for this game.
+model DailyGameLineup {
+  id         String                 @id @default(uuid()) @db.Uuid
+  teamId     String                 @db.Uuid
+  gameId     Int
+  season     Int
+  week       Int
+  capturedAt DateTime               @default(now())
+  team       Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  game       NhlGame                @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  entries    DailyGameLineupEntry[]
+
+  @@unique([teamId, gameId])
+  @@index([season, week])
+  @@index([gameId])
+}
+
+model DailyGameLineupEntry {
+  id         String          @id @default(uuid()) @db.Uuid
+  snapshotId String          @db.Uuid
+  playerId   Int
+  slot       SlotType
+  snapshot   DailyGameLineup @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  player     Player          @relation(fields: [playerId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, playerId])
+  @@index([playerId])
 }
 
 /// Live snake draft. Separate from tradable future DraftPick assets.
@@ -380,6 +443,7 @@ model NhlGame {
   awayScore      Int              @default(0)
   updatedAt      DateTime         @updatedAt
   gameStats      PlayerGameStat[]
+  dailyLineups   DailyGameLineup[]
 
   @@index([gameDate])
   @@index([gameState])
@@ -415,4 +479,10 @@ model PlayerGameStat {
   @@unique([playerId, gameId])
   @@index([gameId])
   @@index([playerId])
+}
+
+model LoginThrottle {
+  key       String   @id
+  failures  Int      @default(0)
+  resetAt   DateTime
 }

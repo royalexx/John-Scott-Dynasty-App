@@ -62,8 +62,16 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json() as { tradeOfferId?: string; action?: "ACCEPT" | "REJECT" | "CANCEL" }
     if (!body.tradeOfferId || !body.action) return NextResponse.json({ error: "tradeOfferId and action are required" }, { status: 400 })
     if (!["ACCEPT", "REJECT", "CANCEL"].includes(body.action)) return NextResponse.json({ error: "Invalid action" }, { status: 400 })
-    const offer = await prisma.tradeOffer.findUnique({ where: { id: body.tradeOfferId }, select: { proposingTeamId: true, receivingTeamId: true } })
+    const offer = await prisma.tradeOffer.findUnique({ where: { id: body.tradeOfferId }, select: { leagueId: true, proposingTeamId: true, receivingTeamId: true } })
     if (!offer) return NextResponse.json({ error: "Trade offer not found" }, { status: 404 })
+    // Commissioner privileges are not a license to modify a different league's
+    // trade. Verify this signed-in manager's active team belongs to the offer's
+    // league before evaluating role-based trade actions.
+    const membership = await prisma.team.findFirst({
+      where: { id: session.teamId, managerId: session.managerId, leagueId: offer.leagueId },
+      select: { id: true },
+    })
+    if (!membership) return NextResponse.json({ error: "You do not belong to this trade's league" }, { status: 403 })
     // The proposer cancels through onDeclineTrade, which sends REJECT. Treat that as CANCEL.
     const action = body.action === "REJECT" && session.teamId === offer.proposingTeamId ? "CANCEL" : body.action
     // Only the receiving team may accept/reject; only the proposer may cancel. Commissioners can act on any offer.

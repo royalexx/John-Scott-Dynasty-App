@@ -34,34 +34,50 @@ Create `.env` with:
 
 ```bash
 DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require"
-CRON_SECRET="any-long-random-string"
+SESSION_SECRET="a-dedicated-long-random-session-secret"
+CRON_SECRET="a-different-long-random-cron-secret"
 ```
 
-`DATABASE_URL` is required. `CRON_SECRET` is required only for the NHL sync and waiver cron routes.
+`DATABASE_URL` is required. `SESSION_SECRET` is required in every environment (at least 32 characters); `CRON_SECRET` must be a separate unpredictable value. Automated cron calls use `Authorization: Bearer <CRON_SECRET>`, never `?secret=` in a URL. Existing sessions require a new login after the security update, and changing a PIN invalidates prior sessions.
 
-There is no `prisma/migrations` folder. Push the schema, then seed the league:
+Versioned Prisma migrations now live under `prisma/migrations`. **Do not run schema or seed commands against a populated league without checking its migration state.** For an empty **development** database:
 
 ```bash
-npx prisma db push
-npm run prisma:seed
+npx prisma migrate deploy
+SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Every seeded manager uses PIN `1234`. The commissioner account is **Montreal Monarchs** (`@commissioner`).
+The schema baseline (`20261113000000_baseline`) is for new empty databases. A database already created with `prisma db push` has no migration history; validate its schema before explicitly marking the baseline applied with `prisma migrate resolve --applied 20261113000000_baseline`. **Never run the initial baseline directly against existing tables.** No hosted database was migrated by creating this file.
 
-`npm install` runs `prisma generate`. `npm run build` also refreshes `public/data/nhl-players.json` from the NHL search API before `next build`, so a build needs network access.
+The seed refuses to run in production, without the explicit environment flag, or when it detects any existing manager, league, team, roster, matchup or draft state. It is **initial setup only**, not a synchronization or reset operation. Use a separate, non-destructive player sync for future player data refreshes.
 
-If the league row is missing, the page falls back to the static roster in `lib/hockey-data.ts` instead of the database.
+Open [http://localhost:3000](http://localhost:3000). The disposable development fixture uses PIN `1234` for testing only, stored as a salted scrypt hash. Change these PINs before sharing the league. Existing plaintext manager PINs are upgraded on successful login; newly created managers do not get a default PIN. The commissioner account is **Montreal Monarchs** (`@commissioner`).
+
+`npm install` runs `prisma generate`. Builds use the checked-in NHL registry without rewriting it. Refresh player data explicitly with `npm run sync-players`; review and commit changes separately.
+
+If the league is missing or database hydration fails, the dashboard shows a neutral unavailable state, not demonstration rosters or scores.
+
+## Production release checklist
+
+The consolidated backend audit is staged as draft PR #43. Before merging or running
+any migrations on a hosted database, follow
+[the non-destructive migration and Vercel release runbook](docs/backend-production-release.md).
+Use `node scripts/migration-preflight.mjs` for a read-only hosted database
+inventory; an existing database created with `prisma db push` must be
+structurally reconciled before resolving the initial migration as already
+applied. The legacy `User.pin` SQL default is removed by a dedicated
+incremental migration without rewriting existing credentials.
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Next.js dev server |
-| `npm run build` / `npm start` | Production build and server |
+| `npm run build` / `npm start` | Production build and server; no automatic NHL registry rewrite |
 | `npm run sync-players` | Rewrite the local NHL player registry |
-| `npm run prisma:seed` | Upsert players, the league, 12 teams, the 24-week schedule, rosters, and 2027–2029 draft picks |
-| `npm run test:e2e` | Playwright against `http://localhost:3000` |
+| `npm run prisma:seed` | Initialize only an explicitly authorized empty development database; refuses all existing league state |
+| `npm run test:e2e` | Playwright on `http://localhost:3100` with isolated `TEST_DATABASE_URL` |
 | `npm run test:e2e:ui` | Playwright UI mode |
 | `npx tsc --noEmit` | Typecheck |
 
@@ -105,7 +121,7 @@ Player cards, season totals, and projections use `calculateSkaterFPTS` and `calc
 
 ## NHL sync and waivers jobs
 
-Both cron routes accept `Authorization: Bearer $CRON_SECRET`, `?secret=`, or a signed-in commissioner.
+Both cron routes accept `Authorization: Bearer $CRON_SECRET` or a signed-in commissioner. Query-string secret authentication is rejected.
 
 | Route | When it runs | What it does |
 | --- | --- | --- |
@@ -150,11 +166,31 @@ e2e/                         Playwright specs
 
 ## Tests
 
-Playwright starts `npm run dev` unless one is already running outside CI. The setup project signs in as Montreal Monarchs with PIN `1234` and writes `e2e/.auth/manager.json`. Specs run in Chromium at 430×932.
+Playwright always starts its own Next.js server on `http://localhost:3100` and refuses to reuse an existing application server. The setup project signs in to the **disposable test league** as Montreal Monarchs using the test PIN `1234` and stores its authenticated browser state at `e2e/.auth/manager.json`. Chromium specs use a 430×932 viewport.
 
 ```bash
+export TEST_DATABASE_URL="postgresql://johnscott:johnscott@127.0.0.1:5432/johnscott_e2e"
 npm run test:e2e
 npx tsc --noEmit
 ```
 
-The database must already be seeded. Specs hit the real league, including roster moves, trades, and waivers.
+The E2E suite requires a separately initialized local test database; some scenarios intentionally mutate test data. Never point the suite at a shared or hosted league. GitHub Actions provisions and destroys an independent PostgreSQL instance for smoke tests.
+
+## Safe end-to-end testing
+
+**The E2E suite writes to PostgreSQL. Never use the production or shared-development database.**
+
+Create a dedicated local PostgreSQL database, such as `johnscott_e2e`. Initialize it with the current Prisma schema and the *initial-development seed* described above. Then run Playwright with `TEST_DATABASE_URL` pointing to that isolated database.
+
+```bash
+export TEST_DATABASE_URL="postgresql://johnscott:johnscott@127.0.0.1:5432/johnscott_e2e"
+DATABASE_URL="$TEST_DATABASE_URL" npx prisma migrate deploy
+DATABASE_URL="$TEST_DATABASE_URL" SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATABASE npm run prisma:seed
+npm run test:e2e
+```
+
+The Playwright configuration rejects missing URLs, remote database hosts, database names without `test` or `e2e`. It also starts its own Next.js instance on port 3100 and refuses to reuse a previously running server. These checks fail closed before any tests execute. The example assumes a newly created, empty database.
+
+### Login attempt throttling
+
+Repeated invalid manager PINs are recorded in PostgreSQL as HMAC-keyed counters (no plain IP addresses or manager IDs). After five failed attempts within five minutes, further attempts are rejected with HTTP 429 and a `Retry-After` header. This limit applies across serverless instances to both manager login and PIN changes.

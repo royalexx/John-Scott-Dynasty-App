@@ -1,8 +1,11 @@
 import { expect, test } from "@playwright/test"
 import { PrismaClient } from "@prisma/client"
 import { getCurrentFantasyWeek, getFantasyWeekDates } from "../lib/season-calendar"
+import { freezeWeekLineup, missingSnapshotTeamIds, scoringSlotsForWeek, weekLineupForLeague } from "../lib/services/week-lineups"
+import { updateWeeklyMatchupScores } from "../lib/services/nhl-sync"
+import { activateDueLineupPlans, saveFutureLineupMove } from "../lib/services/future-lineup-plans"
+import { positionFitsSlot } from "../lib/roster-eligibility"
 
-process.loadEnvFile?.(".env")
 const prisma = new PrismaClient()
 test.afterAll(async () => { await prisma.$disconnect() })
 
@@ -90,6 +93,107 @@ test.describe("weekly starter lock", () => {
     test.skip(league.lineupLockMode !== "WEEKLY" || !(await weekHasStarted()), "needs weekly mode and a started week")
     await page.goto("/")
     await expect(page.getByTestId("lineup-lock-banner")).toContainText("locked until Monday")
+  })
+
+  test("future-week moves persist separately without changing live roster or frozen results", async ({ request }) => {
+    const league = await prisma.league.findFirstOrThrow()
+    const futureWeek = getCurrentFantasyWeek(league.currentSeason) + 1
+    test.skip(futureWeek > 24, "No future fantasy week remains in this season")
+    const team = await prisma.team.findFirstOrThrow({ where: { name: "Montreal Monarchs" } })
+    const roster = await prisma.rosterSlot.findMany({ where: { teamId: team.id }, include: { player: true }, orderBy: { id: "asc" } })
+    const bench = roster.find((row) => row.slot === "BN" && roster.some((target) =>
+      ["C", "W", "F", "D", "G"].includes(target.slot) && positionFitsSlot(target.slot, row.player.position)))
+    const starter = bench && roster.find((row) => ["C", "W", "F", "D", "G"].includes(row.slot) && positionFitsSlot(row.slot, bench.player.position))
+    test.skip(!bench || !starter, "Requires an eligible bench/starter pair")
+    const before = roster.map(({ id, playerId, slot, lockedAt }) => ({ id, playerId, slot, lockedAt }))
+    const futureSnapshotsBefore = await prisma.weekLineup.count({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })
+    try {
+      const response = await request.post("/api/roster/move", {
+        data: { teamId: team.id, playerId: bench!.playerId, targetSlot: starter!.slot, targetPlayerId: starter!.playerId, week: futureWeek },
+      })
+      expect(response.status(), await response.text()).toBe(200)
+      const payload = await response.json()
+      expect(payload.planned).toBe(true)
+      expect(payload.lineup.source).toBe("plan")
+      const saved = await prisma.lineupPlan.findUniqueOrThrow({
+        where: { teamId_season_week: { teamId: team.id, season: league.currentSeason, week: futureWeek } },
+        include: { entries: true },
+      })
+      expect(saved.status).toBe("PENDING")
+      expect(saved.entries).toHaveLength(roster.length)
+      expect(saved.entries.find((entry) => entry.playerId === bench!.playerId)?.slot).toBe(starter!.slot)
+      expect(saved.entries.find((entry) => entry.playerId === starter!.playerId)?.slot).toBe("BN")
+      const refreshed = await request.get(`/api/roster/week?week=${futureWeek}`)
+      expect(refreshed.status()).toBe(200)
+      expect((await refreshed.json()).source).toBe("plan")
+      const current = await prisma.rosterSlot.findMany({ where: { teamId: team.id }, orderBy: { id: "asc" }, select: { id: true, playerId: true, slot: true, lockedAt: true } })
+      expect(current).toEqual(before)
+      expect(await prisma.weekLineup.count({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })).toBe(futureSnapshotsBefore)
+    } finally {
+      await prisma.lineupPlan.deleteMany({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })
+    }
+  })
+
+  test("a due plan activates once before puck drop and updates only its team's live slots", async () => {
+    const league = await prisma.league.findFirstOrThrow()
+    const futureWeek = getCurrentFantasyWeek(league.currentSeason) + 1
+    test.skip(futureWeek > 24, "No future fantasy week remains in this season")
+    const team = await prisma.team.findFirstOrThrow({ where: { name: "Montreal Monarchs" } })
+    const roster = await prisma.rosterSlot.findMany({ where: { teamId: team.id }, include: { player: true } })
+    const bench = roster.find((row) => row.slot === "BN" && roster.some((target) =>
+      ["C", "W", "F", "D", "G"].includes(target.slot) && positionFitsSlot(target.slot, row.player.position)))
+    const starter = bench && roster.find((row) => ["C", "W", "F", "D", "G"].includes(row.slot) && positionFitsSlot(row.slot, bench.player.position))
+    test.skip(!bench || !starter, "Requires an eligible bench/starter pair")
+    const before = roster.map(({ id, slot }) => ({ id, slot }))
+    try {
+      await saveFutureLineupMove(team.id, futureWeek, bench!.playerId, starter!.slot, starter!.playerId)
+      const monday = new Date(`${getFantasyWeekDates(futureWeek, league.currentSeason).startDate}T12:00:00Z`)
+      const activated = await activateDueLineupPlans(team.leagueId, league.currentSeason, monday)
+      expect(activated.applied).toBe(1)
+      expect((await activateDueLineupPlans(team.leagueId, league.currentSeason, monday)).applied).toBe(0)
+      const plan = await prisma.lineupPlan.findUniqueOrThrow({ where: { teamId_season_week: { teamId: team.id, season: league.currentSeason, week: futureWeek } } })
+      expect(plan.status).toBe("APPLIED")
+      expect(plan.activatedAt).not.toBeNull()
+      expect((await prisma.rosterSlot.findUniqueOrThrow({ where: { id: bench!.id } })).slot).toBe(starter!.slot)
+      expect((await prisma.rosterSlot.findUniqueOrThrow({ where: { id: starter!.id } })).slot).toBe("BN")
+    } finally {
+      await prisma.$transaction(before.map((row) => prisma.rosterSlot.update({ where: { id: row.id }, data: { slot: row.slot } })))
+      await prisma.lineupPlan.deleteMany({ where: { teamId: team.id, season: league.currentSeason, week: futureWeek } })
+    }
+  })
+
+  test("incomplete historical lineups cannot overwrite persisted matchup scores", async () => {
+    const league = await prisma.league.findFirstOrThrow()
+    const historicalWeek = 2
+    test.skip(getCurrentFantasyWeek(league.currentSeason) <= historicalWeek, "needs a past completed fantasy week")
+
+    const before = await prisma.matchup.findMany({
+      where: { leagueId: league.id, season: league.currentSeason, week: historicalWeek },
+      orderBy: { id: "asc" },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homePoints: true, awayPoints: true, isFinal: true },
+    })
+    test.skip(before.length === 0, "requires a historical seeded matchup")
+    const participants = [...new Set(before.flatMap((matchup) => [matchup.homeTeamId, matchup.awayTeamId]))]
+    const snapshots = await prisma.weekLineup.findMany({ where: { season: league.currentSeason, week: historicalWeek, teamId: { in: participants } }, select: { teamId: true } })
+    test.skip(missingSnapshotTeamIds(participants, snapshots).length === 0, "fixture has authoritative complete snapshots")
+
+    const rowCount = await prisma.weekLineup.count({ where: { season: league.currentSeason, week: historicalWeek } })
+    await expect(freezeWeekLineup(prisma, league.id, league.currentSeason, historicalWeek)).rejects.toThrow(/Only the current fantasy week/)
+    expect(await scoringSlotsForWeek(league.id, league.currentSeason, historicalWeek, participants)).toBeNull()
+    expect(await updateWeeklyMatchupScores(league.id, historicalWeek)).toBe(0)
+
+    const after = await prisma.matchup.findMany({
+      where: { leagueId: league.id, season: league.currentSeason, week: historicalWeek },
+      orderBy: { id: "asc" },
+      select: { id: true, homeTeamId: true, awayTeamId: true, homeScore: true, awayScore: true, homePoints: true, awayPoints: true, isFinal: true },
+    })
+    expect(after).toEqual(before)
+    expect(await prisma.weekLineup.count({ where: { season: league.currentSeason, week: historicalWeek } })).toBe(rowCount)
+
+    const preview = await weekLineupForLeague(league.id, league.currentSeason, historicalWeek)
+    expect(preview.source).toBe("unavailable")
+    expect(preview.locked).toBe(true)
+    expect(preview.assignments).toEqual([])
   })
 
   test("a move for another manager's team is refused", async ({ request }) => {

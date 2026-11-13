@@ -2,13 +2,47 @@ import { expect, test } from "@playwright/test"
 import { getFantasyWeekDates, getFantasyWeekForDate, getCurrentFantasyWeek } from "../lib/season-calendar"
 import { computeStandings, isCompletedMatchup } from "../lib/standings"
 import { hasWeekStarted, isSlotLocked, isStarterSlot, normalizeLockMode, type LockContext } from "../lib/lineup-lock"
-import { displacedLandingSlot, positionFitsSlot } from "../lib/roster-eligibility"
-import { isWeekFinal, scoreTeams } from "../lib/matchup-scoring"
+import { displacedLandingSlot, hasRoomForBenchAcquisition, positionFitsSlot, previewPlayerTransfers } from "../lib/roster-eligibility"
+import { isWeekFinal, scoreTeams, scoreTeamsByGame } from "../lib/matchup-scoring"
 import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/scoring"
+import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
+import { remainingPinLockout } from "../lib/pin-rate-limit"
+import { assertTradePreservesReservedFaab, validateFaabReservation } from "../lib/waiver-run"
+import { missingSnapshotTeamIds } from "../lib/services/week-lineups"
+import { PlayerStatus, SlotType } from "@prisma/client"
+import { previewFutureMove, rosterMatchesPlan } from "../lib/services/future-lineup-plans"
+import { missingDailyGameCoverage } from "../lib/services/daily-game-lineups"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
   gameWinningGoals: 0, saves: 0, goalsAgainst: 0, shutouts: 0, decision: null, ...overrides,
+})
+
+test.describe("distributed PIN throttle", () => {
+  test("locks a bucket after five attempts within its expiry window", () => {
+    const now = new Date("2026-11-13T12:00:00Z")
+    const resetAt = new Date(now.getTime() + 300_000)
+    expect(remainingPinLockout([{ failures: 4, resetAt }], now)).toBe(0)
+    expect(remainingPinLockout([{ failures: 5, resetAt }], now)).toBe(300)
+    expect(remainingPinLockout([{ failures: 9, resetAt: new Date(now.getTime() - 1) }], now)).toBe(0)
+  })
+})
+
+test.describe("manager PIN security", () => {
+  test("new credentials store salted hashes rather than plaintext", () => {
+    const hashA = hashManagerPin("1234")
+    const hashB = hashManagerPin("1234")
+    expect(hashA).not.toBe("1234")
+    expect(hashA).not.toBe(hashB)
+    expect(isHashedManagerPin(hashA)).toBe(true)
+    expect(verifyManagerPin(hashA, "1234")).toBe(true)
+    expect(verifyManagerPin(hashA, "9999")).toBe(false)
+  })
+  test("legacy plaintext PINs remain verifiable for one-time upgrade", () => {
+    expect(verifyManagerPin("1234", "1234")).toBe(true)
+    expect(verifyManagerPin("1234", "4321")).toBe(false)
+    expect(isHashedManagerPin("1234")).toBe(false)
+  })
 })
 
 test.describe("season calendar (Monday to Sunday NHL weeks)", () => {
@@ -130,9 +164,12 @@ test.describe("standings from matchup results", () => {
     expect(rows.every((row) => row.wins === 0 && row.losses === 0)).toBe(true)
   })
 
-  test("a past week with recorded scores counts even if the flag was never set", () => {
-    const rows = computeStandings(["A", "B"], [m(1, "A", "B", 20, 10, false)], 3)
-    expect(rows.find((row) => row.teamId === "A")!.wins).toBe(1)
+  test("a past week with recorded scores is not counted before finalization", () => {
+    const pending = m(1, "A", "B", 20, 10, false)
+    expect(isCompletedMatchup(pending, 3)).toBe(false)
+    const rows = computeStandings(["A", "B"], [pending], 3)
+    expect(rows.find((row) => row.teamId === "A")!.wins).toBe(0)
+    expect(rows.find((row) => row.teamId === "B")!.losses).toBe(0)
   })
 
   test("matchups without scores never count", () => {
@@ -168,6 +205,51 @@ test.describe("roster swap eligibility", () => {
     expect(displacedLandingSlot("C", "C", false)).toBe("C")
     expect(displacedLandingSlot("F", "LW", false)).toBe("F")
     expect(displacedLandingSlot("W", "C", true)).toBe("BN")
+  })
+})
+
+test.describe("trade roster projection", () => {
+  const roster = [
+    { teamId: "A", playerId: 1, slot: "C" },
+    { teamId: "A", playerId: 2, slot: "BN" },
+    { teamId: "B", playerId: 3, slot: "D" },
+  ]
+  test("incoming players occupy bench; outgoing players are removed", () => {
+    const result = previewPlayerTransfers(roster, ["A", "B"], [
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+      { fromTeamId: "B", toTeamId: "A", playerId: 3 },
+    ], "BN")
+    expect(result.get("A")).toEqual([{ playerId: 2, slot: "BN" }, { playerId: 3, slot: "BN" }])
+    expect(result.get("B")).toEqual([{ playerId: 1, slot: "BN" }])
+    expect(roster[0].slot).toBe("C") // projection must not mutate the source
+  })
+  test("rejects duplicate player transfers before any database write", () => {
+    expect(() => previewPlayerTransfers(roster, ["A", "B"], [
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+      { fromTeamId: "A", toTeamId: "B", playerId: 1 },
+    ], "BN")).toThrow(/Duplicate or unavailable/)
+  })
+})
+
+test.describe("waiver bench acquisition", () => {
+  const players = (slots: string[]) => slots.map((slot, index) => ({ playerId: index + 1, slot }))
+
+  test("rejects a full bench even when active roster capacity remains", () => {
+    const roster = players(["BN", "BN", "C", "W"])
+    expect(hasRoomForBenchAcquisition(roster, 6, 2)).toBe(false)
+    expect(hasRoomForBenchAcquisition(roster, 6, 2, 3)).toBe(false) // dropping a starter frees no bench spot
+    expect(hasRoomForBenchAcquisition(roster, 6, 2, 1)).toBe(true)
+  })
+
+  test("checks active roster cap, excluding the reserve slots", () => {
+    const roster = players(["C", "BN", "TAXI", "IR"])
+    expect(hasRoomForBenchAcquisition(roster, 2, 2)).toBe(false)
+    expect(hasRoomForBenchAcquisition(roster, 2, 2, 1)).toBe(true)
+    expect(hasRoomForBenchAcquisition(roster, 2, 2, 3)).toBe(false)
+  })
+
+  test("rejects invalid bench capacity configuration", () => {
+    expect(hasRoomForBenchAcquisition(players([]), 27, 0)).toBe(false)
   })
 })
 
@@ -209,5 +291,94 @@ test.describe("lineup lock modes", () => {
     expect(normalizeLockMode("DAILY")).toBe("DAILY")
     expect(isStarterSlot("F")).toBe(true)
     expect(isStarterSlot("BN")).toBe(false)
+  })
+})
+
+test.describe("historical scoring snapshot coverage", () => {
+  test("requires every matchup team, not merely one existing lineup row", () => {
+    const required = ["home", "away"]
+    expect(missingSnapshotTeamIds(required, [])).toEqual(required)
+    expect(missingSnapshotTeamIds(required, [{ teamId: "home" }])).toEqual(["away"])
+    expect(missingSnapshotTeamIds(required, [{ teamId: "home" }, { teamId: "away" }])).toEqual([])
+  })
+
+  test("deduplicates repeated matchups and does not infer coverage from a different team", () => {
+    expect(missingSnapshotTeamIds(["home", "away", "home"], [{ teamId: "other" }, { teamId: "home" }])).toEqual(["away"])
+  })
+})
+
+test.describe("future-week lineup plan validation", () => {
+  const limits = {
+    rosterPositions: { C: 1, W: 0, F: 0, D: 0, G: 0, BN: 1 },
+    rosterSize: 2, taxiSlots: 0, irSlots: 0, taxiMaxGames: 50,
+  }
+  const player = (name: string) => ({ name, position: "C", injuryStatus: PlayerStatus.HEALTHY, nhlGamesPlayed: 12 })
+  const roster = [
+    { playerId: 1, slot: SlotType.BN, player: player("First") },
+    { playerId: 2, slot: SlotType.C, player: player("Second") },
+  ]
+
+  test("moves a future starter with legal displacement without mutating its live source", () => {
+    const planned = previewFutureMove(roster, limits, 1, SlotType.C, 2)
+    expect(planned.map((row) => row.slot)).toEqual([SlotType.C, SlotType.BN])
+    expect(roster.map((row) => row.slot)).toEqual([SlotType.BN, SlotType.C])
+  })
+
+  test("rejects invalid position, IR and full-bench moves before save", () => {
+    expect(() => previewFutureMove(roster, limits, 1, SlotType.G)).toThrow(/not an enabled slot|cannot play/)
+    expect(() => previewFutureMove(roster, limits, 1, SlotType.IR)).toThrow(/not eligible/)
+    expect(() => previewFutureMove(roster, limits, 2, SlotType.BN)).toThrow(/Bench is full/)
+  })
+
+  test("detects transfers that invalidate saved ownership rather than guessing lineup intent", () => {
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 2 }], [{ playerId: 2 }, { playerId: 1 }])).toBe(true)
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 3 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 1 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
+  })
+})
+
+test.describe("DAILY-mode game-scoped scoring", () => {
+  test("credits a player to different owners in different NHL games without retroactive ownership changes", () => {
+    const slots = [
+      { gameId: 100, teamId: "before-trade", playerId: 7, slot: "C" },
+      { gameId: 101, teamId: "after-trade", playerId: 7, slot: "C" },
+      { gameId: 101, teamId: "before-trade", playerId: 8, slot: "BN" },
+    ]
+    const stats = [
+      { gameId: 100, playerId: 7, ...stat({ goals: 1 }) },
+      { gameId: 101, playerId: 7, ...stat({ assists: 1 }) },
+      { gameId: 101, playerId: 8, ...stat({ goals: 10 }) },
+    ]
+    const scored = scoreTeamsByGame(slots, stats, DEFAULT_LEAGUE_SCORING)
+    expect(scored.get("before-trade")).toBe(DEFAULT_LEAGUE_SCORING.goal)
+    expect(scored.get("after-trade")).toBe(DEFAULT_LEAGUE_SCORING.assist)
+  })
+
+  test("requires a snapshot header from every fantasy team for every started game", () => {
+    const coverage = [
+      { gameId: 100, teamId: "A" }, { gameId: 100, teamId: "B" },
+      { gameId: 101, teamId: "A" },
+    ]
+    expect(missingDailyGameCoverage([100, 101], ["A", "B"], coverage)).toEqual([{ gameId: 101, teamId: "B" }])
+    expect(missingDailyGameCoverage([100], ["A", "B"], coverage)).toEqual([])
+    expect(missingDailyGameCoverage([], ["A", "B"], [])).toEqual([])
+  })
+})
+
+test.describe("consolidated waiver and trade FAAB commitments", () => {
+  test("reserved pending bids reduce the money available to new claims", () => {
+    expect(() => validateFaabReservation(100, 80, 20, 0)).not.toThrow()
+    expect(() => validateFaabReservation(100, 80, 21, 0)).toThrow(/uncommitted/)
+    expect(() => validateFaabReservation(100, 0, 0, 1)).toThrow(/Minimum/)
+    expect(() => validateFaabReservation(100, 0, 1, 1)).not.toThrow()
+    expect(() => validateFaabReservation(100, -1, 2, 0)).toThrow(/non-negative integers/)
+    expect(() => validateFaabReservation(100, 0.5, 2, 0)).toThrow(/non-negative integers/)
+  })
+  test("FAAB trade must preserve existing claim commitments", () => {
+    expect(() => assertTradePreservesReservedFaab(80, 80)).not.toThrow()
+    expect(() => assertTradePreservesReservedFaab(100, 20)).not.toThrow()
+    expect(() => assertTradePreservesReservedFaab(79, 80)).toThrow(/reserved/)
+    expect(() => assertTradePreservesReservedFaab(-1, 0)).toThrow(/non-negative/)
+    expect(() => assertTradePreservesReservedFaab(100.5, 5)).toThrow(/safe integers/)
   })
 })
