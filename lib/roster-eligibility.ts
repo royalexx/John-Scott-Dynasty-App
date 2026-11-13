@@ -20,6 +20,19 @@ export function countActiveRosterSlots(slots: ReadonlyArray<{ slot: string }>): 
   return slots.filter((entry) => !isReserveSlot(entry.slot)).length
 }
 
+/** A waiver acquisition lands on BN, even when the player being dropped is a starter. */
+export function hasRoomForBenchAcquisition(
+  slots: ReadonlyArray<{ playerId: number; slot: string }>,
+  activeLimit: number,
+  benchLimit: number,
+  dropPlayerId?: number | null,
+): boolean {
+  if (!Number.isInteger(activeLimit) || activeLimit <= 0 || !Number.isInteger(benchLimit) || benchLimit <= 0) return false
+  const retained = dropPlayerId == null ? slots : slots.filter((slot) => slot.playerId !== dropPlayerId)
+  return countActiveRosterSlots(retained) < activeLimit &&
+    retained.filter((slot) => slot.slot === "BN").length < benchLimit
+}
+
 export function positionFitsSlot(slot: string, position: string): boolean {
   const allowed = STARTER_ELIGIBILITY[slot]
   return !allowed || allowed.includes(position)
