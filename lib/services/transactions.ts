@@ -5,7 +5,7 @@ import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isSlotLocked } from "@/lib/lineup-lock"
 import { prisma } from "@/lib/prisma"
 import { nextWaiverProcessAt, WAIVER_RESOLUTIONS } from "@/lib/waiver-run"
-import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, isReserveSlot, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
+import { countActiveRosterSlots, DEFAULT_BENCH_CAPACITY, displacedLandingSlot, hasRoomForBenchAcquisition, previewPlayerTransfers, STARTER_ELIGIBILITY } from "@/lib/roster-eligibility"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { freezeWeekLineup, FUTURE_LINEUP_LOCK_MESSAGE, isWeekLineupLocked } from "@/lib/services/week-lineups"
 
@@ -348,19 +348,14 @@ export async function executeTrade(tradeOfferId: string) {
     // Every incoming traded player is placed on BN, regardless of their old slot.
     // Simulate both sides of the trade before writing anything so swaps are
     // validated simultaneously, not by temporary intermediate roster state.
-    const resulting = new Map(teams.map((team) => [
-      team.id, rosterSlots.filter((row) => row.teamId === team.id).map((row) => ({ playerId: row.playerId, slot: row.slot })),
-    ] as const))
-    for (const asset of offer.assets) {
-      if (asset.assetType !== AssetType.PLAYER || asset.playerId == null) continue
-      const source = resulting.get(asset.fromTeamId)
-      const destination = resulting.get(asset.toTeamId)
-      if (!source || !destination) throw new Error("Trade involves a team outside this offer.")
-      const sourceIndex = source.findIndex((row) => row.playerId === asset.playerId)
-      if (sourceIndex < 0) throw new Error("Duplicate or unavailable player in this trade.")
-      source.splice(sourceIndex, 1)
-      destination.push({ playerId: asset.playerId, slot: SlotType.BN })
-    }
+    const resulting = previewPlayerTransfers(
+      rosterSlots,
+      teams.map((team) => team.id),
+      offer.assets.filter((asset) => asset.assetType === AssetType.PLAYER && asset.playerId != null).map((asset) => ({
+        fromTeamId: asset.fromTeamId, toTeamId: asset.toTeamId, playerId: asset.playerId as number,
+      })),
+      SlotType.BN,
+    )
     for (const team of teams) {
       try {
         assertRosterWithinCapacity(offer.league, resulting.get(team.id) ?? [])
