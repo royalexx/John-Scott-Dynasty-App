@@ -1,7 +1,7 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { getManagerSession, signManagerSession } from "@/lib/auth-session"
+import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "@/lib/pin-crypto"
 
 const MAX_FAILED_ATTEMPTS = 5
 const WINDOW_MS = 5 * 60 * 1000
@@ -81,34 +81,6 @@ function tooManyAttempts(seconds: number) {
   )
 }
 
-const SCRYPT_KEY_LENGTH = 32
-
-function hashPin(pin: string) {
-  const salt = randomBytes(16).toString("base64url")
-  const hash = scryptSync(pin, salt, SCRYPT_KEY_LENGTH).toString("base64url")
-  return `scrypt$${salt}$${hash}`
-}
-
-function pinsMatch(storedPin: string, providedPin: string) {
-  if (storedPin.startsWith("scrypt$")) {
-    const [scheme, salt, encoded] = storedPin.split("$")
-    const expected = encoded ? Buffer.from(encoded, "base64url") : Buffer.alloc(0)
-    if (scheme !== "scrypt" || !salt || expected.length === 0) {
-      timingSafeEqual(Buffer.from(providedPin), Buffer.alloc(providedPin.length))
-      return false
-    }
-    const actual = scryptSync(providedPin, salt, expected.length)
-    if (actual.length !== expected.length) return false
-    return timingSafeEqual(actual, expected)
-  }
-  const provided = Buffer.from(providedPin)
-  const stored = Buffer.from(storedPin)
-  if (stored.length !== provided.length) {
-    timingSafeEqual(provided, Buffer.alloc(provided.length))
-    return false
-  }
-  return timingSafeEqual(stored, provided)
-}
 
 function attemptKeys(request: Request, managerId: string) {
   return [attemptKey("manager", managerId), attemptKey("ip", clientIp(request))]
@@ -127,7 +99,7 @@ export async function POST(request: Request) {
   const user = MANAGER_ID_PATTERN.test(body.managerId)
     ? await prisma.user.findUnique({ where: { id: body.managerId } })
     : null
-  const pinOk = pinsMatch(user?.pin ?? "0000", body.pin)
+  const pinOk = verifyManagerPin(user?.pin ?? "0000", body.pin)
   if (!user || !pinOk) {
     const now = Date.now()
     for (const key of keys) recordFailure(key, now)
@@ -135,6 +107,21 @@ export async function POST(request: Request) {
   }
 
   clearFailures(keys)
+
+  // Opportunistically migrate legacy plaintext manager credentials on a
+  // successful login, without accepting stale credentials after a concurrent
+  // PIN change. Updating the row also revokes previously issued sessions.
+  let credentialVersion = user.updatedAt.toISOString()
+  if (!isHashedManagerPin(user.pin)) {
+    const upgraded = await prisma.user.updateMany({
+      where: { id: user.id, pin: user.pin },
+      data: { pin: hashManagerPin(body.pin) },
+    })
+    if (upgraded.count !== 1) return NextResponse.json({ error: "Credentials changed; sign in again." }, { status: 401 })
+    const migrated = await prisma.user.findUnique({ where: { id: user.id }, select: { updatedAt: true } })
+    if (!migrated) return NextResponse.json({ error: "Manager unavailable." }, { status: 401 })
+    credentialVersion = migrated.updatedAt.toISOString()
+  }
 
   const team = await prisma.team.findFirst({
     where: { managerId: user.id },
@@ -148,7 +135,7 @@ export async function POST(request: Request) {
     handle: user.handle,
     teamName: team.name,
     isCommissioner: user.isCommissioner,
-  }, user.updatedAt.toISOString())
+  }, credentialVersion)
   const response = NextResponse.json({ success: true, teamId: team.id, teamName: team.name })
   response.cookies.set("dynasty_manager", session, {
     httpOnly: true,
@@ -179,7 +166,7 @@ export async function PATCH(request: Request) {
   if (wait > 0) return tooManyAttempts(wait)
 
   const user = await prisma.user.findUnique({ where: { id: session.managerId } })
-  const currentOk = pinsMatch(user?.pin ?? "0000", body.currentPin)
+  const currentOk = verifyManagerPin(user?.pin ?? "0000", body.currentPin)
   if (!user || !currentOk) {
     const now = Date.now()
     for (const key of keys) recordFailure(key, now)
@@ -189,7 +176,7 @@ export async function PATCH(request: Request) {
   clearFailures(keys)
   const updated = await prisma.user.update({
     where: { id: session.managerId },
-    data: { pin: hashPin(body.newPin) },
+    data: { pin: hashManagerPin(body.newPin) },
     select: { updatedAt: true },
   })
   // The updatedAt credential version invalidates every previously issued cookie.
