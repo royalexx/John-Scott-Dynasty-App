@@ -4,6 +4,8 @@ import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
 import { DEFAULT_LEAGUE_SCORING } from "../lib/scoring"
 import { hashManagerPin } from "../lib/pin-crypto"
+import { getCurrentFantasyWeek } from "../lib/season-calendar"
+import { STARTER_ELIGIBILITY } from "../lib/roster-eligibility"
 
 type RegistryPlayer = {
   nhlId: number
@@ -27,6 +29,40 @@ function enumPosition(value: string | undefined): Position {
 function playerStatus(value: string | null | undefined): PlayerStatus {
   if (value === "IR" || value === "O" || value === "DTD") return value
   return PlayerStatus.HEALTHY
+}
+
+const INITIAL_SLOT_LIMITS: Record<SlotType, number> = {
+  C: 3, W: 6, F: 3, D: 6, G: 2, BN: 7, TAXI: 2, IR: 1, IR_PLUS: 0,
+}
+const STARTERS: SlotType[] = [SlotType.C, SlotType.W, SlotType.F, SlotType.D, SlotType.G]
+const ACTIVE = new Set<SlotType>([...STARTERS, SlotType.BN])
+
+/** The legacy display rosters are not guaranteed to be legal database fixtures. */
+function legalSeedSlot(
+  player: RegistryPlayer,
+  requested: SlotType,
+  current: ReadonlyMap<SlotType, number>,
+): SlotType | null {
+  const position = enumPosition(player.position)
+  const injured = playerStatus(player.injuryStatus)
+  const games = player.nhlGamesPlayed ?? player.currentSeasonStats?.gamesPlayed ?? 0
+  const activeCount = [...current].reduce((total, [slot, count]) => total + (ACTIVE.has(slot) ? count : 0), 0)
+  const fits = (slot: SlotType) => {
+    if ((current.get(slot) ?? 0) >= INITIAL_SLOT_LIMITS[slot]) return false
+    if (ACTIVE.has(slot) && activeCount >= 27) return false
+    if (slot === SlotType.IR && injured !== PlayerStatus.IR) return false
+    if (slot === SlotType.TAXI && (injured !== PlayerStatus.HEALTHY || games >= 50)) return false
+    const allowed = STARTER_ELIGIBILITY[slot]
+    return !allowed || allowed.includes(position)
+  }
+  const candidates = [
+    requested,
+    ...STARTERS.filter((slot) => STARTER_ELIGIBILITY[slot]?.includes(position)),
+    SlotType.BN,
+    SlotType.TAXI,
+    SlotType.IR,
+  ]
+  return candidates.find((slot) => fits(slot)) ?? null
 }
 
 /**
@@ -93,7 +129,7 @@ async function main() {
     where: { id: "00000000-0000-0000-0000-000000000001" },
     update: {
       currentSeason: 2026,
-      currentWeek: 1,
+      currentWeek: getCurrentFantasyWeek(2026),
       rosterSize: 27,
       taxiSlots: 2,
       irSlots: 1,
@@ -108,7 +144,7 @@ async function main() {
       id: "00000000-0000-0000-0000-000000000001",
       name: "John Scott Dynasty",
       currentSeason: 2026,
-      currentWeek: 1,
+      currentWeek: getCurrentFantasyWeek(2026),
       rosterSize: 27,
       taxiSlots: 2,
       irSlots: 1,
@@ -176,12 +212,15 @@ async function main() {
   const registryByName = new Map(registry.map((player) => [player.name.toLowerCase(), player]))
   const assignedPlayers = new Map<number, string>()
   let skippedDuplicateAssignments = 0
+  let repairedPlacements = 0
+  let skippedUnplaceablePlayers = 0
   for (const [index, team] of teams.entries()) {
     const teamRoster = getTeamRoster(standings[index].team, roster)
+    const current = new Map<SlotType, number>()
     await prisma.rosterSlot.deleteMany({ where: { teamId: team.id } })
     for (const playerSlot of teamRoster) {
       const player = registryByName.get(playerSlot.name.toLowerCase())
-      const slot = slots.has(playerSlot.slot) ? (playerSlot.slot as SlotType) : SlotType.BN
+      const desired = slots.has(playerSlot.slot) ? (playerSlot.slot as SlotType) : SlotType.BN
       if (player) {
         const originalTeam = assignedPlayers.get(player.nhlId)
         if (originalTeam) {
@@ -191,10 +230,21 @@ async function main() {
           skippedDuplicateAssignments += 1
           continue
         }
+        const slot = legalSeedSlot(player, desired, current)
+        if (!slot) {
+          console.warn(`[seed] No legal roster slot for ${player.name} on ${team.name}; skipping fixture entry.`)
+          skippedUnplaceablePlayers += 1
+          continue
+        }
+        if (slot !== desired) {
+          console.warn(`[seed] Moved ${player.name} from invalid ${desired} to ${slot} on ${team.name}.`)
+          repairedPlacements += 1
+        }
         try {
           await prisma.rosterSlot.create({
             data: { teamId: team.id, leagueId: team.leagueId, playerId: player.nhlId, slot },
           })
+          current.set(slot, (current.get(slot) ?? 0) + 1)
           assignedPlayers.set(player.nhlId, team.name)
         } catch (error: unknown) {
           // Unexpected conflicts must remain fatal; never bypass the database constraint.
@@ -207,7 +257,7 @@ async function main() {
     }
   }
 
-  console.info(`[seed] Assigned ${assignedPlayers.size} unique players; skipped ${skippedDuplicateAssignments} duplicate demonstration assignments.`)
+  console.info(`[seed] Assigned ${assignedPlayers.size} unique players; repaired ${repairedPlacements} invalid slots; skipped ${skippedDuplicateAssignments} duplicates and ${skippedUnplaceablePlayers} unplaceable entries.`)
 
   for (const team of teams) {
     for (const season of [2027, 2028, 2029]) {
