@@ -171,6 +171,8 @@ async function main() {
   }
 
   const registryByName = new Map(registry.map((player) => [player.name.toLowerCase(), player]))
+  const assignedPlayers = new Map<number, string>()
+  let skippedDuplicateAssignments = 0
   for (const [index, team] of teams.entries()) {
     const teamRoster = getTeamRoster(standings[index].team, roster)
     await prisma.rosterSlot.deleteMany({ where: { teamId: team.id } })
@@ -178,17 +180,31 @@ async function main() {
       const player = registryByName.get(playerSlot.name.toLowerCase())
       const slot = slots.has(playerSlot.slot) ? (playerSlot.slot as SlotType) : SlotType.BN
       if (player) {
+        const originalTeam = assignedPlayers.get(player.nhlId)
+        if (originalTeam) {
+          // The legacy demonstration lists overlap. A player can have only
+          // one owner in a league; preserve the first assignment deterministically.
+          console.warn(`[seed] Skipping duplicate ${player.name} for ${team.name} (already assigned to ${originalTeam})`)
+          skippedDuplicateAssignments += 1
+          continue
+        }
         try {
           await prisma.rosterSlot.create({
             data: { teamId: team.id, leagueId: team.leagueId, playerId: player.nhlId, slot },
           })
+          assignedPlayers.set(player.nhlId, team.name)
         } catch (error: unknown) {
-          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new Error("That player is already on a league roster.")
+          // Unexpected conflicts must remain fatal; never bypass the database constraint.
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            throw new Error(`Duplicate roster assignment for ${player.name} (team ${team.name})`)
+          }
           throw error
         }
       }
     }
   }
+
+  console.info(`[seed] Assigned ${assignedPlayers.size} unique players; skipped ${skippedDuplicateAssignments} duplicate demonstration assignments.`)
 
   for (const team of teams) {
     for (const season of [2027, 2028, 2029]) {
