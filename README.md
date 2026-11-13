@@ -173,4 +173,4 @@ DATABASE_URL="$TEST_DATABASE_URL" SEED_EMPTY_LEAGUE=YES_I_HAVE_VERIFIED_THE_DATA
 npm run test:e2e
 ```
 
-The Playwright configuration rejects missing URLs, remote database hosts, database names without `test` or `e2e`, or a `TEST_DATABASE_URL` that matches an already exported `DATABASE_URL`. It also starts its own Next.js instance on port 3100 and refuses to reuse a previously running server. These checks fail closed before any tests execute. The example assumes a newly created, empty database.
+The Playwright configuration rejects missing URLs, remote database hosts, database names without `test` or `e2e`. It also starts its own Next.js instance on port 3100 and refuses to reuse a previously running server. These checks fail closed before any tests execute. The example assumes a newly created, empty database.
