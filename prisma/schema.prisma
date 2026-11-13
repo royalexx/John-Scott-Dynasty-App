@@ -416,3 +416,9 @@ model PlayerGameStat {
   @@index([gameId])
   @@index([playerId])
 }
+
+model LoginThrottle {
+  key       String   @id
+  failures  Int      @default(0)
+  resetAt   DateTime
+}

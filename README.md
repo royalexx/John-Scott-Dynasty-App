@@ -179,3 +179,7 @@ npm run test:e2e
 ```
 
 The Playwright configuration rejects missing URLs, remote database hosts, database names without `test` or `e2e`. It also starts its own Next.js instance on port 3100 and refuses to reuse a previously running server. These checks fail closed before any tests execute. The example assumes a newly created, empty database.
+
+### Login attempt throttling
+
+Repeated invalid manager PINs are recorded in PostgreSQL as HMAC-keyed counters (no plain IP addresses or manager IDs). After five failed attempts within five minutes, further attempts are rejected with HTTP 429 and a `Retry-After` header. This limit applies across serverless instances to both manager login and PIN changes.
