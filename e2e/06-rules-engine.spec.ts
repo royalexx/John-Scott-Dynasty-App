@@ -8,6 +8,8 @@ import { DEFAULT_LEAGUE_SCORING, scoreGameStat, type RawGameStat } from "../lib/
 import { hashManagerPin, isHashedManagerPin, verifyManagerPin } from "../lib/pin-crypto"
 import { remainingPinLockout } from "../lib/pin-rate-limit"
 import { missingSnapshotTeamIds } from "../lib/services/week-lineups"
+import { PlayerStatus, SlotType } from "@prisma/client"
+import { previewFutureMove, rosterMatchesPlan } from "../lib/services/future-lineup-plans"
 
 const stat = (overrides: Partial<RawGameStat> = {}): RawGameStat => ({
   goals: 0, assists: 0, shots: 0, hits: 0, blocks: 0, plusMinus: 0, powerPlayPoints: 0, shorthandedGoals: 0,
@@ -300,5 +302,35 @@ test.describe("historical scoring snapshot coverage", () => {
 
   test("deduplicates repeated matchups and does not infer coverage from a different team", () => {
     expect(missingSnapshotTeamIds(["home", "away", "home"], [{ teamId: "other" }, { teamId: "home" }])).toEqual(["away"])
+  })
+})
+
+test.describe("future-week lineup plan validation", () => {
+  const limits = {
+    rosterPositions: { C: 1, W: 0, F: 0, D: 0, G: 0, BN: 1 },
+    rosterSize: 2, taxiSlots: 0, irSlots: 0, taxiMaxGames: 50,
+  }
+  const player = (name: string) => ({ name, position: "C", injuryStatus: PlayerStatus.HEALTHY, nhlGamesPlayed: 12 })
+  const roster = [
+    { playerId: 1, slot: SlotType.BN, player: player("First") },
+    { playerId: 2, slot: SlotType.C, player: player("Second") },
+  ]
+
+  test("moves a future starter with legal displacement without mutating its live source", () => {
+    const planned = previewFutureMove(roster, limits, 1, SlotType.C, 2)
+    expect(planned.map((row) => row.slot)).toEqual([SlotType.C, SlotType.BN])
+    expect(roster.map((row) => row.slot)).toEqual([SlotType.BN, SlotType.C])
+  })
+
+  test("rejects invalid position, IR and full-bench moves before save", () => {
+    expect(() => previewFutureMove(roster, limits, 1, SlotType.G)).toThrow(/not an enabled slot|cannot play/)
+    expect(() => previewFutureMove(roster, limits, 1, SlotType.IR)).toThrow(/not eligible/)
+    expect(() => previewFutureMove(roster, limits, 2, SlotType.BN)).toThrow(/Bench is full/)
+  })
+
+  test("detects transfers that invalidate saved ownership rather than guessing lineup intent", () => {
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 2 }], [{ playerId: 2 }, { playerId: 1 }])).toBe(true)
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 3 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
+    expect(rosterMatchesPlan([{ playerId: 1 }, { playerId: 1 }], [{ playerId: 1 }, { playerId: 2 }])).toBe(false)
   })
 })

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import { activateDueLineupPlans, rosterMatchesPlan } from "@/lib/services/future-lineup-plans"
 
 type TransactionClient = Prisma.TransactionClient
 type Db = TransactionClient | typeof prisma
@@ -15,7 +16,7 @@ export interface WeekAssignment {
 export interface WeekLineupView {
   week: number
   currentWeek: number
-  source: "snapshot" | "live" | "unavailable"
+  source: "snapshot" | "live" | "plan" | "unavailable"
   locked: boolean
   /** True when the week is locked or a snapshot exists. Kept so older clients still treat either case as frozen. */
   frozen: boolean
@@ -60,6 +61,36 @@ export function missingSnapshotTeamIds(requiredTeamIds: readonly string[], rows:
 export async function weekLineupForLeague(leagueId: string, season: number, week: number, now: Date = new Date()): Promise<WeekLineupView> {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { lineupLockMode: true } })
   const lock = await getLockSummary(season, league?.lineupLockMode, now)
+  // At Monday rollover, activate already-saved future plans before the first puck
+  // drop. Once a game starts, late plans are never applied retroactively.
+  if (week === lock.week) await activateDueLineupPlans(leagueId, season, now)
+  if (week > lock.week) {
+    const [live, plans] = await Promise.all([
+      prisma.rosterSlot.findMany({
+        where: { team: { leagueId } },
+        select: { teamId: true, playerId: true, slot: true, team: { select: { name: true } } },
+      }),
+      prisma.lineupPlan.findMany({
+        where: { season, week, status: "PENDING", team: { leagueId } },
+        include: { entries: true },
+      }),
+    ])
+    const byTeam = new Map(plans.map((plan) => [plan.teamId, plan]))
+    const liveByTeam = new Map<string, typeof live>()
+    for (const row of live) liveByTeam.set(row.teamId, [...(liveByTeam.get(row.teamId) ?? []), row])
+    const assignments: WeekAssignment[] = []
+    let hasPlan = false
+    for (const [teamId, roster] of liveByTeam) {
+      const plan = byTeam.get(teamId)
+      const valid = plan && rosterMatchesPlan(roster, plan.entries)
+      if (valid) hasPlan = true
+      const selected = valid
+        ? plan.entries.map((entry) => ({ playerId: entry.playerId, slot: entry.slot, team: roster[0].team }))
+        : roster
+      for (const row of selected) assignments.push({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })
+    }
+    return { week, currentWeek: lock.week, source: hasPlan ? "plan" : "live", locked: false, frozen: false, assignments }
+  }
   const lockedWeek = lock.mode === "WEEKLY" && week === lock.week && lock.weekStarted
   if (lockedWeek) await freezeWeekLineup(prisma, leagueId, season, week, now)
 
@@ -129,4 +160,4 @@ export function isWeekLineupLocked(lock: { mode: string; week: number; weekStart
 }
 
 export const FUTURE_LINEUP_LOCK_MESSAGE = "This week's lineup is locked. Its frozen starters cannot be changed."
-export const FUTURE_LINEUP_PREVIEW_MESSAGE = "Future-week lineup previews are read-only until separate planning is available; the live roster was not changed."
+export const FUTURE_LINEUP_PREVIEW_MESSAGE = "Use a saved future-week plan. The current live roster was not changed."
