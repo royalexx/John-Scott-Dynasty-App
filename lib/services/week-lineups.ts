@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 import { activateDueLineupPlans, rosterMatchesPlan } from "@/lib/services/future-lineup-plans"
+import type { MatchupResult } from "@/lib/dashboard-data"
 
 type TransactionClient = Prisma.TransactionClient
 type Db = TransactionClient | typeof prisma
@@ -21,6 +22,7 @@ export interface WeekLineupView {
   /** True when the week is locked or a snapshot exists. Kept so older clients still treat either case as frozen. */
   frozen: boolean
   assignments: WeekAssignment[]
+  matchupResults: MatchupResult[]
 }
 
 /** Snapshots the current week only. Never manufacture history from today's roster. */
@@ -58,6 +60,20 @@ export function missingSnapshotTeamIds(requiredTeamIds: readonly string[], rows:
   return [...new Set(requiredTeamIds)].filter((teamId) => !covered.has(teamId))
 }
 
+async function matchupResultsForWeek(leagueId: string, season: number, week: number): Promise<MatchupResult[]> {
+  const rows = await prisma.matchup.findMany({
+    where: { leagueId, season, week },
+    select: {
+      homeScore: true, awayScore: true, isFinal: true,
+      homeTeam: { select: { name: true } }, awayTeam: { select: { name: true } },
+    },
+  })
+  return rows.map((row) => ({
+    week, homeTeam: row.homeTeam.name, awayTeam: row.awayTeam.name,
+    homeScore: Number(row.homeScore ?? 0), awayScore: Number(row.awayScore ?? 0), isFinal: row.isFinal,
+  }))
+}
+
 export async function weekLineupForLeague(leagueId: string, season: number, week: number, now: Date = new Date()): Promise<WeekLineupView> {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { lineupLockMode: true } })
   const lock = await getLockSummary(season, league?.lineupLockMode, now)
@@ -89,7 +105,8 @@ export async function weekLineupForLeague(leagueId: string, season: number, week
         : roster
       for (const row of selected) assignments.push({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })
     }
-    return { week, currentWeek: lock.week, source: hasPlan ? "plan" : "live", locked: false, frozen: false, assignments }
+    return { week, currentWeek: lock.week, source: hasPlan ? "plan" : "live", locked: false, frozen: false, assignments,
+      matchupResults: await matchupResultsForWeek(leagueId, season, week) }
   }
   const lockedWeek = lock.mode === "WEEKLY" && week === lock.week && lock.weekStarted
   if (lockedWeek) await freezeWeekLineup(prisma, leagueId, season, week, now)
@@ -123,6 +140,7 @@ export async function weekLineupForLeague(leagueId: string, season: number, week
     locked,
     frozen: locked || snapshot.length > 0,
     assignments: rows.map((row) => ({ teamName: row.team.name, nhlId: row.playerId, slot: row.slot })),
+    matchupResults: await matchupResultsForWeek(leagueId, season, week),
   }
 }
 
