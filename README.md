@@ -51,7 +51,7 @@ Open [http://localhost:3000](http://localhost:3000). Every seeded manager uses P
 
 `npm install` runs `prisma generate`. `npm run build` also refreshes `public/data/nhl-players.json` from the NHL search API before `next build`, so a build needs network access.
 
-If the league row is missing, the page falls back to the static roster in `lib/hockey-data.ts` instead of the database.
+If the league is missing or the database fails during dashboard hydration, the page shows a neutral unavailable state. It no longer presents static demonstration rosters or matchups as authentic league results.
 
 ## Scripts
 
