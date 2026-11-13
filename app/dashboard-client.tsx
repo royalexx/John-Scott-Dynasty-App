@@ -278,7 +278,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const [teamDrawer, setTeamDrawer] = useState<"schedule" | "team-settings" | "settings" | "transactions" | "news" | null>(null)
   const [playerNicknames, setPlayerNicknames] = useState<Record<string, string>>({})
-  const [tradeMode, setTradeMode] = useState(false)
+  const [tradeNavigationRequest, setTradeNavigationRequest] = useState(0)
   const [teamName, setTeamName] = useState(initialData.teamName)
   const [teamLogo, setTeamLogo] = useState(initialData.teamLogo ?? "")
   const [pendingClaims, setPendingClaims] = useState<WaiverClaim[]>([])
@@ -836,7 +836,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             <div className="flex flex-col pb-16">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
-                  setTradeMode(true)
+                  setTradeNavigationRequest((request) => request + 1)
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
@@ -934,7 +934,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
-            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />
+            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeRequestId={tradeNavigationRequest} />
           </div>
           <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
             <LeagueFeed matchupResults={initialData.matchupResults} week={week} teamName={teamName} teamLogo={teamLogo} isCommissioner={initialData.isCommissioner} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />
