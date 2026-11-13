@@ -114,12 +114,12 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const benchCapacity = configuredSlots?.BN ?? DEFAULT_BENCH_CAPACITY
   const startingSlots = useMemo(() => (Object.keys(slotCapacities) as Array<keyof typeof slotCapacities>).map((slot) => ({ slot, capacity: slotCapacities[slot] })), [slotCapacities])
   const rosterSize = initialData.league?.rosterSize ?? DEFAULT_ROSTER_SIZE
-  const initialRoster = initialData.roster.length > 0 ? initialData.roster : fallbackRoster
-  const standings = initialData.standings.length > 0 ? initialData.standings : fallbackStandings
+  const initialRoster = initialData.teamId ? initialData.roster : initialData.roster.length > 0 ? initialData.roster : fallbackRoster
+  const standings = initialData.teamId ? initialData.standings : initialData.standings.length > 0 ? initialData.standings : fallbackStandings
   // Register authoritative DB rosters before any child derives opponent lineups from them.
   setLeagueContext(initialData.teamName, initialData.leagueRosters)
-  const draftPicks = initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
-  const [activities, setActivities] = useState<ActivityItem[]>(initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
+  const draftPicks = initialData.teamId ? initialData.draftPicks : initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
+  const [activities, setActivities] = useState<ActivityItem[]>(initialData.teamId ? initialData.activities : initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
   const [activeTab, setActiveTab] = useState<MainTab>("TEAM")
   const [allDynastyPlayers, setAllDynastyPlayers] = useState<MarketPlayer[]>([])
   const [scheduleGames, setScheduleGames] = useState<NhlScheduleGame[]>([])
