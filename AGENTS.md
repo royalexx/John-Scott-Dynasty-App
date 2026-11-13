@@ -16,3 +16,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Dev server: `npm run dev` (port 3000). Open `http://localhost:3000`. Next.js blocks dev assets when the page is opened as `127.0.0.1`, so the PIN gate will not hydrate on that host. There is no lint script. Typecheck with `npx tsc --noEmit`. End-to-end tests: `npm run test:e2e` (Playwright, Chromium).
 - `npm run build` runs `prebuild`, which fetches NHL data and rewrites `public/data/nhl-players.json`.
 - Seeded managers sign in with PIN `1234`. The e2e setup chooses Montreal Monarchs.
+
+## Design system (mandatory for UI changes)
+
+- Read [DESIGN.md](DESIGN.md) before adding or changing a UI element. Semantic tokens originate in `app/globals.css` and map into Tailwind v4 `@theme inline`. Prefer them over new literal colors.
+- **Do not remove real NHL player portraits or replace them with icons/initials.** Reuse `PlayerPortrait` and `getPlayerPhoto()`, preserving source URL, crop and broken-image behavior. Keep position indicators *alongside* headshots.
+- Shared controls are `components/ui/button.tsx`, `tabs.tsx`, `badge.tsx`, `sheet.tsx`, `dialog.tsx`, and `hockey.tsx`. Main actions should provide a 44×44px touch target, accessible focus and labels.
+- Respect the mobile 430px shell, 320px minimum test width, safe areas, reduced motion and data density. Never present projected fantasy points as actual points.
+- View the real components at `/ui-design-system` in development fixture mode or a Vercel PR Preview, **never on the production domain**.
+- Pull requests for the phased redesign are stacked, separately reviewed, and must not be merged to `main` without explicit approval. Use `npm run test:preview` and `npm run test:visual` for read-only screenshot regression; the normal E2E suite requires a disposable local PostgreSQL test database.
