@@ -29,8 +29,8 @@ type SectionHeadingProps = {
 
 function HockeySectionHeading({ title, eyebrow, action, className }: SectionHeadingProps) {
   return (
-    <div data-slot="hockey-section-heading" className={cn("flex min-w-0 items-center justify-between gap-3", className)}>
-      <div className="min-w-0">
+    <div data-slot="hockey-section-heading" className={cn("flex min-w-0 flex-wrap items-center justify-between gap-2", className)}>
+      <div className="min-w-0 flex-[1_1_12rem]">
         {eyebrow && <p className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">{eyebrow}</p>}
         <h2 className="truncate text-lg font-bold leading-tight text-foreground">{title}</h2>
       </div>
