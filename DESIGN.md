@@ -117,6 +117,8 @@ The Phase 2 preview test also checks token colors, nonoverflow at phone widths, 
 - Phase 4: migrate the Match and Team content layout to the shared cards, section headings, player rows and scoring hierarchy.
 - Phase 5: integrate shared primitives and preserve/add real player portraits across Players and League.
 - Phase 6: migrate trading, waivers, draft and settings to the accessible action/sheet patterns.
-- Phase 7: comprehensive visual, performance, keyboard, reduced-motion and regression review.
+- Phase 7: comprehensive visual, performance, keyboard, reduced-motion and regression review (see `docs/PHASE_07_ACCESSIBILITY_RELEASE.md`).
+
+**Updated design decision (November 2026):** The owner preferred the pre-Phase-4 Match/Team layouts. Phase 4 PR #37 was closed without merging. Phase 5 instead refined the original compact Players/League lists, and Phase 6 improved the existing transactional workflows. The Phase 7 review preserves this approved simpler structure.
 
 A **design-system infrastructure phase** is not permission to replace every existing screen. Each screen's before/after and user-facing workflows remain separately reviewable in its designated phase.
