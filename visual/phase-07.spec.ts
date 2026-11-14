@@ -11,8 +11,10 @@ async function capture(page: Page, info: TestInfo, name: string) {
 }
 
 function expectTouch(rect: { width: number; height: number } | null) {
-  expect(rect?.width ?? 0).toBeGreaterThanOrEqual(44)
-  expect(rect?.height ?? 0).toBeGreaterThanOrEqual(44)
+  // Chromium can report a CSS 44px box as 43.999992px due to fractional layout.
+  // Tolerate 0.01px numerical noise, not a materially undersized touch target.
+  expect(rect?.width ?? 0).toBeGreaterThanOrEqual(43.99)
+  expect(rect?.height ?? 0).toBeGreaterThanOrEqual(43.99)
 }
 
 for (const width of [320, 390]) {
