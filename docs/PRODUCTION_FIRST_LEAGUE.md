@@ -1,56 +1,70 @@
-# One-time first-league initialization on Prisma Postgres
+# First-time league initialization — database-only manager PINs
 
-**Prerequisite:** migration status shows **all five** approved migrations successful.
-This is for the owner's newly created empty John Scott Dynasty database only.
-It is **not** a production reset, live-data sync or replay of old league results.
+**Status:** Draft PR #47, based on the integrated backend/UI release branch.
+This process is only for the owner's newly created Prisma Postgres database after the five migrations succeeded. It is **not** a database reset or an import of historical game results.
 
-## Safety properties
-- Production bootstrap is a **different command** from `npm run prisma:seed`.
-- Explicitly requires `JSD_BOOTSTRAP_CONFIRM=INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE`.
-- The bootstrap refuses any application data in any of 23 model tables and refuses incomplete or unexpected migration history.
-- It generates 12 distinct random four-digit manager PINs and stores only salted scrypt hashes in PostgreSQL.
-- Plain PINs are written once to `.local-bootstrap-credentials/manager-pins.json` with restrictive creation permissions. This directory is excluded from Git. Do **not** paste, screenshot or upload it.
-- PINs are 4 digits because the current sign-in UI requires that format; this is inherently low entropy, so database-backed login rate limiting is essential.
-- Existing demo fixture data supplies the initial team names and rosters. This is **starting test league data**, not a reconstruction of NHL history or official standings.
-- The new database must be **production only** during initial setup; avoid preview writes to the same database.
-- The command is never called by Vercel build, deployment, cron, or migrations.
+## Data and credential policy
 
-## Before initializing
-1. Verify the correct Prisma Postgres database and owner account in the Prisma console.
-2. Revoke any connection credential that was posted or otherwise exposed; reconnect the Vercel integration if required.
-3. In PowerShell, check out the exact reviewed bootstrap branch and run `npm ci`.
-4. Inspect current schema with `npx prisma migrate status`, and read `node scripts/migration-preflight.mjs`. The latter must report `HISTORY_READY`, and all model tables must be empty.
-5. Confirm nobody else is running a seed/bootstrap/sync against this database.
+- **No manager PINs or credential lists are saved to local files.** The initializer reads the commissioner's chosen four-digit PIN from a temporary process environment variable, uses it to create a salted scrypt hash, and stores only that hash in PostgreSQL.
+- The 11 other managers receive unrevealed random initial PINs, also stored **only as salted scrypt hashes** in PostgreSQL. They cannot sign in until the commissioner assigns them their chosen PINs through **Commissioner Rulebook → Tools → Manager PINs**.
+- The commissioner can replace a friend's PIN by selecting the manager, confirming their own commissioner PIN, and entering the friend's new four-digit PIN. A new PIN replaces the previous hash and invalidates the friend's old sessions. There is **no read/reveal endpoint** for existing PINs; a forgotten PIN is replaced, not recovered.
+- The existing four-digit PIN keypad and PostgreSQL-backed failed-login throttling remain intact. PINs are never printed to stdout, committed to Git, or stored in browser localStorage.
+- The shared development PIN `1234` is not accepted by the production initializer and cannot be assigned through the commissioner reset tool.
+- The development fixture command `npm run prisma:seed` still rejects Production and still uses fixture PINs **only in isolated test databases**.
 
-## Run on your laptop (never in CI against production)
-Enter the **new direct Postgres URL** at the secure prompt, not in the `Read-Host` command.
+## Before initialization
+
+1. In Prisma Postgres, **revoke/rotate any credential previously exposed in chat or terminal history**. Ensure Vercel's connected secret is valid.
+2. The Vercel integration already exposes a direct `DATABASE_URL` and `DATABASE_URL_POOLED`. **Isolate Preview before running database-writing preview tests.** Do not connect Preview and Production to the same mutable database for those tests.
+3. Confirm the correct database was migrated: `npx prisma migrate status` lists the five applied migrations, and the read-only `node scripts/migration-preflight.mjs` reports `HISTORY_READY`. This preflight checks structure and history; the bootstrap itself rejects any nonempty application table.
+4. Check out `feat/one-time-production-bootstrap-20261114` (or its merged parent after review) and run `npm ci`.
+5. Confirm no one else is initializing, syncing or writing to this database.
+
+## One-time initialization from PowerShell
+
+The following uses temporary environment variables and **creates no local PIN file**. Only execute against the confirmed **new, empty** database:
 
 ```powershell
-$secureUrl = Read-Host "Paste NEW DIRECT PostgreSQL URL" -AsSecureString
+$secureUrl = Read-Host "Paste your current DIRECT PostgreSQL URL" -AsSecureString
+$securePin = Read-Host "Choose your initial commissioner PIN (4 digits, not 1234)" -AsSecureString
+
 try {
     $env:DATABASE_URL = [System.Net.NetworkCredential]::new("", $secureUrl).Password.Trim().Trim('"', "'")
-    if ($env:DATABASE_URL -notmatch '^postgres(ql)?://') { throw "Invalid direct URL" }
-    $env:JSD_BOOTSTRAP_CONFIRM = "INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE"
+    $env:JSD_INITIAL_COMMISSIONER_PIN = [System.Net.NetworkCredential]::new("", $securePin).Password
+
+    if ($env:DATABASE_URL -notmatch '^postgres(ql)?://') { throw "Invalid direct database URL" }
+    if ($env:JSD_INITIAL_COMMISSIONER_PIN -notmatch '^\d{4}$' -or $env:JSD_INITIAL_COMMISSIONER_PIN -eq "1234") {
+        throw "Choose a four-digit commissioner PIN other than 1234"
+    }
+
     node scripts/migration-preflight.mjs
     if ($LASTEXITCODE -ne 0) { throw "Read-only preflight failed" }
+
+    $env:JSD_BOOTSTRAP_CONFIRM = "INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE"
     npm run prisma:bootstrap-production
-    if ($LASTEXITCODE -ne 0) { throw "Production bootstrap failed: stop; do not rerun against partial data" }
+    if ($LASTEXITCODE -ne 0) { throw "Bootstrap failed: do not rerun against partial data" }
 }
 finally {
     Remove-Item Env:\DATABASE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:\JSD_INITIAL_COMMISSIONER_PIN -ErrorAction SilentlyContinue
     Remove-Item Env:\JSD_BOOTSTRAP_CONFIRM -ErrorAction SilentlyContinue
     $secureUrl = $null
+    $securePin = $null
 }
 ```
 
-If successful, immediately secure the local file containing the 12 initial manager PINs. Distribute them privately to the intended test managers and delete the plaintext file when no longer needed. The commissioner belongs to Montreal Monarchs with handle `commissioner`. Do not use a common `1234` PIN in production.
+The initial commissioner signs into **Montreal Monarchs** with the chosen PIN. Only the salted hash is kept in PostgreSQL. If a PIN is lost, the owner must use the appropriate authenticated PIN-change or reset flow; the database hash cannot be reversed.
 
-## Verify (read only)
-On the same direct database:
-- Migration status: all five applied
-- Exactly 1 league, 12 teams, 12 managers, non-zero roster and matchup counts
-- No plain PIN storage; each `User.pin` starts with `scrypt$`
-- Review generated roster and draft assets before turning on live cron synchronization.
+## After deployment
 
-## Failure behavior
-The bootstrap is strictly first-use, not idempotent. If it fails partway, it will refuse to re-run because some tables will be populated. **Do not delete data or bypass the guard.** Diagnose and recover explicitly before retrying. A locally written credentials file may exist even if initialization fails.
+1. Sign in to `johnscottdynasty.live` as commissioner using your chosen initial PIN.
+2. Open **League & Team Settings → Commissioner Rulebook → Tools → Manager PINs**.
+3. For each friend: select their manager, enter the commissioner PIN, choose their four-digit PIN, and press **Set manager PIN**. Share the new PIN privately.
+4. The friend can sign in normally and change their own PIN later using the existing account PIN-change feature.
+5. Validate persisted rosters, matchups, and scheduled NHL synchronization before enabling full operation.
+
+## Safety
+
+The initializer checks all 23 Prisma application tables for data and verifies exactly five applied release migrations before writing. The setup is first-use only; attempts to rerun against populated tables are rejected. If initialization fails midway, inspect the partial state — **do not delete existing records or bypass the guard**.
+
+The first 12 rosters and schedule are seeded demonstration league starting state, not recovered historical scores. The release does not fabricate old DAILY lineup snapshots.
