@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { HockeySurface, HockeySectionHeading, HockeyStatus, HockeyStat, PositionBadge } from "@/components/ui/hockey"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { TradeBuilderDialog, type TradeTeam } from "@/components/hockey/trade-builder-dialog"
+import { PlayerGridSettingsDialog, type PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
 import { roster } from "@/lib/hockey-data"
 
 // Component-only sample managers. The entire gallery is inaccessible in Production.
@@ -43,6 +44,8 @@ const palette = [
 export function DesignSystemGallery() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [tradeOpen, setTradeOpen] = useState(false)
+  const [gridOpen, setGridOpen] = useState(false)
+  const [gridSettings, setGridSettings] = useState<PlayerGridSettings>({ viewType: "Projections", period: "This Week", year: "2026" })
   const [message, setMessage] = useState("Select a button to check its interaction state.")
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -143,6 +146,7 @@ export function DesignSystemGallery() {
           <HockeySectionHeading title="Trade workflow" eyebrow="Read-only fixture, no persistence" />
           <p className="text-xs text-text-secondary">Preview the real three-step builder with sample managers, players and picks.</p>
           <Button onClick={() => setTradeOpen(true)}>Review trade workflow</Button>
+          <Button variant="outline" onClick={() => setGridOpen(true)}>Review player grid settings</Button>
         </HockeySurface>
 
         <HockeySurface className="space-y-3">
@@ -162,6 +166,12 @@ export function DesignSystemGallery() {
         partners={[demoPartner]}
         onPlayerClick={(player) => setMessage(`Preview only · ${player.name} selected`)}
         onSendTrade={() => { setTradeOpen(false); setMessage("Preview only · No trade saved") }}
+      />
+      <PlayerGridSettingsDialog
+        open={gridOpen}
+        settings={gridSettings}
+        onOpenChange={setGridOpen}
+        onApply={(next) => { setGridSettings(next); setMessage("Preview only · Grid settings tested") }}
       />
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent side="bottom" className="mx-auto w-full max-w-[430px] rounded-t-2xl border-t border-border bg-popover p-4 text-foreground">

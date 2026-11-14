@@ -62,7 +62,7 @@ jobs:
         with:
           name: visual-baseline-${{ github.run_id }}
           path: |
-            test-results/visual/
+            test-results/
             playwright-visual-report/
             playwright-preview-report/
           if-no-files-found: warn
