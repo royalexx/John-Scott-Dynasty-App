@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-test("database-free hosted preview visibly labels demonstration data", async ({ page }) => {
+test("hosted preview with a configured database URL visibly labels demonstration data", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByTestId("preview-fixture-banner")).toContainText("SAMPLE DATA · READ ONLY")
   await expect(page.getByRole("heading", { name: "JOHN SCOTT DYNASTY" })).toBeVisible()
@@ -29,7 +29,7 @@ test("preview never allows a write or a mutating GET", async ({ request }) => {
   }
 })
 
-test("preview fixture GET endpoints do not rely on PostgreSQL", async ({ request }) => {
+test("preview fixture GET endpoints do not rely on PostgreSQL even with DATABASE_URL set", async ({ request }) => {
   const players = await request.get("/api/players")
   expect(players.ok()).toBe(true)
   expect((await players.json()).length).toBeGreaterThan(0)
@@ -41,4 +41,20 @@ test("preview fixture GET endpoints do not rely on PostgreSQL", async ({ request
   const league = await request.get("/api/admin/league-settings")
   expect(league.ok()).toBe(true)
   expect((await league.json()).name).toContain("Demo")
+})
+
+test("preview GET requests never bypass fixtures to query PostgreSQL", async ({ request }) => {
+  // The Playwright server has a deliberately unreachable DATABASE_URL.
+  // These deterministic endpoints must work without connecting to Prisma.
+  const session = await request.get("/api/auth/session")
+  expect(session.ok()).toBe(true)
+  expect(await session.json()).toEqual({ user: null })
+
+  const roster = await request.get("/api/roster/week?week=8")
+  expect(roster.ok()).toBe(true)
+  expect((await roster.json()).assignments).toEqual([])
+
+  const unknown = await request.get("/api/some-future-read-endpoint")
+  expect(unknown.status()).toBe(503)
+  expect((await unknown.json()).error).toContain("database-free preview")
 })
