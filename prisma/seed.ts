@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { randomInt } from "node:crypto"
 import { join } from "node:path"
 import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
@@ -19,6 +20,8 @@ type RegistryPlayer = {
 }
 
 const prisma = new PrismaClient()
+const productionBootstrap = process.env.JSD_BOOTSTRAP_MODE === "production"
+const MANAGER_CREDENTIALS_PATH = join(process.cwd(), ".local-bootstrap-credentials", "manager-pins.json")
 const positions = new Set<string>(Object.values(Position))
 const slots = new Set<string>(Object.values(SlotType))
 
@@ -71,6 +74,43 @@ function legalSeedSlot(
  * rosters, FAAB, fixtures and traded draft picks.
  */
 async function assertSafeInitialSeed() {
+  if (productionBootstrap) {
+    if (process.env.JSD_BOOTSTRAP_CONFIRM !== "INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE") {
+      throw new Error("Production bootstrap requires the explicit JSD_BOOTSTRAP_CONFIRM acknowledgement.")
+    }
+    if (process.env.SEED_EMPTY_LEAGUE) {
+      throw new Error("Do not combine the production bootstrap with the disposable development seed flag.")
+    }
+    // A freshly migrated database should have no application data anywhere.
+    // Refuse to proceed if this is an existing or partially initialized league.
+    const counts = await Promise.all([
+      prisma.user.count(), prisma.league.count(), prisma.team.count(), prisma.player.count(),
+      prisma.rosterSlot.count(), prisma.weekLineup.count(), prisma.lineupPlan.count(),
+      prisma.lineupPlanEntry.count(), prisma.dailyGameLineup.count(), prisma.dailyGameLineupEntry.count(),
+      prisma.draft.count(), prisma.draftSlot.count(), prisma.draftPick.count(),
+      prisma.tradeOffer.count(), prisma.tradeAsset.count(), prisma.waiverClaim.count(),
+      prisma.activityLog.count(), prisma.directMessage.count(), prisma.leagueMessage.count(),
+      prisma.matchup.count(), prisma.nhlGame.count(), prisma.playerGameStat.count(), prisma.loginThrottle.count(),
+    ])
+    if (counts.some((count) => count !== 0)) {
+      throw new Error("Production bootstrap refused: at least one application table already contains data.")
+    }
+    const applied = await prisma.$queryRaw<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>`
+      SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations"
+      ORDER BY started_at
+    `
+    const expected = [
+      "20261113000000_baseline", "20261113010000_login_throttle",
+      "20261113020000_future_lineup_plans", "20261113030000_daily_game_lineups",
+      "20261113040000_remove_legacy_pin_default",
+    ]
+    if (applied.length !== expected.length || applied.some((row, index) =>
+      row.migration_name !== expected[index] || row.finished_at == null || row.rolled_back_at != null
+    )) {
+      throw new Error("Production bootstrap refused: migration history is not the expected five successful migrations.")
+    }
+    return
+  }
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
     throw new Error("Initial demo seeding is forbidden in production.")
   }
@@ -99,6 +139,30 @@ async function assertSafeInitialSeed() {
 
 async function main() {
   await assertSafeInitialSeed()
+  const managerPins = new Map<string, string>()
+  if (productionBootstrap) {
+    // Save one-time credentials locally *before* touching the database. Never
+    // print PINs, commit the file, or use the shared development PIN in Production.
+    const used = new Set<string>()
+    const credentials = standings.map((standing) => {
+      const handle = standing.owner === "You" || standing.team === "Montreal Monarchs"
+        ? "commissioner" : standing.owner.replace(/^@/, "")
+      let pin: string
+      do { pin = randomInt(0, 10000).toString().padStart(4, "0") } while (used.has(pin))
+      used.add(pin)
+      managerPins.set(handle, pin)
+      return { team: standing.team, handle, pin }
+    })
+    await mkdir(join(process.cwd(), ".local-bootstrap-credentials"), { recursive: true, mode: 0o700 })
+    await writeFile(MANAGER_CREDENTIALS_PATH,
+      JSON.stringify({
+        warning: "CONFIDENTIAL: one-time initial manager PINs; store securely, share privately, delete when distributed.",
+        createdAt: new Date().toISOString(), credentials,
+      }, null, 2),
+      { flag: "wx", mode: 0o600 })
+    console.info("[bootstrap] Unique manager PINs saved to ignored local file: .local-bootstrap-credentials/manager-pins.json")
+    console.info("[bootstrap] The file must never be committed, uploaded, or shared in public logs.")
+  }
   const source = await readFile(join(process.cwd(), "public", "data", "nhl-players.json"), "utf8")
   const registry = JSON.parse(source) as RegistryPlayer[]
 
@@ -164,7 +228,7 @@ async function main() {
     const isCommish = handle === "commissioner"
     const name = isCommish ? "Commissioner" : handle
     // Fixed initial PIN is only for disposable test fixtures; never store it in plaintext.
-    const fixturePinHash = hashManagerPin("1234")
+    const fixturePinHash = hashManagerPin(productionBootstrap ? managerPins.get(handle)! : "1234")
     const user = await prisma.user.upsert({
       where: { handle },
       update: { name, pin: fixturePinHash, isCommissioner: isCommish },
