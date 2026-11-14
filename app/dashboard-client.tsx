@@ -980,7 +980,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
               {taxi.map((player) => (
                 <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", ((player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
                   <div className="flex items-center gap-2.5">
-                    <button type="button" onClick={() => setEditingPlayer(player)} className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.TAXI)}>
+                    <button type="button" onClick={() => setEditingPlayer(player)} aria-label={`Edit ${player.name} in taxi squad`} className={cn("flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[5px] text-xs font-bold uppercase focus-visible:outline-2 focus-visible:outline-ring", slotBadgeColors.TAXI)}>
                       TX
                     </button>
                     <button type="button" onClick={() => selectCanonicalPlayer(player)} className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 text-left">
