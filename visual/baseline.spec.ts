@@ -135,3 +135,34 @@ test("PIN picker and PIN entry have screenshot fixtures", async ({ page }, info)
   await page.getByRole("button", { name: /Montreal Monarchs/ }).click()
   await saveScreenshot(page, info, "baseline-pin-entry")
 })
+
+for (const width of [320, 390]) {
+  test(`Phase 7: PIN entry supports hardware keyboard and screen-reader progress at ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: width === 320 ? 700 : 844 })
+    let attemptedLogin = false
+    await page.route("**/api/auth/login", async (route) => {
+      attemptedLogin = true
+      await route.fulfill({ status: 403, body: "{}" })
+    })
+    await page.goto("/ui-visual-baseline")
+    await page.getByRole("button", { name: /Montreal Monarchs/ }).click()
+    await expect(page.getByRole("button", { name: "Change team" })).toBeFocused()
+    await page.keyboard.press("1")
+    await expect(page.getByRole("status", { name: "1 of 4 PIN digits entered" })).toBeVisible()
+    await page.keyboard.press("2")
+    await expect(page.getByRole("status", { name: "2 of 4 PIN digits entered" })).toBeVisible()
+    await page.keyboard.press("Backspace")
+    await expect(page.getByRole("status", { name: "1 of 4 PIN digits entered" })).toBeVisible()
+    await page.getByRole("button", { name: "3", exact: true }).click()
+    await expect(page.getByRole("status", { name: "2 of 4 PIN digits entered" })).toBeVisible()
+    const rect = await page.getByRole("button", { name: "Change team" }).boundingBox()
+    expect(rect?.height ?? 0).toBeGreaterThanOrEqual(44)
+    const bounds = await page.evaluate(() => ({
+      viewport: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(bounds.scrollWidth).toBeLessThanOrEqual(bounds.viewport + 1)
+    await saveScreenshot(page, info, `phase-07-pin-${width}`)
+    expect(attemptedLogin, "No real login should occur during a visual test").toBe(false)
+  })
+}
