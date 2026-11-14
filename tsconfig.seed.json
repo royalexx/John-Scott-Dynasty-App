@@ -7,6 +7,7 @@
   },
   "include": [
     "prisma/seed.ts",
+    "prisma/bootstrap-production.ts",
     "lib/hockey-data.ts",
     "lib/scoring.ts",
     "lib/season-calendar.ts"
