@@ -25,3 +25,6 @@ playwright-report/
 _FOR_REFERENCE_ONLY/
 playwright-visual-report/
 playwright-preview-report/
+
+# Production bootstrap writes manager PINs only to a private local folder.
+.local-bootstrap-credentials/
