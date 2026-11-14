@@ -195,3 +195,89 @@ jobs:
             console.log("Legacy migration succeeded: identities and data preserved, no fabricated snapshots")
           } finally { await db.$disconnect() }
           NODE
+
+  # Protects the one-time hosted bootstrap behavior without any hosted access.
+  # The database is a disposable PostgreSQL container owned by this CI job.
+  production-bootstrap-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-bootstrap-test-only
+          POSTGRES_DB: johnscott_bootstrap_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d johnscott_bootstrap_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://ci:ci-bootstrap-test-only@127.0.0.1:5432/johnscott_bootstrap_e2e
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies (including dev CLI tools)
+        run: npm ci --include=dev
+      - name: Migrate isolated blank database
+        run: npx prisma migrate deploy
+      - name: Verify bootstrap refuses absent owner confirmation
+        run: |
+          if npm run prisma:bootstrap-production; then
+            echo "ERROR: bootstrap ran without explicit owner acknowledgement"
+            exit 1
+          fi
+      - name: Bootstrap test league with hash-only credentials
+        env:
+          JSD_BOOTSTRAP_CONFIRM: INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE
+          JSD_INITIAL_COMMISSIONER_PIN: '6528'
+        run: npm run prisma:bootstrap-production
+      - name: Validate first-time PIN hashes and database ownership records
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs"
+          import crypto from "node:crypto"
+          import { PrismaClient } from "@prisma/client"
+          const db = new PrismaClient()
+          const verifyPin = (stored, input) => {
+            const [scheme, salt, encoded] = stored.split("$")
+            if (scheme !== "scrypt" || !salt || !encoded) return false
+            const digest = Buffer.from(encoded, "base64url")
+            return crypto.timingSafeEqual(crypto.scryptSync(input, salt, digest.length), digest)
+          }
+          try {
+            if (fs.existsSync(".local-bootstrap-credentials")) throw new Error("Bootstrap created a local credentials folder")
+            const users = await db.user.findMany({ select: { handle: true, pin: true, isCommissioner: true } })
+            const [leagues, teams, rosters, matchups, picks] = await Promise.all([
+              db.league.count(), db.team.count(), db.rosterSlot.count(),
+              db.matchup.count(), db.draftPick.count(),
+            ])
+            if (leagues !== 1 || teams !== 12 || users.length !== 12) throw new Error("Wrong initial league/manager count")
+            if (rosters === 0 || matchups === 0 || picks !== 180) throw new Error("Missing roster/matchup/draft fixtures")
+            if (!users.every((user) => user.pin.startsWith("scrypt$"))) throw new Error("One or more manager PINs not hashed")
+            const commissioner = users.find((user) => user.handle === "commissioner")
+            if (!commissioner?.isCommissioner || !verifyPin(commissioner.pin, "6528")) throw new Error("Incorrect commissioner bootstrap PIN")
+            if (users.filter((user) => user.isCommissioner).length !== 1) throw new Error("Unexpected additional commissioner")
+            if (users.filter((user) => user.handle !== "commissioner").some((user) => verifyPin(user.pin, "1234"))) {
+              throw new Error("Development fixture PIN was reused for a manager")
+            }
+            console.log("Bootstrap verified: 1 league, 12 salted PIN hashes in PostgreSQL, no local credential files")
+          } finally { await db.$disconnect() }
+          NODE
+      - name: Re-running bootstrap must be refused without altering existing data
+        env:
+          JSD_BOOTSTRAP_CONFIRM: INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE
+        run: |
+          if npm run prisma:bootstrap-production; then
+            echo "ERROR: bootstrap was allowed to overwrite populated database"
+            exit 1
+          fi

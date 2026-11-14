@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test"
 import { PrismaClient } from "@prisma/client"
+import { verifyManagerPin } from "../lib/pin-crypto"
 
 const prisma = new PrismaClient()
 test.afterAll(async () => { await prisma.$disconnect() })
@@ -149,5 +150,45 @@ test("FAAB trades cannot spend budget committed to pending waivers", async ({ re
   } finally {
     if (tradeId) await prisma.tradeOffer.delete({ where: { id: tradeId } })
     await prisma.waiverClaim.delete({ where: { id: claim.id } })
+  }
+})
+
+test("commissioner can change a friend's stored PIN without creating files or exposing the secret", async ({ request, playwright, baseURL }) => {
+  const session = await (await request.get("/api/auth/session")).json() as {
+    isCommissioner: boolean; user?: { teamId: string }
+  }
+  expect(session.isCommissioner).toBe(true)
+  const commissionerTeam = await prisma.team.findUniqueOrThrow({
+    where: { id: session.user!.teamId },
+    select: { leagueId: true, managerId: true },
+  })
+  const target = await prisma.user.findFirstOrThrow({
+    where: { isCommissioner: false, managedTeams: { some: { leagueId: commissionerTeam.leagueId } } },
+    select: { id: true, pin: true },
+  })
+  const anonymous = await playwright.request.newContext({ baseURL, storageState: { cookies: [], origins: [] } })
+  const data = { targetManagerId: target.id, commissionerPin: "1234", newPin: "7826" }
+  try {
+    expect((await anonymous.patch("/api/admin/manager-pins", { data })).status()).toBe(403)
+    const invalid = await request.patch("/api/admin/manager-pins", {
+      data: { ...data, commissionerPin: "0000" },
+    })
+    expect(invalid.status()).toBe(401)
+    const wrongLeague = await request.patch("/api/admin/manager-pins", {
+      data: { ...data, targetManagerId: "11111111-1111-4111-8111-111111111199" },
+    })
+    expect(wrongLeague.status()).toBe(404)
+    const result = await request.patch("/api/admin/manager-pins", { data })
+    expect(result.status(), await result.text()).toBe(200)
+    const payload = await result.json()
+    expect(payload).toEqual({ success: true, message: expect.any(String) })
+    expect(JSON.stringify(payload)).not.toContain(data.newPin)
+    const updated = await prisma.user.findUniqueOrThrow({ where: { id: target.id }, select: { pin: true } })
+    expect(updated.pin).not.toBe(target.pin)
+    expect(updated.pin).toMatch(/^scrypt\$/)
+    expect(verifyManagerPin(updated.pin, data.newPin)).toBe(true)
+  } finally {
+    await prisma.user.update({ where: { id: target.id }, data: { pin: target.pin } })
+    await anonymous.dispose()
   }
 })

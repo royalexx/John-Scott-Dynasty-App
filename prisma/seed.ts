@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises"
+import { randomInt } from "node:crypto"
 import { join } from "node:path"
 import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
 import { getMatchupsForWeek, getTeamRoster, roster, standings } from "../lib/hockey-data"
@@ -19,6 +20,7 @@ type RegistryPlayer = {
 }
 
 const prisma = new PrismaClient()
+const productionBootstrap = process.env.JSD_BOOTSTRAP_MODE === "production"
 const positions = new Set<string>(Object.values(Position))
 const slots = new Set<string>(Object.values(SlotType))
 
@@ -71,6 +73,47 @@ function legalSeedSlot(
  * rosters, FAAB, fixtures and traded draft picks.
  */
 async function assertSafeInitialSeed() {
+  if (productionBootstrap) {
+    if (process.env.JSD_BOOTSTRAP_CONFIRM !== "INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE") {
+      throw new Error("Production bootstrap requires the explicit JSD_BOOTSTRAP_CONFIRM acknowledgement.")
+    }
+    if (process.env.SEED_EMPTY_LEAGUE) {
+      throw new Error("Do not combine the production bootstrap with the disposable development seed flag.")
+    }
+    const commissionerPin = process.env.JSD_INITIAL_COMMISSIONER_PIN
+    if (!commissionerPin || !/^\d{4}$/.test(commissionerPin) || commissionerPin === "1234") {
+      throw new Error("Production bootstrap requires a valid four-digit JSD_INITIAL_COMMISSIONER_PIN other than 1234.")
+    }
+    // A freshly migrated database should have no application data anywhere.
+    // Refuse to proceed if this is an existing or partially initialized league.
+    const counts = await Promise.all([
+      prisma.user.count(), prisma.league.count(), prisma.team.count(), prisma.player.count(),
+      prisma.rosterSlot.count(), prisma.weekLineup.count(), prisma.lineupPlan.count(),
+      prisma.lineupPlanEntry.count(), prisma.dailyGameLineup.count(), prisma.dailyGameLineupEntry.count(),
+      prisma.draft.count(), prisma.draftSlot.count(), prisma.draftPick.count(),
+      prisma.tradeOffer.count(), prisma.tradeAsset.count(), prisma.waiverClaim.count(),
+      prisma.activityLog.count(), prisma.directMessage.count(), prisma.leagueMessage.count(),
+      prisma.matchup.count(), prisma.nhlGame.count(), prisma.playerGameStat.count(), prisma.loginThrottle.count(),
+    ])
+    if (counts.some((count) => count !== 0)) {
+      throw new Error("Production bootstrap refused: at least one application table already contains data.")
+    }
+    const applied = await prisma.$queryRaw<Array<{ migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }>>`
+      SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations"
+      ORDER BY started_at
+    `
+    const expected = [
+      "20261113000000_baseline", "20261113010000_login_throttle",
+      "20261113020000_future_lineup_plans", "20261113030000_daily_game_lineups",
+      "20261113040000_remove_legacy_pin_default",
+    ]
+    if (applied.length !== expected.length || applied.some((row, index) =>
+      row.migration_name !== expected[index] || row.finished_at == null || row.rolled_back_at != null
+    )) {
+      throw new Error("Production bootstrap refused: migration history is not the expected five successful migrations.")
+    }
+    return
+  }
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
     throw new Error("Initial demo seeding is forbidden in production.")
   }
@@ -99,6 +142,18 @@ async function assertSafeInitialSeed() {
 
 async function main() {
   await assertSafeInitialSeed()
+  // Production credentials live only in Postgres as salted scrypt hashes.
+  // The commissioner chooses their initial PIN via a secure terminal prompt;
+  // other managers start with unrevealed random PINs until the commissioner
+  // assigns theirs through the authenticated manager-settings UI.
+  const usedPins = new Set<string>()
+  if (productionBootstrap) usedPins.add(process.env.JSD_INITIAL_COMMISSIONER_PIN!)
+  const newRandomPin = () => {
+    let pin: string
+    do { pin = randomInt(1000, 10000).toString() } while (pin === "1234" || usedPins.has(pin))
+    usedPins.add(pin)
+    return pin
+  }
   const source = await readFile(join(process.cwd(), "public", "data", "nhl-players.json"), "utf8")
   const registry = JSON.parse(source) as RegistryPlayer[]
 
@@ -164,7 +219,10 @@ async function main() {
     const isCommish = handle === "commissioner"
     const name = isCommish ? "Commissioner" : handle
     // Fixed initial PIN is only for disposable test fixtures; never store it in plaintext.
-    const fixturePinHash = hashManagerPin("1234")
+    const bootstrapPin = productionBootstrap
+      ? (isCommish ? process.env.JSD_INITIAL_COMMISSIONER_PIN! : newRandomPin())
+      : "1234"
+    const fixturePinHash = hashManagerPin(bootstrapPin)
     const user = await prisma.user.upsert({
       where: { handle },
       update: { name, pin: fixturePinHash, isCommissioner: isCommish },

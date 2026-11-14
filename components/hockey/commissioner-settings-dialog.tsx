@@ -5,6 +5,7 @@ import { Check, Minus, Plus, RotateCcw, Save } from "lucide-react"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { TAXI_MAX_NHL_GAMES } from "@/lib/hockey-data"
 import { cn } from "@/lib/utils"
+import { ManagerPinControls } from "@/components/hockey/manager-pin-controls"
 
 export type LeagueSettings = {
   rosterPositions: Record<string, number>
@@ -266,6 +267,7 @@ export function CommissionerSettingsDialog({ open, onOpenChange }: { open: boole
             <Section title="Season calendar" hint={`Weeks run Monday to Sunday and follow the NHL schedule automatically (week ${settings.currentWeek} now).`}>
               <div className="rounded-xl bg-[#172338] p-3 text-xs text-[#8ba0c7]">The league week advances every Monday. Scores for finished weeks are recalculated from NHL boxscores on every sync.</div>
             </Section>
+            <ManagerPinControls />
             <Section title="Manual jobs">
               <button type="button" onClick={() => void runAction("/api/cron/sync", "NHL stats sync")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold hover:border-amber-400/50">Force NHL stats sync<span className="block text-xs font-normal text-[#5e7090]">Pull the latest scores, boxscores and injuries</span></button>
               <button type="button" onClick={() => void runAction("/api/cron/waivers", "Waiver run")} className="w-full rounded-xl border border-[#263858] bg-[#172338] p-3 text-left text-xs font-bold hover:border-amber-400/50">Run weekly waivers<span className="block text-xs font-normal text-[#5e7090]">Processes pending claims Monday at midnight, after the final game of the week</span></button>
