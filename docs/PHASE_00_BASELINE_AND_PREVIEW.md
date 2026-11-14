@@ -1,5 +1,7 @@
 # Phase 0 — Safe Visual Baseline and Preview Verification
 
+> **Historical Phase 0 record.** In the integrated Phase 8 release candidate, the backend's safer `TEST_DATABASE_URL` isolation rule supersedes the earlier `E2E_ALLOW_MUTATION` flag. Use `playwright.config.ts`, `scripts/verify-e2e-guard.mjs`, and [Phase 8 release instructions](PHASE_08_RELEASE_INTEGRATION.md) as current source of truth. Never use shared or hosted production databases for browser mutation tests.
+
 Date: 2026-11-13  
 Status: implementation pushed for review; **do not merge until checks and preview-data isolation are reviewed**.
 
