@@ -236,33 +236,41 @@ jobs:
             echo "ERROR: bootstrap ran without explicit owner acknowledgement"
             exit 1
           fi
-      - name: Bootstrap test league with unique initial manager PINs
+      - name: Bootstrap test league with hash-only credentials
         env:
           JSD_BOOTSTRAP_CONFIRM: INITIALIZE_NEW_EMPTY_JOHN_SCOTT_LEAGUE
+          JSD_INITIAL_COMMISSIONER_PIN: '6528'
         run: npm run prisma:bootstrap-production
-      - name: Validate first-time credentials and database ownership records
+      - name: Validate first-time PIN hashes and database ownership records
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs"
+          import crypto from "node:crypto"
           import { PrismaClient } from "@prisma/client"
           const db = new PrismaClient()
+          const verifyPin = (stored, input) => {
+            const [scheme, salt, encoded] = stored.split("$")
+            if (scheme !== "scrypt" || !salt || !encoded) return false
+            const digest = Buffer.from(encoded, "base64url")
+            return crypto.timingSafeEqual(crypto.scryptSync(input, salt, digest.length), digest)
+          }
           try {
-            const credentialsPath = ".local-bootstrap-credentials/manager-pins.json"
-            const document = JSON.parse(fs.readFileSync(credentialsPath, "utf8"))
+            if (fs.existsSync(".local-bootstrap-credentials")) throw new Error("Bootstrap created a local credentials folder")
             const users = await db.user.findMany({ select: { handle: true, pin: true, isCommissioner: true } })
             const [leagues, teams, rosters, matchups, picks] = await Promise.all([
               db.league.count(), db.team.count(), db.rosterSlot.count(),
               db.matchup.count(), db.draftPick.count(),
             ])
-            const pins = document.credentials.map((entry) => entry.pin)
             if (leagues !== 1 || teams !== 12 || users.length !== 12) throw new Error("Wrong initial league/manager count")
             if (rosters === 0 || matchups === 0 || picks !== 180) throw new Error("Missing roster/matchup/draft fixtures")
-            if (document.credentials.length !== 12 || new Set(pins).size !== 12) throw new Error("Manager initial PINs are not unique")
-            if (!pins.every((pin) => /^\d{4}$/.test(pin) && pin !== "1234")) throw new Error("Invalid or shared fixture PIN")
             if (!users.every((user) => user.pin.startsWith("scrypt$"))) throw new Error("One or more manager PINs not hashed")
             const commissioner = users.find((user) => user.handle === "commissioner")
-            if (!commissioner?.isCommissioner) throw new Error("Missing commissioner account")
-            console.log("Production bootstrap verified: 1 league, 12 unique hashed manager PINs, rosters, fixtures and picks")
+            if (!commissioner?.isCommissioner || !verifyPin(commissioner.pin, "6528")) throw new Error("Incorrect commissioner bootstrap PIN")
+            if (users.filter((user) => user.isCommissioner).length !== 1) throw new Error("Unexpected additional commissioner")
+            if (users.filter((user) => user.handle !== "commissioner").some((user) => verifyPin(user.pin, "1234"))) {
+              throw new Error("Development fixture PIN was reused for a manager")
+            }
+            console.log("Bootstrap verified: 1 league, 12 salted PIN hashes in PostgreSQL, no local credential files")
           } finally { await db.$disconnect() }
           NODE
       - name: Re-running bootstrap must be refused without altering existing data
