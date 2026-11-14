@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { readFile } from "node:fs/promises"
 import { randomInt } from "node:crypto"
 import { join } from "node:path"
 import { Prisma, PrismaClient, PlayerStatus, Position, SlotType } from "@prisma/client"
@@ -21,7 +21,6 @@ type RegistryPlayer = {
 
 const prisma = new PrismaClient()
 const productionBootstrap = process.env.JSD_BOOTSTRAP_MODE === "production"
-const MANAGER_CREDENTIALS_PATH = join(process.cwd(), ".local-bootstrap-credentials", "manager-pins.json")
 const positions = new Set<string>(Object.values(Position))
 const slots = new Set<string>(Object.values(SlotType))
 
@@ -81,6 +80,10 @@ async function assertSafeInitialSeed() {
     if (process.env.SEED_EMPTY_LEAGUE) {
       throw new Error("Do not combine the production bootstrap with the disposable development seed flag.")
     }
+    const commissionerPin = process.env.JSD_INITIAL_COMMISSIONER_PIN
+    if (!commissionerPin || !/^\d{4}$/.test(commissionerPin) || commissionerPin === "1234") {
+      throw new Error("Production bootstrap requires a valid four-digit JSD_INITIAL_COMMISSIONER_PIN other than 1234.")
+    }
     // A freshly migrated database should have no application data anywhere.
     // Refuse to proceed if this is an existing or partially initialized league.
     const counts = await Promise.all([
@@ -139,29 +142,17 @@ async function assertSafeInitialSeed() {
 
 async function main() {
   await assertSafeInitialSeed()
-  const managerPins = new Map<string, string>()
-  if (productionBootstrap) {
-    // Save one-time credentials locally *before* touching the database. Never
-    // print PINs, commit the file, or use the shared development PIN in Production.
-    const used = new Set<string>()
-    const credentials = standings.map((standing) => {
-      const handle = standing.owner === "You" || standing.team === "Montreal Monarchs"
-        ? "commissioner" : standing.owner.replace(/^@/, "")
-      let pin: string
-      do { pin = randomInt(1000, 10000).toString() } while (used.has(pin) || pin === "1234")
-      used.add(pin)
-      managerPins.set(handle, pin)
-      return { team: standing.team, handle, pin }
-    })
-    await mkdir(join(process.cwd(), ".local-bootstrap-credentials"), { recursive: true, mode: 0o700 })
-    await writeFile(MANAGER_CREDENTIALS_PATH,
-      JSON.stringify({
-        warning: "CONFIDENTIAL: one-time initial manager PINs; store securely, share privately, delete when distributed.",
-        createdAt: new Date().toISOString(), credentials,
-      }, null, 2),
-      { flag: "wx", mode: 0o600 })
-    console.info("[bootstrap] Unique manager PINs saved to ignored local file: .local-bootstrap-credentials/manager-pins.json")
-    console.info("[bootstrap] The file must never be committed, uploaded, or shared in public logs.")
+  // Production credentials live only in Postgres as salted scrypt hashes.
+  // The commissioner chooses their initial PIN via a secure terminal prompt;
+  // other managers start with unrevealed random PINs until the commissioner
+  // assigns theirs through the authenticated manager-settings UI.
+  const usedPins = new Set<string>()
+  if (productionBootstrap) usedPins.add(process.env.JSD_INITIAL_COMMISSIONER_PIN!)
+  const newRandomPin = () => {
+    let pin: string
+    do { pin = randomInt(1000, 10000).toString() } while (pin === "1234" || usedPins.has(pin))
+    usedPins.add(pin)
+    return pin
   }
   const source = await readFile(join(process.cwd(), "public", "data", "nhl-players.json"), "utf8")
   const registry = JSON.parse(source) as RegistryPlayer[]
@@ -228,7 +219,10 @@ async function main() {
     const isCommish = handle === "commissioner"
     const name = isCommish ? "Commissioner" : handle
     // Fixed initial PIN is only for disposable test fixtures; never store it in plaintext.
-    const fixturePinHash = hashManagerPin(productionBootstrap ? managerPins.get(handle)! : "1234")
+    const bootstrapPin = productionBootstrap
+      ? (isCommish ? process.env.JSD_INITIAL_COMMISSIONER_PIN! : newRandomPin())
+      : "1234"
+    const fixturePinHash = hashManagerPin(bootstrapPin)
     const user = await prisma.user.upsert({
       where: { handle },
       update: { name, pin: fixturePinHash, isCommissioner: isCommish },
