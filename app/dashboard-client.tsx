@@ -904,18 +904,33 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   Historical lineup unavailable: this week's roster was not recorded. Current players are intentionally not shown as past starters.
                 </div>
               )}
-              <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
+              {weekView?.source !== "unavailable" && (
+                <LineupAlerts
+                  roster={rosterForDisplay}
+                  capacities={slotCapacities}
+                  irSlots={initialData.league?.irSlots ?? 1}
+                  lock={week === (weekView?.currentWeek ?? getCurrentFantasyWeek()) ? initialData.lineupLock : undefined}
+                  onReview={
+                    week >= (weekView?.currentWeek ?? getCurrentFantasyWeek()) &&
+                    !(weekView?.locked ?? weekView?.frozen) &&
+                    !(week === (weekView?.currentWeek ?? getCurrentFantasyWeek()) &&
+                      initialData.lineupLock?.mode === "WEEKLY" && initialData.lineupLock.locked)
+                      ? onEditRosterSlot
+                      : undefined
+                  }
+                />
+              )}
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
                 <span className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">Starters ({startersCount})</span>
-                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
-                  <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="rounded p-1 hover:bg-[#172338]">
-                    <ChevronLeft className="size-3.5" />
+                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-0 text-xs font-bold text-brand">
+                  <button type="button" onClick={() => shiftWeek(-1)} disabled={week <= 1} aria-label="Previous team week" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-brand hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30">
+                    <ChevronLeft className="size-4" />
                   </button>
-                  <span>Week {week}</span>
-                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-xs font-black uppercase text-[#5e7090]">Locked</span>}
-                  <button type="button" onClick={() => shiftWeek(1)} aria-label="Next team week" className="rounded p-1 hover:bg-[#172338]">
-                    <ChevronRight className="size-3.5" />
+                  <span role="status" aria-live="polite" className="min-w-12 text-center tabular-nums">Week {week}</span>
+                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-[11px] font-bold uppercase text-text-secondary">Locked</span>}
+                  <button type="button" onClick={() => shiftWeek(1)} disabled={week >= MAX_FANTASY_WEEK} aria-label="Next team week" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-brand hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30">
+                    <ChevronRight className="size-4" />
                   </button>
                 </SwipeSurface>
               </div>
