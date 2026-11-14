@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils"
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { DraftCard } from "@/components/hockey/draft-room"
 import { buildPlayoffBracket, type BracketGame } from "@/lib/playoff-bracket"
-import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import { getCurrentFantasyWeek, MAX_FANTASY_WEEK } from "@/lib/season-calendar"
 
 type ActivityFilter = "ALL" | "TRADE" | "ADD" | "DROP"
 type DisplayMatchup = MatchupSummary & Partial<Pick<LiveMatchupSummary, "projectedHome" | "projectedAway">>
@@ -110,7 +110,12 @@ export function LeagueFeed({
   const [showFilters, setShowFilters] = useState(false)
   const [playoffMode, setPlayoffMode] = useState(false)
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("ALL")
-  const filteredActivities = activities.filter((item) => activityFilter === "ALL" || item.action === activityFilter)
+  // null means all league managers. An empty selection intentionally shows no transactions.
+  const [selectedManagers, setSelectedManagers] = useState<string[] | null>(null)
+  const filteredActivities = activities.filter((item) =>
+    (activityFilter === "ALL" || item.action === activityFilter) &&
+    (selectedManagers === null || selectedManagers.includes(item.owner)),
+  )
   const weekSchedule = getWeekMatchups(week)
   const weeklyRecords = getWeeklyRecords(week, matchupResults)
   const displayMatchups = weekSchedule.map((matchup) => {
@@ -189,6 +194,8 @@ export function LeagueFeed({
         filter={activityFilter}
         onChange={setActivityFilter}
         managers={standings}
+        selectedManagers={selectedManagers}
+        onManagersChange={setSelectedManagers}
         onClose={() => setShowFilters(false)}
       />
     </section>
@@ -224,8 +231,30 @@ function WeeklyPodium({ week, matchups }: { week: number; matchups: DisplayMatch
 }
 
 function MatchupsSection({ week, matchups, teamName, teamLogo, onSelect, onWeekChange }: { week: number; matchups: DisplayMatchup[]; teamName: string; teamLogo: string; onSelect: (matchup: MatchupSummary) => void; onWeekChange?: (week: number) => void }) {
+  const canGoPrevious = Boolean(onWeekChange) && week > 1
+  const canGoNext = Boolean(onWeekChange) && week < MAX_FANTASY_WEEK
   return <section data-testid="league-matchups">
-    <div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-lg font-bold">Matchups</h2><SwipeSurface zone="week" onSwipeLeft={() => onWeekChange?.(week + 1)} onSwipeRight={() => onWeekChange?.(Math.max(1, week - 1))} className="flex items-center gap-1 text-xs font-bold text-brand"><button type="button" onClick={() => onWeekChange?.(Math.max(1, week - 1))} aria-label="Previous league week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><ChevronLeft className="size-4" /></button><span>Week {week}</span><button type="button" onClick={() => onWeekChange?.(week + 1)} aria-label="Next league week" className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><ChevronRight className="size-4" /></button></SwipeSurface></div>
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <h2 className="text-lg font-bold">Matchups</h2>
+      <SwipeSurface
+        zone="week"
+        onSwipeLeft={() => { if (canGoNext) onWeekChange?.(week + 1) }}
+        onSwipeRight={() => { if (canGoPrevious) onWeekChange?.(week - 1) }}
+        className="flex items-center gap-1 text-xs font-bold text-brand"
+      >
+        <button type="button" disabled={!canGoPrevious} onClick={() => onWeekChange?.(week - 1)}
+          aria-label="Previous league week"
+          className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40">
+          <ChevronLeft className="size-4" />
+        </button>
+        <span role="status" aria-live="polite" className="min-w-12 text-center tabular-nums">Week {week}</span>
+        <button type="button" disabled={!canGoNext} onClick={() => onWeekChange?.(week + 1)}
+          aria-label="Next league week"
+          className="ui-touch-target flex items-center justify-center rounded-lg hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-40">
+          <ChevronRight className="size-4" />
+        </button>
+      </SwipeSurface>
+    </div>
     <div className="space-y-2">{matchups.map((matchup) => {
       const homeResult = matchup.status === "Scheduled" ? undefined : matchup.homeScore === matchup.awayScore ? "TIE" : matchup.homeScore > matchup.awayScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
       const awayResult = matchup.status === "Scheduled" ? undefined : matchup.awayScore === matchup.homeScore ? "TIE" : matchup.awayScore > matchup.homeScore ? matchup.status === "Final" ? "WIN" : "LEAD" : matchup.status === "Final" ? "LOSS" : "TRAIL"
@@ -299,7 +328,7 @@ function BracketSideRow({ side, status }: { side: BracketGame["away"]; status: B
 }
 
 function ActivitySection({ activities, roster, filter, onFilter, onViewAll, onSelectPlayer }: { activities: ActivityItem[]; roster: Player[]; filter: ActivityFilter; onFilter: () => void; onViewAll: () => void; onSelectPlayer?: (player: Player) => void }) {
-  return <section><div className="mb-2 flex items-center justify-between"><h2 className="text-lg font-black">Activity</h2><button type="button" onClick={onViewAll} className="text-xs font-bold text-[#19ffff]">View all</button></div><div className="space-y-2">{activities.map((item) => <ActivityCard key={item.id} item={item} roster={roster} onSelectPlayer={onSelectPlayer} />)}</div><button type="button" onClick={onFilter} className="mt-2 flex items-center gap-1 text-xs font-bold text-[#8ba0c7]"><Filter className="size-3" /> {filter === "ALL" ? "Filter activity" : filter}</button></section>
+  return <section data-testid="league-activity"><div className="mb-2 flex items-center justify-between"><h2 className="text-lg font-black">Activity</h2><button type="button" onClick={onViewAll} className="text-xs font-bold text-[#19ffff]">View all</button></div><div className="space-y-2">{activities.map((item) => <ActivityCard key={item.id} item={item} roster={roster} onSelectPlayer={onSelectPlayer} />)}{activities.length === 0 && <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-text-secondary">No league activity matches your filters.</p>}</div><button type="button" onClick={onFilter} aria-label="Filter activity" className="ui-touch-target mt-2 flex items-center gap-1 rounded-lg text-xs font-bold text-text-secondary focus-visible:outline-2 focus-visible:outline-ring"><Filter className="size-3" /> {filter === "ALL" ? "Filter activity" : filter}</button></section>
 }
 
 function ActivityCard({ item, roster, onSelectPlayer }: { item: ActivityItem; roster: Player[]; onSelectPlayer?: (player: Player) => void }) {
@@ -325,7 +354,64 @@ function TransactionsSheet({ open, activities, filter, onFilter, onClose, roster
   return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto h-[88vh] max-h-[88vh] w-full max-w-[430px] gap-0 overflow-hidden rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="flex shrink-0 items-center justify-between border-b border-[#1a263d] p-4"><h2 className="text-lg font-black">League transactions</h2><div className="flex items-center gap-3"><button type="button" onClick={onFilter} className="flex items-center gap-1 text-xs font-black text-[#19ffff]"><SlidersHorizontal className="size-3" /> FILTER</button><button type="button" onClick={onClose}><X className="size-5" /></button></div></div><div className="min-h-0 flex-1 overflow-y-auto space-y-2 p-3">{activities.map((item) => <ActivityCard key={item.id} item={item} roster={roster} onSelectPlayer={onSelectPlayer} />)}{activities.length === 0 && <p className="p-5 text-center text-sm text-[#6d86ab]">No transactions match this filter.</p>}</div><div className="shrink-0 border-t border-[#1a263d] p-3 text-xs text-[#6d86ab]">{filter === "ALL" ? "All transaction types" : filter}</div></SheetContent></Sheet>
 }
 
-function FilterSheet({ open, filter, onChange, managers, onClose }: { open: boolean; filter: ActivityFilter; onChange: (filter: ActivityFilter) => void; managers: StandingRow[]; onClose: () => void }) {
+function FilterSheet({ open, filter, onChange, managers, selectedManagers, onManagersChange, onClose }: {
+  open: boolean
+  filter: ActivityFilter
+  onChange: (filter: ActivityFilter) => void
+  managers: StandingRow[]
+  selectedManagers: string[] | null
+  onManagersChange: (managers: string[] | null) => void
+  onClose: () => void
+}) {
   if (!open) return null
-  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}><SheetContent side="bottom" className="mx-auto max-h-[88vh] w-full max-w-[430px] gap-0 rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white"><div className="flex items-center justify-between border-b border-[#1a263d] p-4"><h2 className="text-lg font-black">Filter transactions</h2><button type="button" onClick={onClose}><X className="size-5" /></button></div><div className="space-y-4 p-4"><div><p className="mb-2 text-xs font-black uppercase tracking-widest text-[#5e7090]">Transaction type</p><div className="grid grid-cols-2 gap-2">{(["ALL", "TRADE", "ADD", "DROP"] as ActivityFilter[]).map((option) => <button key={option} type="button" onClick={() => { onChange(option); onClose() }} className={cn("rounded-lg border px-3 py-2 text-xs font-bold", filter === option ? "border-[#19ffff] bg-[#0c2231] text-[#19ffff]" : "border-[#16233b] bg-[#0d1424] text-[#8ba0c7]")}>{option === "ALL" ? "All Types" : option === "ADD" ? "Free Agents" : option === "DROP" ? "Waivers" : "Trades"}</button>)}</div></div><div><p className="mb-2 text-xs font-black uppercase tracking-widest text-[#5e7090]">Managers</p><div className="grid grid-cols-2 gap-2">{managers.map((manager) => <label key={`${manager.team}-${manager.owner}`} className="flex items-center gap-2 rounded-lg border border-[#16233b] bg-[#0d1424] p-2 text-xs"><input type="checkbox" defaultChecked className="accent-cyan-400" />{manager.owner}</label>)}</div></div></div></SheetContent></Sheet>
+  const owners = Array.from(new Set(managers.map((manager) => manager.owner)))
+  const selectedOwners = selectedManagers ?? owners
+  const toggleManager = (owner: string) => {
+    const updated = selectedOwners.includes(owner)
+      ? selectedOwners.filter((value) => value !== owner)
+      : [...selectedOwners, owner]
+    onManagersChange(updated.length === owners.length ? null : updated)
+  }
+  const types: { value: ActivityFilter; label: string }[] = [
+    { value: "ALL", label: "All types" },
+    { value: "TRADE", label: "Trades" },
+    { value: "ADD", label: "Adds" },
+    { value: "DROP", label: "Drops" },
+  ]
+  return <Sheet open={open} onOpenChange={(value) => !value && onClose()}>
+    <SheetContent side="bottom" className="mx-auto max-h-[88vh] w-full max-w-[430px] gap-0 overflow-y-auto rounded-t-3xl border-[#1a263d] bg-[#070a12] p-0 text-white">
+      <div className="flex items-center justify-between border-b border-[#1a263d] px-4 py-2">
+        <h2 className="text-lg font-black">Filter transactions</h2>
+        <button type="button" onClick={onClose} aria-label="Close transaction filters" className="ui-touch-target flex items-center justify-center rounded-lg focus-visible:outline-2 focus-visible:outline-ring"><X className="size-5" /></button>
+      </div>
+      <div className="space-y-4 p-4">
+        <div>
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-text-secondary">Transaction type</p>
+          <div className="grid grid-cols-2 gap-2">
+            {types.map((option) => <button key={option.value} type="button" aria-pressed={filter === option.value} onClick={() => onChange(option.value)}
+              className={cn("min-h-11 rounded-lg border px-3 py-2 text-xs font-bold focus-visible:outline-2 focus-visible:outline-ring", filter === option.value ? "border-brand bg-brand/10 text-brand" : "border-border bg-surface text-text-secondary")}>
+              {option.label}
+            </button>)}
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-black uppercase tracking-widest text-text-secondary">Managers ({selectedOwners.length}/{owners.length})</p>
+            <button type="button" aria-label="Select all managers" onClick={() => onManagersChange(null)} className="ui-touch-target rounded-lg px-2 text-xs font-bold text-brand focus-visible:outline-2 focus-visible:outline-ring">Select all</button>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {owners.map((owner) => <label key={owner} className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg border border-border bg-surface p-2 text-xs">
+              <input type="checkbox" aria-label={"Include " + owner + " activity"} checked={selectedOwners.includes(owner)}
+                onChange={() => toggleManager(owner)} className="size-4 shrink-0 accent-cyan-400" />
+              <span className="min-w-0 truncate">{owner}</span>
+            </label>)}
+          </div>
+          {owners.length === 0 && <p className="text-sm text-text-secondary">No league managers available.</p>}
+        </div>
+        <button type="button" onClick={onClose} className="min-h-11 w-full rounded-full bg-brand px-4 text-sm font-black text-background focus-visible:outline-2 focus-visible:outline-ring">
+          Show activity
+        </button>
+      </div>
+    </SheetContent>
+  </Sheet>
 }
