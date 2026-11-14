@@ -148,7 +148,7 @@ async function main() {
       const handle = standing.owner === "You" || standing.team === "Montreal Monarchs"
         ? "commissioner" : standing.owner.replace(/^@/, "")
       let pin: string
-      do { pin = randomInt(0, 10000).toString().padStart(4, "0") } while (used.has(pin))
+      do { pin = randomInt(1000, 10000).toString() } while (used.has(pin) || pin === "1234")
       used.add(pin)
       managerPins.set(handle, pin)
       return { team: standing.team, handle, pin }
