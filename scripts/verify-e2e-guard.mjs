@@ -1,20 +1,24 @@
 import { spawnSync } from "node:child_process"
 
-// Exercise the real Playwright config with --list (no test body or HTTP call runs).
-// It must reject unsafe targets before a browser or web server can start.
+// Validate the consolidated backend's fail-closed TEST_DATABASE_URL contract.
+// --list loads the real Playwright config but does not start the server or issue
+// database writes. Never use a real or remotely hosted connection string here.
 const command = ["playwright", "test", "--list", "--config", "playwright.config.ts"]
 const local = "postgresql://fixture:fixture@127.0.0.1:5432/johnscott_e2e"
 const cases = [
-  { label: "missing explicit opt-in", optIn: undefined, url: local, allow: false },
-  { label: "remote database", optIn: "1", url: "postgresql://fixture:fixture@database.example.invalid/johnscott_e2e", allow: false },
-  { label: "non-test local database", optIn: "1", url: "postgresql://fixture:fixture@127.0.0.1:5432/johnscott", allow: false },
-  { label: "explicit local test database", optIn: "1", url: local, allow: true },
+  { label: "missing dedicated test database", testUrl: undefined, allow: false },
+  { label: "remote database", testUrl: "postgresql://fixture:fixture@database.example.invalid/johnscott_e2e", allow: false },
+  { label: "non-test local database", testUrl: "postgresql://fixture:fixture@127.0.0.1:5432/johnscott", allow: false },
+  { label: "invalid protocol", testUrl: "http://127.0.0.1/johnscott_e2e", allow: false },
+  { label: "explicit local E2E database", testUrl: local, allow: true },
 ]
 
 for (const entry of cases) {
-  const env = { ...process.env, DATABASE_URL: entry.url }
-  if (entry.optIn === undefined) delete env.E2E_ALLOW_MUTATION
-  else env.E2E_ALLOW_MUTATION = entry.optIn
+  const env = { ...process.env }
+  if (entry.testUrl === undefined) delete env.TEST_DATABASE_URL
+  else env.TEST_DATABASE_URL = entry.testUrl
+  // Assert that a separate existing DATABASE_URL is never treated as E2E opt-in.
+  env.DATABASE_URL = "postgresql://do-not-use:do-not-use@remote.example.invalid/production"
   const run = spawnSync("npx", command, {
     env,
     encoding: "utf8",
