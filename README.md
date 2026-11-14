@@ -69,6 +69,14 @@ structurally reconciled before resolving the initial migration as already
 applied. The legacy `User.pin` SQL default is removed by a dedicated
 incremental migration without rewriting existing credentials.
 
+## Phase 8 — Integrated release candidate (draft, not production)
+
+Draft PR **#46** combines the reviewed backend-audit candidate **#43** with UI Phases 0–3 and 5–7, without the rejected Phase 4 redesign. Read [Phase 8's release integration and safety checklist](docs/PHASE_08_RELEASE_INTEGRATION.md) and [DESIGN.md](DESIGN.md) before deploying. Real NHL player portraits and the compact Match/Team layout remain required.
+
+This integrated release has its own isolated CI gate: fresh PostgreSQL E2E, a populated legacy-schema migration rehearsal, no-database production behavior, preview-only interface interactions, and Playwright visual screenshots. Use `node scripts/check-release-candidate.mjs` in a full Git checkout for ancestry and source integrity.
+
+**The Vercel project did not have a configured `DATABASE_URL` when inspected November 14, 2026.** Preview screenshots are not evidence of a connected production league. Do not merge, migrate or deploy this candidate until the real database target, migration history and Preview/Production isolation are verified and the owner explicitly approves release.
+
 ## Scripts
 
 | Command | What it does |
