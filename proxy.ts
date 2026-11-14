@@ -5,9 +5,9 @@ import { getCurrentFantasyWeek } from "@/lib/season-calendar"
 /**
  * Hosted PR previews are read-only by default.
  *
- * Until a distinct preview database is configured, API GET requests receive
- * explicitly non-persistent fixture content rather than attempting Prisma
- * queries against an undefined DATABASE_URL.
+ * All preview API reads receive explicitly non-persistent fixtures, even when
+ * DATABASE_URL is populated by a Vercel storage integration. This prevents a
+ * review deployment from reading or writing the production league database.
  *
  * The runtime's VERCEL_ENV discriminator is provided by Vercel. Production
  * is unaffected: this proxy returns NextResponse.next() immediately.
@@ -40,10 +40,8 @@ export function proxy(request: NextRequest) {
     )
   }
 
-  // Once a dedicated preview database exists, safe GET endpoints may use it.
-  // The write barrier remains active until reviewed separately.
-  if (process.env.DATABASE_URL) return NextResponse.next()
-
+  // Preview stays database-independent even when a PostgreSQL URL is configured.
+  // A future real staging league needs a separate explicit environment and review.
   // Portrait lookup redirects do not require Prisma; use the actual NHL images.
   if (path === "/api/headshot") return NextResponse.next()
 

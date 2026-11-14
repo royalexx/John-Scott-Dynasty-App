@@ -1,6 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
 
-/** No .env, no database, no accounts: emulates a hosted Vercel preview. */
+/** Emulate a hosted Preview with an unreachable but configured PostgreSQL URL.
+ * No demo page or fixture API endpoint may attempt to query this database.
+ */
 export default defineConfig({
   testDir: "./visual",
   testMatch: /(?:preview-readonly|phase-01|phase-02|phase-03|phase-05|phase-06|phase-07|phase-09|phase-10)\.spec\.ts/,
@@ -18,7 +20,7 @@ export default defineConfig({
     url: "http://localhost:3200",
     env: {
       VERCEL_ENV: "preview",
-      DATABASE_URL: "",
+      DATABASE_URL: "postgresql://preview-blocked:preview-blocked@127.0.0.1:1/never_connect",
       UI_VISUAL_FIXTURES: "0",
       NEXT_TELEMETRY_DISABLED: "1",
     },

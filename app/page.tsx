@@ -27,9 +27,10 @@ export default async function Page() {
     return <DashboardClient initialData={initialDashboardData} />
   }
 
-  // A hosted PR preview without database credentials is a visual demo only.
-  // Unlike production's historical catch/fallback, it is explicitly labeled.
-  if (process.env.VERCEL_ENV === "preview" && !process.env.DATABASE_URL) {
+  // Every hosted PR preview is an explicitly labeled, read-only visual demo.
+  // Vercel may inject DATABASE_URL into Preview and Production simultaneously.
+  // Do not query either database during UI review, regardless of that variable.
+  if (process.env.VERCEL_ENV === "preview") {
     return <DashboardClient initialData={{ ...initialDashboardData, isPreviewFixture: true }} />
   }
 

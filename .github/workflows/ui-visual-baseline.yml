@@ -2,7 +2,7 @@ name: UI visual baseline (read-only)
 
 on:
   push:
-    branches: ["ui/phase-*"]
+    branches: ["ui/phase-*", "fix/preview-*"]
   pull_request:
     branches: [main]
     paths:
