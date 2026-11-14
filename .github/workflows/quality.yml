@@ -23,12 +23,17 @@ jobs:
       CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Release ancestry gate must see both reviewed parents.
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Verify Phase 8 release integration ancestry and source safeguards
+        run: node scripts/check-release-candidate.mjs
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Build (no external NHL registry refresh)
