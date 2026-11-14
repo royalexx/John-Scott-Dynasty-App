@@ -10,7 +10,7 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: width === 320 ? 700 : 844 })
     const writes: string[] = []
     page.on("request", (request) => {
-      if (request.method() !== "GET" && /\\/api\\//.test(request.url())) writes.push(request.url())
+      if (request.method() !== "GET" && /\/api\//.test(request.url())) writes.push(request.url())
     })
     await page.goto("/")
     await leagueTab(page).click()
@@ -47,7 +47,7 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: width === 320 ? 700 : 844 })
     const writes: string[] = []
     page.on("request", (request) => {
-      if (request.method() !== "GET" && /\\/api\\//.test(request.url())) writes.push(request.url())
+      if (request.method() !== "GET" && /\/api\//.test(request.url())) writes.push(request.url())
     })
     await page.goto("/")
     await leagueTab(page).click()
