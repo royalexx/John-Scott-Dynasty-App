@@ -118,7 +118,7 @@ export function LineupSlotDialog({
             <p className="text-xs font-bold uppercase tracking-wider text-[#5e7090]">1/1 Choose player to swap</p>
             <h2 className="text-lg font-black text-white">{player ? "Swap Player" : `Fill ${emptySlot} Slot`}</h2>
           </div>
-          <button type="button" onClick={() => onOpenChange(false)} aria-label="Close swap player drawer" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><X className="size-5" /></button>
+          <button type="button" onClick={() => onOpenChange(false)} aria-label="Close swap player drawer" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><X className="size-5" /></button>
         </div>
 
         <div className="mx-3 flex items-center gap-3 rounded-lg border border-[#1e2f4f] bg-[#141e33] p-3">
@@ -132,9 +132,9 @@ export function LineupSlotDialog({
         </div>
 
         <div className="max-h-[45vh] overflow-y-auto px-3 pb-5">
-          <p className="px-1 py-2 text-xs font-black uppercase tracking-wider text-[#5e7090]">Eligible swap targets</p>
+          <p className="px-1 py-2 text-xs font-bold uppercase tracking-wider text-text-secondary">Eligible swap targets</p>
           {targets.map((option, index) => (
-            <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" onClick={() => {
+            <button key={`${option.slot}-${option.target?.id ?? index}`} type="button" aria-label={player ? option.target ? `Swap ${player.name} with ${option.target.name}` : `Move ${player.name} to ${option.slot}` : option.target ? `Fill ${emptySlot} with ${option.target.name}` : undefined} onClick={() => {
               // This dialog only selects the move. The parent owns the single API mutation,
               // including the selected week, target player and error handling.
               if (player) {
@@ -145,7 +145,7 @@ export function LineupSlotDialog({
                 return
               }
               onOpenChange(false)
-            }} className="mb-1 flex w-full items-center gap-3 rounded-lg border border-[#172338] bg-[#111c30] p-3 text-left transition-colors hover:bg-[#172338]">
+            }} className="mb-1 flex min-h-12 w-full items-center gap-3 rounded-lg border border-border bg-surface p-3 text-left transition-colors hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring">
               <span className={cn("flex size-7 items-center justify-center rounded-md text-xs font-black", slotColors[option.slot as keyof typeof slotColors])}>{option.slot}</span>
               {option.target ? <><PlayerAvatar player={option.target} /><span className="min-w-0 flex-1"><b className="block truncate text-sm text-white">{option.target.name}</b><small className="text-xs text-[#5e7090]">{option.target.team} · {option.target.opponent}{option.detail ? ` · ${option.detail}` : ""}{option.target.status && <span className="ml-1 font-black text-rose-300">{option.target.status}</span>}</small></span><span className="text-xs font-black text-white">proj {(option.target.schedule?.weekProjectedFantasyPoints ?? option.target.projPts).toFixed(1)}</span></> : <span className="flex-1 text-sm font-bold text-white">{option.label}</span>}
             </button>

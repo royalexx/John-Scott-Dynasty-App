@@ -9,7 +9,9 @@ import { HockeySurface, HockeySectionHeading, HockeyStatus, HockeyStat, Position
 import { PlayerPortrait } from "@/components/hockey/player-portrait"
 import { TradeBuilderDialog, type TradeTeam } from "@/components/hockey/trade-builder-dialog"
 import { PlayerGridSettingsDialog, type PlayerGridSettings } from "@/components/hockey/player-grid-dialog"
-import { roster } from "@/lib/hockey-data"
+import { LineupAlerts } from "@/components/hockey/lineup-alerts"
+import { LineupSlotDialog } from "@/components/hockey/lineup-slot-dialog"
+import { roster, DEFAULT_SLOT_CAPACITIES, type Player, type StarterSlot } from "@/lib/hockey-data"
 
 // Component-only sample managers. The entire gallery is inaccessible in Production.
 const demoSender: TradeTeam = {
@@ -22,6 +24,9 @@ const demoPartner: TradeTeam = {
   faabAvailable: 60,
   draftPicks: [{ id: "demo-away-pick", label: "2027 2nd Round" }],
 }
+
+// One starter is deliberately missing so the review action is testable without a database.
+const previewLineup = roster.filter((player) => player.id !== "p3")
 
 const palette = [
   { label: "Canvas", token: "--ds-canvas" },
@@ -45,6 +50,7 @@ export function DesignSystemGallery() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [tradeOpen, setTradeOpen] = useState(false)
   const [gridOpen, setGridOpen] = useState(false)
+  const [lineupReview, setLineupReview] = useState<{ player: Player | null; slot: Player["slot"] } | null>(null)
   const [gridSettings, setGridSettings] = useState<PlayerGridSettings>({ viewType: "Projections", period: "This Week", year: "2026" })
   const [message, setMessage] = useState("Select a button to check its interaction state.")
   return (
@@ -149,6 +155,17 @@ export function DesignSystemGallery() {
           <Button variant="outline" onClick={() => setGridOpen(true)}>Review player grid settings</Button>
         </HockeySurface>
 
+        <HockeySurface className="space-y-3" data-testid="lineup-health-preview">
+          <HockeySectionHeading title="Lineup review" eyebrow="Example: one starter missing" />
+          <p className="text-xs text-text-secondary">Try the suggested action. Player changes are simulated and cannot save.</p>
+          <LineupAlerts
+            roster={previewLineup}
+            capacities={DEFAULT_SLOT_CAPACITIES}
+            irSlots={1}
+            onReview={(player, slot) => setLineupReview({ player, slot })}
+          />
+        </HockeySurface>
+
         <HockeySurface className="space-y-3">
           <HockeySectionHeading title="Type scale" eyebrow="Labels to screen titles" />
           <p className="text-2xl font-bold">Screen heading · 24px</p>
@@ -166,6 +183,15 @@ export function DesignSystemGallery() {
         partners={[demoPartner]}
         onPlayerClick={(player) => setMessage(`Preview only · ${player.name} selected`)}
         onSendTrade={() => { setTradeOpen(false); setMessage("Preview only · No trade saved") }}
+      />
+      <LineupSlotDialog
+        player={lineupReview?.player ?? null}
+        emptySlot={!lineupReview?.player ? (lineupReview?.slot as StarterSlot | undefined) : undefined}
+        roster={previewLineup}
+        capacities={DEFAULT_SLOT_CAPACITIES}
+        open={lineupReview !== null}
+        onOpenChange={(open) => { if (!open) setLineupReview(null) }}
+        onMove={() => { setMessage("Preview only · Lineup unchanged"); setLineupReview(null) }}
       />
       <PlayerGridSettingsDialog
         open={gridOpen}

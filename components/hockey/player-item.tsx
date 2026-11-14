@@ -31,7 +31,7 @@ export const PlayerItem = React.memo(function PlayerItem({
 }) {
   if (!player) {
     return (
-      <button type="button" onClick={() => onEdit(null, fallbackSlot)} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-border px-3.5 py-2 text-left transition-colors hover:bg-surface-hover active:scale-[0.99]">
+      <button type="button" onClick={() => onEdit(null, fallbackSlot)} aria-label={`Fill empty ${fallbackSlot} starter slot`} className="flex min-h-11 w-full cursor-pointer items-center justify-between border-b border-border px-3.5 py-2 text-left transition-colors hover:bg-surface-hover active:scale-[0.99]">
         <div className="flex items-center gap-2.5">
           <span className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase", slotBadgeColors[fallbackSlot])}>
             {fallbackSlot}
@@ -49,12 +49,13 @@ export const PlayerItem = React.memo(function PlayerItem({
         <button
           type="button"
           onClick={() => onEdit(player, fallbackSlot)}
-          className={cn("flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}
+          aria-label={`Edit ${player.name} in ${player.slot} slot`}
+          className={cn("flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-colors hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring", slotBadgeColors[player.slot] || slotBadgeColors[player.position])}
         >
           {player.slot}
         </button>
 
-        <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left">
+        <button type="button" onClick={() => onSelect(player)} aria-label={`View ${player.name} details`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-ring">
           <PlayerPortrait player={player} name={player.name} className="size-8 border border-border" />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
@@ -76,7 +77,7 @@ export const PlayerItem = React.memo(function PlayerItem({
         </button>
       </div>
 
-      <button type="button" onClick={() => onSelect(player)} className="flex min-h-11 min-w-11 shrink-0 cursor-pointer flex-col items-end justify-center pl-2 text-right">
+      <button type="button" onClick={() => onSelect(player)} aria-label={`View ${player.name} stats`} className="flex min-h-11 min-w-11 shrink-0 cursor-pointer flex-col items-end justify-center pl-2 text-right focus-visible:outline-2 focus-visible:outline-ring">
         <p className="text-sm font-black tabular-nums leading-none text-white">{getWeekActualPoints(player).toFixed(1)}</p>
         <p className="mt-0.5 text-[11px] font-semibold tabular-nums leading-none text-text-secondary">{player.schedule ? player.schedule.weekProjectedFantasyPoints.toFixed(1) : "—"}</p>
       </button>
