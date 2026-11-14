@@ -258,7 +258,7 @@ jobs:
             if (leagues !== 1 || teams !== 12 || users.length !== 12) throw new Error("Wrong initial league/manager count")
             if (rosters === 0 || matchups === 0 || picks !== 180) throw new Error("Missing roster/matchup/draft fixtures")
             if (document.credentials.length !== 12 || new Set(pins).size !== 12) throw new Error("Manager initial PINs are not unique")
-            if (!pins.every((pin) => /^\\d{4}$/.test(pin) && pin !== "1234")) throw new Error("Invalid or shared fixture PIN")
+            if (!pins.every((pin) => /^\d{4}$/.test(pin) && pin !== "1234")) throw new Error("Invalid or shared fixture PIN")
             if (!users.every((user) => user.pin.startsWith("scrypt$"))) throw new Error("One or more manager PINs not hashed")
             const commissioner = users.find((user) => user.handle === "commissioner")
             if (!commissioner?.isCommissioner) throw new Error("Missing commissioner account")
