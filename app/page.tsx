@@ -10,6 +10,7 @@ import { formatActivity } from "@/lib/activity-format"
 import { getManagerSession } from "@/lib/auth-session"
 import { PinGate, type PinGateTeam } from "@/components/auth/pin-gate"
 import DashboardClient from "./dashboard-client"
+import { LeagueUnavailable } from "@/components/hockey/league-unavailable"
 
 function getOrdinal(n: number) {
   const s = ["th", "st", "nd", "rd"]
@@ -20,9 +21,21 @@ function getOrdinal(n: number) {
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
+  // Read-only, deterministic UI fixtures for local visual regression capture only.
+  // This is intentionally unavailable in production and every Vercel deployment.
+  if (process.env.NODE_ENV === "development" && process.env.UI_VISUAL_FIXTURES === "1" && !process.env.VERCEL) {
+    return <DashboardClient initialData={initialDashboardData} />
+  }
+
+  // A hosted PR preview without database credentials is a visual demo only.
+  // Unlike production's historical catch/fallback, it is explicitly labeled.
+  if (process.env.VERCEL_ENV === "preview" && !process.env.DATABASE_URL) {
+    return <DashboardClient initialData={{ ...initialDashboardData, isPreviewFixture: true }} />
+  }
+
   try {
     const league = await getLeague("00000000-0000-0000-0000-000000000001")
-    if (!league) return <DashboardClient initialData={initialDashboardData} />
+    if (!league) return <LeagueUnavailable reason="missing" />
 
     const gateTeams: PinGateTeam[] = league.teams.map((candidate) => ({
       id: candidate.id,
@@ -183,7 +196,7 @@ export default async function Page() {
             pointsAgainst: row.pointsAgainst,
             faabRemaining: row.team.faabBalance,
             streak: row.streak,
-          })) ?? initialDashboardData.standings,
+          })) ?? [],
           activities: activityRecords.map(formatActivity),
           league: {
             rosterPositions: (league.rosterPositions as Record<string, number> | null) ?? undefined,
@@ -208,7 +221,7 @@ export default async function Page() {
       />
     )
   } catch (error: unknown) {
-    console.error("Database dashboard hydration failed; using placeholder data", error)
-    return <DashboardClient initialData={initialDashboardData} />
+    console.error("Database dashboard hydration failed", error)
+    return <LeagueUnavailable reason="connection" />
   }
 }

@@ -16,18 +16,18 @@ export function TeamHeader({ teamName, logoUrl, standing, rank, pendingClaims, f
     { label: "news", icon: Newspaper, action: "news" as const },
   ]
   return (
-    <section className="border-b border-[#111929] bg-[#0d1424] px-3.5 py-3">
+    <section className="border-b border-border bg-surface px-4 py-4">
       <div className="flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center overflow-hidden rounded-full border border-[#24375b] bg-[#1b2842] text-lg">{logoUrl ? <img src={logoUrl} alt="" className="size-full object-cover" /> : "🏒"}</div>
+        <div className="flex size-11 items-center justify-center overflow-hidden rounded-full border border-border-strong bg-surface-raised text-lg">{logoUrl ? <img src={logoUrl} alt="" className="size-full object-cover" /> : "🏒"}</div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-black text-white">{teamName}</p>
-          <p className="text-xs font-bold text-[#8ba0c7]">{standing ? `${standing.wins}-${standing.losses}` : "0-0"}{rank > 0 ? ` • ${ordinal(rank)}` : ""}{standing?.streak ? ` • ${standing.streak}` : ""}</p>
-          <p className="text-xs text-[#5e7090]">FAAB ${faabBalance ?? 100} • PF {(standing?.pointsFor ?? 0).toFixed(1)} • PA {(standing?.pointsAgainst ?? 0).toFixed(1)}</p>
+          <p className="truncate text-base font-black text-foreground">{teamName}</p>
+          <p className="text-xs font-bold text-text-secondary">{standing ? `${standing.wins}-${standing.losses}` : "0-0"}{rank > 0 ? ` • ${ordinal(rank)}` : ""}{standing?.streak ? ` • ${standing.streak}` : ""}</p>
+          <p className="text-xs text-text-muted">FAAB ${faabBalance ?? 100} • PF {(standing?.pointsFor ?? 0).toFixed(1)} • PA {(standing?.pointsAgainst ?? 0).toFixed(1)}</p>
         </div>
-        <button type="button" onClick={() => onAction("team-settings")} aria-label="Edit team customization" className="rounded-full p-2 text-[#8ba0c7] hover:bg-[#172338]"><Pencil className="size-5" /></button>
+        <button type="button" onClick={() => onAction("team-settings")} aria-label="Edit team customization" className="ui-touch-target flex items-center justify-center rounded-full p-2 text-text-secondary hover:bg-surface-hover hover:text-foreground"><Pencil className="size-5" /></button>
       </div>
       <div className="mt-3 grid grid-cols-4 gap-2">
-        {actions.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={() => onAction(action)} className="flex flex-col items-center gap-1 text-xs font-black text-[#8ba0c7] hover:text-[#19ffff]"><span className="relative flex size-8 items-center justify-center rounded-full border border-[#263858] bg-[#141e33]"><Icon className="size-4" />{action === "transactions" && pendingClaims > 0 && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white shadow-md">{pendingClaims}</span>}</span>{label}</button>)}
+        {actions.map(({ label, icon: Icon, action }) => <button key={label} type="button" onClick={() => onAction(action)} className="flex min-h-11 flex-col items-center gap-1 text-xs font-bold text-text-secondary hover:text-brand focus-visible:rounded-lg"><span className="relative flex size-8 items-center justify-center rounded-full border border-border bg-surface-raised"><Icon className="size-4" />{action === "transactions" && pendingClaims > 0 && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white shadow-md">{pendingClaims}</span>}</span>{label}</button>)}
       </div>
     </section>
   )

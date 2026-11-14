@@ -89,7 +89,7 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
         <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#5e7090]" />
         <div className="flex items-center justify-between border-b border-[#172338] px-4 pb-3 pt-2">
           <h2 className="text-lg font-black">Transactions</h2>
-          <button type="button" onClick={close} aria-label="Close"><X className="size-5 text-[#8ba0c7]" /></button>
+          <button type="button" onClick={close} aria-label="Close transactions" className="ui-touch-target flex items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring"><X className="size-5 text-[#8ba0c7]" /></button>
         </div>
         <div className="p-4">
           <h3 className="text-xs font-black uppercase tracking-wider text-[#5e7090]">Waiver Claims</h3>
@@ -147,14 +147,14 @@ export function TransactionsDrawer({ open, claims, activities, onOpenChange, onC
               <div className="mt-3">
                 {cancelError && <p role="alert" className="mb-2 text-xs font-bold text-rose-400">{cancelError}</p>}
                 <div className="flex gap-2">
-                  <button type="button" disabled={cancelling} onClick={() => { setConfirming(false); setCancelError(null) }} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white disabled:opacity-40">No</button>
-                  <button type="button" disabled={cancelling} onClick={() => void confirmCancel()} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white disabled:opacity-40">{cancelling ? "Cancelling..." : "Yes"}</button>
+                  <button type="button" disabled={cancelling} onClick={() => { setConfirming(false); setCancelError(null) }} className="min-h-11 flex-1 rounded-full bg-[#172338] text-xs font-black text-white disabled:opacity-40">Keep claim</button>
+                  <button type="button" disabled={cancelling} onClick={() => void confirmCancel()} className="min-h-11 flex-1 rounded-full bg-[#ff2a85] text-xs font-black text-white disabled:opacity-40">{cancelling ? "Cancelling..." : "Cancel claim"}</button>
                 </div>
               </div>
             ) : (
               <div className="mt-3 flex gap-2">
-                <button type="button" onClick={() => setSelected(null)} className="h-10 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">Cancel</button>
-                <button type="button" onClick={() => setConfirming(true)} className="h-10 flex-1 rounded-full bg-[#ff2a85] text-xs font-black uppercase text-white">Cancel Waiver</button>
+                <button type="button" onClick={() => setSelected(null)} className="min-h-11 flex-1 rounded-full bg-[#172338] text-xs font-black text-white">Keep claim</button>
+                <button type="button" onClick={() => setConfirming(true)} className="min-h-11 flex-1 rounded-full bg-[#ff2a85] text-xs font-black uppercase text-white">Cancel Waiver</button>
               </div>
             )}
           </div>

@@ -27,8 +27,8 @@ async function runSync(request: NextRequest) {
   const authorization = requestHeaders.get("authorization")
   const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null
   const bearerAuthorized = verifyCronSecret(bearerToken)
-  const queryAuthorized = verifyCronSecret(request.nextUrl.searchParams.get("secret"))
-  if (!bearerAuthorized && !queryAuthorized && !commissionerAuthorized) {
+  // Secrets must not be accepted in URLs (they can be logged and retained).
+  if (!bearerAuthorized && !commissionerAuthorized) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

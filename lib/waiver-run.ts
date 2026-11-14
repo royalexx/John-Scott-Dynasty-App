@@ -3,6 +3,25 @@ import { isWeekFinal } from "@/lib/matchup-scoring"
 
 const EASTERN = "America/New_York"
 
+/** Reserve the total value of pending FAAB claims; reject submissions that exceed the uncommitted balance. */
+export function validateFaabReservation(balance: number, committed: number, bid: number, minimum: number): void {
+  if (![balance, committed, bid, minimum].every((value) => Number.isInteger(value) && value >= 0)) {
+    throw new Error("FAAB values must be non-negative integers")
+  }
+  if (bid < minimum) throw new Error(`Minimum waiver bid is ${minimum} FAAB`)
+  if (committed + bid > balance) throw new Error("Insufficient uncommitted FAAB to cover this bid")
+}
+
+/** A FAAB trade must not consume money already committed to pending auction bids. */
+export function assertTradePreservesReservedFaab(projectedBalance: number, committed: number): void {
+  if (![projectedBalance, committed].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    throw new Error("FAAB amounts must be non-negative safe integers")
+  }
+  if (projectedBalance < committed) {
+    throw new Error("Trade would spend FAAB reserved for pending waiver claims")
+  }
+}
+
 export const WAIVER_RESOLUTIONS = {
   WON: "WON",
   OUTBID: "OUTBID",

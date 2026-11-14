@@ -18,6 +18,27 @@ export function scoreTeams(slots: ScoringSlot[], stats: ScoringStat[], scoring: 
   return totals
 }
 
+export interface DailyScoringSlot extends ScoringSlot { gameId: number }
+export interface DailyScoringStat extends ScoringStat { gameId: number }
+
+/** Match each NHL game to the fantasy team's immutable assignment at its puck drop. */
+export function scoreTeamsByGame(
+  slots: readonly DailyScoringSlot[], stats: readonly DailyScoringStat[], scoring: LeagueScoring | null | undefined,
+): Map<string, number> {
+  const ownerByGamePlayer = new Map<string, string>()
+  for (const slot of slots) {
+    if (isStarterSlot(slot.slot)) ownerByGamePlayer.set(`${slot.gameId}:${slot.playerId}`, slot.teamId)
+  }
+  const totals = new Map<string, number>()
+  for (const stat of stats) {
+    const teamId = ownerByGamePlayer.get(`${stat.gameId}:${stat.playerId}`)
+    if (!teamId) continue
+    totals.set(teamId, (totals.get(teamId) ?? 0) + scoreGameStat(stat, scoring))
+  }
+  for (const [teamId, points] of totals) totals.set(teamId, Math.round(points * 100) / 100)
+  return totals
+}
+
 /** A week is final once it has ended in US/Eastern and every NHL game in it is finished. */
 export function isWeekFinal(endDate: string, today: string, gameStates: string[]): boolean {
   if (gameStates.length === 0 || endDate >= today) return false

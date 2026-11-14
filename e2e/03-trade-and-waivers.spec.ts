@@ -17,7 +17,7 @@ test("waiver claim dialog submits a bid and shows the claim", async ({ page }) =
   const dropPlayer = page.getByRole("dialog").locator("button").filter({ hasText: /Matthews|MacKinnon|[A-Z][a-z]+ [A-Z][a-z]+/ }).first()
   await dropPlayer.click()
   await page.getByRole("button", { name: "Next", exact: true }).click()
-  await page.getByRole("button", { name: "Confirm", exact: true }).click()
+  await page.getByRole("button", { name: "Confirm waiver claim", exact: true }).click()
   await expect(page.getByText(/has been added to your waivers|Could not submit waiver/i)).toBeVisible()
 })
 

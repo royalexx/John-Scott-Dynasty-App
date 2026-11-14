@@ -30,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark bg-[#070a12] text-white">
-      <body className="pointer-events-auto min-h-screen bg-[#070a12] antialiased overscroll-none pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+    <html lang="en" className="dark bg-background text-foreground">
+      <body className="pointer-events-auto min-h-dvh bg-background antialiased overscroll-none">
         {children}
         <Analytics />
       </body>
