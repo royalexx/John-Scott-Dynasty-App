@@ -5,6 +5,8 @@
   "scripts": {
     "sync-players": "node scripts/sync-players.mjs",
     "prisma:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
+    "league:readiness": "ts-node --project tsconfig.seed.json scripts/league-readiness.ts",
+    "league:bootstrap": "ts-node --project tsconfig.seed.json scripts/bootstrap-league.ts",
     "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
