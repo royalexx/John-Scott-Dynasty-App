@@ -120,7 +120,8 @@ async function main() {
     const registry = await registryPlayers()
     await database.$transaction(async (tx) => {
       // Serialize concurrent use of this provisioner on the same PostgreSQL DB.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(13132026)`
+      const lock = await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_xact_lock(13132026) AS locked`
+      reject(lock[0]?.locked === true, "Another league initialization is in progress")
       const counts = await Promise.all([
         tx.user.count(), tx.league.count(), tx.team.count(), tx.rosterSlot.count(),
         tx.matchup.count(), tx.draftPick.count(), tx.draft.count(), tx.tradeOffer.count(),
