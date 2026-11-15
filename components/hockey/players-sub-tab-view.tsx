@@ -135,25 +135,34 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
     })
   }, [roster, allRosters, dynastyPlayers, horizon])
 
+  // Normalize each registry field once when the player pool or owners change.
+  // Typing another search character no longer normalizes the entire NHL registry.
+  const searchIndex = useMemo(() => allLeaguePlayers.map((player) => ({
+    player,
+    name: normalizeSearchText(player.name),
+    team: normalizeSearchText(player.team),
+    position: normalizeSearchText(player.position),
+  })), [allLeaguePlayers])
   const filteredSearchResults = useMemo(() => {
     const query = normalizeSearchText(searchQuery.trim())
-    return allLeaguePlayers.filter((player) => {
-      const normalizedName = normalizeSearchText(player.name)
-      const matchesText = !query ||
-        normalizedName.includes(query) ||
-        normalizeSearchText(player.team).includes(query) ||
-        normalizeSearchText(player.position) === query
-      const matchesPos = selectedSearchPos === "ALL" ||
-        player.position === selectedSearchPos ||
-        (selectedSearchPos === "W" && ["LW", "RW", "W"].includes(player.position)) ||
-        (selectedSearchPos === "F" && ["C", "LW", "RW", "W", "F"].includes(player.position))
-      const matchesOwner = searchOwnerFilter === "ALL" ||
-        (searchOwnerFilter === "AVAILABLE" && (player.owner === "FA" || player.owner.startsWith("W"))) ||
-        (searchOwnerFilter === "ROSTERED" && player.owner !== "FA" && !player.owner.startsWith("W"))
-      const matchesTeam = searchTeamFilter === "ALL" || player.team === searchTeamFilter
-      return matchesText && matchesPos && matchesOwner && matchesTeam
-    })
-  }, [allLeaguePlayers, searchQuery, selectedSearchPos, searchOwnerFilter, searchTeamFilter])
+    return searchIndex
+      .filter(({ player, name, team, position }) => {
+        const matchesText = !query ||
+          name.includes(query) ||
+          team.includes(query) ||
+          position === query
+        const matchesPos = selectedSearchPos === "ALL" ||
+          player.position === selectedSearchPos ||
+          (selectedSearchPos === "W" && ["LW", "RW", "W"].includes(player.position)) ||
+          (selectedSearchPos === "F" && ["C", "LW", "RW", "W", "F"].includes(player.position))
+        const matchesOwner = searchOwnerFilter === "ALL" ||
+          (searchOwnerFilter === "AVAILABLE" && (player.owner === "FA" || player.owner.startsWith("W"))) ||
+          (searchOwnerFilter === "ROSTERED" && player.owner !== "FA" && !player.owner.startsWith("W"))
+        const matchesTeam = searchTeamFilter === "ALL" || player.team === searchTeamFilter
+        return matchesText && matchesPos && matchesOwner && matchesTeam
+      })
+      .map(({ player }) => player)
+  }, [searchIndex, searchQuery, selectedSearchPos, searchOwnerFilter, searchTeamFilter])
   const sortedLeaders = useMemo(() => {
     const goalieCategory = ["W", "SV", "SV%", "SO"].includes(leaderCategory)
     const goaliePositionFilter = leaderPosFilter === "G"
@@ -182,6 +191,11 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
       .map((item, index) => ({ ...item, rank: index + 1 }))
   }, [allLeaguePlayers, leaderCategory, leaderMode, leaderPosFilter, horizon, horizonMode])
 
+  const searchableTeams = useMemo(
+    () => Array.from(new Set(dynastyPlayers.map((player) => player.team))).sort(),
+    [dynastyPlayers],
+  )
+
   if (tab === "search") {
     const toTarget = (player: SearchPlayer): PlayerDialogTarget => {
       if ("slot" in player) return player
@@ -196,7 +210,6 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
         marketPlayer: player,
       }
     }
-    const teams = Array.from(new Set(allLeaguePlayers.map((player) => player.team))).sort()
     return <div className="p-3">
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-text-muted" />
@@ -212,7 +225,7 @@ export function PlayersSubTabView({ teamName, tab, roster, players: dynastyPlaye
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">Ownership</p>
           <div className="mt-2 flex flex-wrap gap-2">{[["ALL", "All"], ["AVAILABLE", "Available"], ["ROSTERED", "Rostered"]].map(([value, label]) => <button key={value} type="button" onClick={() => setSearchOwnerFilter(value)} className={cn("min-h-11 rounded-full px-3 py-2 text-sm font-semibold", searchOwnerFilter === value ? "bg-brand text-primary-foreground" : "bg-surface-raised text-text-secondary")}>{label}</button>)}</div>
           <p className="mt-4 text-[13px] font-bold text-[#8ba0c7]">NHL team</p>
-          <select aria-label="Filter by NHL team" value={searchTeamFilter} onChange={(event) => setSearchTeamFilter(event.target.value)} className="mt-2 w-full rounded-xl border border-[#263858] bg-[#101829] px-3 py-3 text-sm text-white outline-none"><option value="ALL">All NHL teams</option>{teams.map((team) => <option key={team} value={team}>{team}</option>)}</select>
+          <select aria-label="Filter by NHL team" value={searchTeamFilter} onChange={(event) => setSearchTeamFilter(event.target.value)} className="mt-2 w-full rounded-xl border border-[#263858] bg-[#101829] px-3 py-3 text-sm text-white outline-none"><option value="ALL">All NHL teams</option>{searchableTeams.map((team) => <option key={team} value={team}>{team}</option>)}</select>
           <HorizonPicker mode={horizonMode} horizon={horizon} onChange={onHorizonChange} />
         </SheetContent>
       </Sheet>
