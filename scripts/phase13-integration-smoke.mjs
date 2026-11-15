@@ -126,8 +126,11 @@ async function testHttpAuthentication(managerId) {
     })
     const signedIn = await postPin("5100")
     assert(signedIn.status === 200, "real manager PIN authentication succeeds")
-    const previousCookie = signedIn.headers.get("set-cookie")?.split(";")[0]
-    assert(Boolean(previousCookie?.startsWith("dynasty_manager=")), "login issues a secure HttpOnly manager cookie")
+    const rawCookie = signedIn.headers.get("set-cookie") ?? ""
+    const previousCookie = rawCookie.split(";")[0]
+    assert(previousCookie.startsWith("dynasty_manager=") &&
+      /;\\s*HttpOnly\\b/i.test(rawCookie) && /;\\s*SameSite=Lax\\b/i.test(rawCookie),
+      "login issues an HttpOnly, SameSite=Lax manager cookie")
     const oldSession = await fetch(base + "/api/auth/session", { headers: { Cookie: previousCookie } })
     assert((await oldSession.json()).authenticated === true, "manager cookie authenticates a second HTTP request")
 
