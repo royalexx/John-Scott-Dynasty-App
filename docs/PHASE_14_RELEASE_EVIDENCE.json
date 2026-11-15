@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "release": "john-scott-dynasty-initial-overhaul",
+  "target": "johnscottdynasty.live",
+  "checks": {
+    "candidateBuildAndRegression": { "status": "pending", "evidence": null },
+    "stagingDatabaseIsolated": { "status": "pending", "evidence": null },
+    "productionDatabaseMigrationInventory": { "status": "pending", "evidence": null },
+    "productionLeagueReadiness": { "status": "pending", "evidence": null },
+    "realManagerCredentialsAndAccess": { "status": "pending", "evidence": null },
+    "stagingEndToEndOperations": { "status": "pending", "evidence": null },
+    "rollbackAndMonitoringReview": { "status": "pending", "evidence": null },
+    "ownerReleaseApproval": { "status": "pending", "evidence": null }
+  }
+}
