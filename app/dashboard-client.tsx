@@ -888,7 +888,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           className="relative z-0 min-h-0 min-w-0 flex-1 pointer-events-auto"
         >
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "MATCH"} inert={activeTab !== "MATCH"}>
-            <MatchupPanel matchupResults={storedMatchupResults} lineupLockMode={initialData.league?.lineupLockMode} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
+            <MatchupPanel matchupResults={storedMatchupResults} lineupLock={initialData.lineupLock} lineupLockMode={initialData.league?.lineupLockMode} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
