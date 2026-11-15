@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs"
 const backend = "a01da991a1a8fc66e71fda3dcb4d87ca0ceb3edd"
 const approvedUi = "23839f4c14f31d24a3267e915769185030182406"
 const rejectedUi = "639ecc689b5af0f5a96df11ecc2693784d7f9ebd"
+const rejectedPhase11 = "2992627c962d89f033333e2ce3455dfc968fc9b5"
 const check = (ok, message) => {
   if (!ok) throw new Error("Release candidate check failed: " + message)
   console.log("PASS: " + message)
@@ -22,6 +23,7 @@ const ancestor = (sha) => {
 check(ancestor(backend), "backend audit history retained")
 check(ancestor(approvedUi), "Phase 7 UI history retained")
 check(!ancestor(rejectedUi), "rejected Phase 4 redesign not inherited")
+check(!ancestor(rejectedPhase11), "rejected Phase 11 matchup redesign not inherited")
 
 for (const file of [
   "prisma/migrations/20261113000000_baseline/migration.sql",
@@ -30,6 +32,9 @@ for (const file of [
   "prisma/migrations/20261113030000_daily_game_lineups/migration.sql",
   "prisma/migrations/20261113040000_remove_legacy_pin_default/migration.sql",
   "scripts/migration-preflight.mjs",
+  "scripts/league-readiness.ts",
+  "scripts/bootstrap-league.ts",
+  "scripts/phase13-integration-smoke.mjs",
   "lib/services/daily-game-lineups.ts",
   "lib/services/future-lineup-plans.ts",
   "components/hockey/player-portrait.tsx",
