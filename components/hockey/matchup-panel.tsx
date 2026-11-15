@@ -211,9 +211,9 @@ const Score = React.memo(function Score({ player, align, week }: { player: Match
       className={cn("min-w-0 tabular-nums", align === "left" ? "pr-0.5 text-right" : "pl-0.5 text-left")}
     >
       <span className="block text-[10px] font-semibold uppercase leading-tight text-text-secondary">Actual</span>
-      <span className="block text-sm font-black leading-tight text-foreground">{actual}</span>
+      <span data-testid="matchup-actual-points" className="block text-sm font-black leading-tight text-foreground">{actual}</span>
       <span className="mt-1 block text-[10px] font-semibold uppercase leading-tight text-text-muted">Proj.</span>
-      <span className="block text-[11px] font-bold leading-tight text-text-secondary">{projected}</span>
+      <span data-testid="matchup-projected-points" className="block text-[11px] font-bold leading-tight text-text-secondary">{projected}</span>
     </div>
   )
 })
