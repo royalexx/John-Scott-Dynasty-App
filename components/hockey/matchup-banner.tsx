@@ -40,7 +40,8 @@ function TeamSide({
           <p className="truncate text-[12px] text-zinc-500">{record}</p>
         </div>
       </div>
-      <p className={cn("mt-2 font-black tabular-nums leading-8", active ? "text-2xl" : "text-[1.5rem]", winning ? "text-white" : "text-zinc-300")}>
+      <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-text-secondary">Actual points</p>
+      <p className={cn("mt-0.5 font-black tabular-nums leading-8", active ? "text-2xl" : "text-[1.5rem]", winning ? "text-white" : "text-zinc-300")}>
         {score.toFixed(2)}
       </p>
       <p className="mt-1 text-[12px] text-[#8ba0c7]">{gamesLeftLabel(gamesLeft)}</p>
