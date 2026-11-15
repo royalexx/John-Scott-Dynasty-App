@@ -86,6 +86,17 @@ import type { ActivityItem } from "@/lib/hockey-data"
 
 type MainTab = "MATCH" | "TEAM" | "PLAYERS" | "LEAGUE"
 
+// Keep the original order (season data first), deduplicating game IDs in O(n)
+// instead of scanning the same game log twice with nested findIndex calls.
+function mergeGameLogs(primary: PlayerGameLog[], supplemental: PlayerGameLog[]): PlayerGameLog[] {
+  const seen = new Set<number>()
+  return [...primary, ...supplemental].filter((game) => {
+    if (seen.has(game.gameId)) return false
+    seen.add(game.gameId)
+    return true
+  })
+}
+
 function preloadPortraits(urls: string[]) {
   const load = () => {
     urls.forEach((url) => {
@@ -122,14 +133,26 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [activities, setActivities] = useState<ActivityItem[]>(initialData.teamId ? initialData.activities : initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
   const [activeTab, setActiveTab] = useState<MainTab>("TEAM")
   const [allDynastyPlayers, setAllDynastyPlayers] = useState<MarketPlayer[]>([])
+  // Player dialogs can be opened from any tab; an index avoids scanning the
+  // entire registry and normalizing thousands of names for each selection.
+  const canonicalPlayerIndex = useMemo(() => {
+    const byId = new Map<number, MarketPlayer>()
+    const byName = new Map<string, MarketPlayer>()
+    for (const player of allDynastyPlayers) {
+      if (player.nhlId && !byId.has(Number(player.nhlId))) byId.set(Number(player.nhlId), player)
+      const normalized = normalizeSearchText(player.name)
+      if (!byName.has(normalized)) byName.set(normalized, player)
+    }
+    return { byId, byName }
+  }, [allDynastyPlayers])
   const [scheduleGames, setScheduleGames] = useState<NhlScheduleGame[]>([])
   const [playerGameLogs, setPlayerGameLogs] = useState<Record<string, PlayerGameLog[]>>({})
 
   // Stable identity so memoized lists (roster rows, matchup rows, market grid) don't re-render on every parent render.
   const selectCanonicalPlayer = useStableCallback((source: Partial<PlayerDialogTarget> & Pick<PlayerDialogTarget, "name"> & { nhlId?: number }) => {
     const sourceNhlId = source.marketPlayer?.nhlId ?? source.nhlId
-    const databasePlayer = (sourceNhlId ? allDynastyPlayers.find((candidate) => Number(candidate.nhlId) === Number(sourceNhlId)) : undefined)
-      ?? allDynastyPlayers.find((candidate) => normalizeSearchText(candidate.name) === normalizeSearchText(source.name))
+    const databasePlayer = (sourceNhlId ? canonicalPlayerIndex.byId.get(Number(sourceNhlId)) : undefined)
+      ?? canonicalPlayerIndex.byName.get(normalizeSearchText(source.name))
     const rosterPlayer = roster.find((candidate) => normalizeSearchText(candidate.name) === normalizeSearchText(source.name))
     const owner = rosterPlayer ? teamName : source.ownerName
     setSelectedPlayer({
@@ -213,21 +236,25 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
       .then((response) => response.ok ? response.json() : [])
       .then((playersData: unknown) => {
         if (!isMounted || !Array.isArray(playersData)) return
-        const scheduledPlayers = playersData.map((player: MarketPlayer) => ({
-          ...player,
-          gameLog: [...(player.gameLog ?? []), ...(player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [])]
-            .filter((game, index, games) => games.findIndex((candidate) => candidate.gameId === game.gameId) === index),
-          schedule: getPlayerSchedule(
-            player.team,
-            scheduleGamesRef.current,
-            [...(player.gameLog ?? []), ...(player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [])]
-              .filter((game, index, games) => games.findIndex((candidate) => candidate.gameId === game.gameId) === index),
-            player.position,
-            player.currentSeasonStats,
-            player.projection,
-            weekRef.current
-          ),
-        }))
+        const scheduledPlayers = playersData.map((player: MarketPlayer) => {
+          const gameLog = mergeGameLogs(
+            player.gameLog ?? [],
+            player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [],
+          )
+          return {
+            ...player,
+            gameLog,
+            schedule: getPlayerSchedule(
+              player.team,
+              scheduleGamesRef.current,
+              gameLog,
+              player.position,
+              player.currentSeasonStats,
+              player.projection,
+              weekRef.current,
+            ),
+          }
+        })
         setAllDynastyPlayers(scheduledPlayers)
         const playersByNhlId = new Map(scheduledPlayers.map((player) => [Number(player.nhlId), player]))
         const portraitsByName = new Map(scheduledPlayers.map((player) => [normalizeSearchText(player.name), player]))
@@ -257,7 +284,9 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         const rosterPortraits = initialRoster
           .map((player) => (player.nhlId ? playersByNhlId.get(Number(player.nhlId)) : undefined)?.headshot ?? portraitsByName.get(normalizeSearchText(player.name))?.headshot)
           .filter((headshot): headshot is string => Boolean(headshot))
-        preloadPortraits([...new Set([...rosterPortraits, ...scheduledPlayers.slice(0, 50).map((player) => player.headshot).filter((headshot): headshot is string => Boolean(headshot))])])
+        // Prioritize a handful of initial Team headshots, not 50 unrelated
+        // market-player portraits. Offscreen portraits load lazily on demand.
+        preloadPortraits([...new Set(rosterPortraits)].slice(0, 8))
       })
       .catch((error: unknown) => console.error("Error loading market players:", error))
     return () => { isMounted = false }
@@ -268,7 +297,16 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   })
   const [liveMatchups, setLiveMatchups] = useState<Record<string, LiveMatchupSummary>>({})
   const handleLiveSummary = useCallback((summary: LiveMatchupSummary) => {
-    setLiveMatchups((current) => ({ ...current, [summary.id]: summary }))
+    setLiveMatchups((current) => {
+      const previous = current[summary.id]
+      // Avoid re-rendering the entire dashboard when the same matchup scores
+      // are recalculated from an unchanged roster.
+      if (previous && Object.keys(previous).length === Object.keys(summary).length &&
+        (Object.keys(summary) as Array<keyof LiveMatchupSummary>).every((key) => Object.is(previous[key], summary[key]))) {
+        return current
+      }
+      return { ...current, [summary.id]: summary }
+    })
   }, [])
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerDialogTarget | null>(null)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
