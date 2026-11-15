@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { memo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { getPlayerPhoto, type PlayerPortraitSource } from "@/lib/hockey-data"
 
-export function PlayerPortrait({
+export const PlayerPortrait = memo(function PlayerPortrait({
   player,
   name,
   className,
@@ -48,9 +48,10 @@ export function PlayerPortrait({
       <img
         src={photo}
         alt=""
+        loading="lazy"
+        decoding="async"
         className="size-full scale-[1.35] object-cover object-[50%_18%]"
         onError={() => setFailedPhoto(photo)}
       />
     </span>
-  )
-}
+  )})
