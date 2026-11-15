@@ -59,9 +59,11 @@ export const PlayerRow = React.memo(function PlayerRow({
               e.stopPropagation()
               onEditSlot?.()
             }}
-            title="Swap position slot"
+            disabled={!onEditSlot}
+            aria-label={onEditSlot ? `Edit ${player.name} in ${player.slot} slot` : `${player.slot} reserve slot is read only`}
+            title={onEditSlot ? "Swap position slot" : "Read-only reserve slot"}
             className={cn(
-              "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95",
+              "flex h-7 min-w-7 shrink-0 items-center justify-center rounded-[5px] px-1 text-xs font-black uppercase transition-transform active:scale-95 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
               badgeClass,
               onEditSlot && "cursor-pointer hover:brightness-110",
             )}
