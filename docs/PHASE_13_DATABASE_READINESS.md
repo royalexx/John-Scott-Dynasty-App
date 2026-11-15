@@ -48,8 +48,8 @@ The new `phase13-readiness-smoke` job provisions a **throwaway PostgreSQL 16** s
 2. Verify that an empty migrated DB is reported as not initialized.
 3. Verify read-only/default bootstrap, invalid PIN rejection and missing approval refusal.
 4. Run the explicitly authorized staging-mode initialization.
-5. Independently read the data through Prisma, verify manager PIN hashes and one commissioner, disconnect, reconnect, rotate a PIN in the throwaway database, and verify the old PIN stops working.
-6. Verify repeat initialization is refused, all records persist and the readiness doctor returns `READY`.
+5. Independently read the data through Prisma and verify manager PIN hashes and one commissioner. Start the real Next.js app on loopback with this disposable database and verify the manager PIN gate, HTTP login, HttpOnly/SameSite session cookie, authenticated PIN change, old-session invalidation and new-PIN login.
+6. Disconnect and reconnect with a new Prisma client to verify the rotated hash was persisted, then confirm repeat initialization is refused and the readiness doctor still returns `READY`.
 
 The existing CI jobs remain: TypeScript/build, database-backed E2E, legacy additive migration rehearsal, read-only UI preview and production-without-db fail-closed safety. No hosted database credentials are injected into any CI workflow.
 
