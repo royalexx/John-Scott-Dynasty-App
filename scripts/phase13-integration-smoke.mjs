@@ -3,8 +3,8 @@
  * The runner injects a loopback-only DATABASE_URL; never use a hosted URL.
  * All private PIN input stays in process memory and is never printed or saved.
  */
-import { spawnSync } from "node:child_process"
-import { scryptSync, timingSafeEqual, randomBytes } from "node:crypto"
+import { spawn, spawnSync } from "node:child_process"
+import { scryptSync, timingSafeEqual } from "node:crypto"
 import { PrismaClient } from "@prisma/client"
 
 const loopback = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/invalid")
@@ -44,10 +44,6 @@ function verifyPin(hash, pin) {
   const actual = scryptSync(pin, salt, expected.length)
   return timingSafeEqual(expected, actual)
 }
-function hashPin(pin) {
-  const salt = randomBytes(16).toString("base64url")
-  return `scrypt$${salt}$${scryptSync(pin, salt, 32).toString("base64url")}`
-}
 function assert(ok, label) {
   if (!ok) throw new Error("Phase 13 integration check failed: " + label)
   console.log("PASS: " + label)
@@ -73,6 +69,7 @@ assert(ready.status === 0 && ready.stdout.includes('"verdict": "READY"'), "read-
 
 const first = new PrismaClient()
 let firstPinHash
+let authenticatedManagerId
 try {
   const [league, users, teams, matches, picks, players, rosters] = await Promise.all([
     first.league.findUnique({ where: { id: "00000000-0000-0000-0000-000000000001" } }),
@@ -89,10 +86,76 @@ try {
   const manager = users.find((user) => user.handle === "manager1")
   if (!manager) throw new Error("Fixture manager is missing")
   firstPinHash = manager.pin
-  await first.user.update({ where: { id: manager.id }, data: { pin: hashPin("6999") } })
+  authenticatedManagerId = manager.id
 } finally {
   await first.$disconnect()
 }
+
+// Exercise the actual Next.js authentication API with the staging fixture.
+// Only the isolated loopback DB is used; cookies remain in process memory.
+async function testHttpAuthentication(managerId) {
+  const base = "http://127.0.0.1:3233"
+  const app = spawn(process.execPath, [
+    "node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", "3233",
+  ], {
+    env: { ...process.env, NODE_ENV: "development", NEXT_TELEMETRY_DISABLED: "1" },
+    stdio: ["ignore", "pipe", "pipe"], detached: true,
+  })
+  // Drain output without displaying server/session data or DB connection strings.
+  app.stdout.on("data", () => {})
+  app.stderr.on("data", () => {})
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  try {
+    let accessible = false
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (app.exitCode !== null) break
+      try {
+        const response = await fetch(base + "/api/auth/session", { signal: AbortSignal.timeout(3000) })
+        if (response.status === 200) { accessible = true; break }
+      } catch { /* Compiling or starting the local Next.js server. */ }
+      await sleep(400)
+    }
+    assert(accessible, "isolated real-application auth endpoint starts")
+    const page = await fetch(base + "/")
+    assert(page.status === 200 && (await page.text()).includes("Manager Access"),
+      "real league is presented through the manager PIN gate")
+
+    const postPin = (pin) => fetch(base + "/api/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ managerId, pin }),
+    })
+    const signedIn = await postPin("5100")
+    assert(signedIn.status === 200, "real manager PIN authentication succeeds")
+    const previousCookie = signedIn.headers.get("set-cookie")?.split(";")[0]
+    assert(Boolean(previousCookie?.startsWith("dynasty_manager=")), "login issues a secure HttpOnly manager cookie")
+    const oldSession = await fetch(base + "/api/auth/session", { headers: { Cookie: previousCookie } })
+    assert((await oldSession.json()).authenticated === true, "manager cookie authenticates a second HTTP request")
+
+    const rotated = await fetch(base + "/api/auth/login", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: previousCookie },
+      body: JSON.stringify({ currentPin: "5100", newPin: "6999" }),
+    })
+    assert(rotated.status === 200, "authenticated PIN rotation succeeds through the real API")
+    const newCookie = rotated.headers.get("set-cookie")?.split(";")[0]
+    assert(Boolean(newCookie?.startsWith("dynasty_manager=")), "PIN rotation reissues the active session")
+    const oldAfterRotation = await fetch(base + "/api/auth/session", { headers: { Cookie: previousCookie } })
+    const newAfterRotation = await fetch(base + "/api/auth/session", { headers: { Cookie: newCookie } })
+    assert((await oldAfterRotation.json()).authenticated === false &&
+      (await newAfterRotation.json()).authenticated === true,
+      "old signed sessions are invalidated while the rotated session remains valid")
+    const rejectedOld = await postPin("5100")
+    assert(rejectedOld.status === 401, "old PIN is refused by the real login endpoint")
+    const acceptedNew = await postPin("6999")
+    assert(acceptedNew.status === 200, "rotated PIN authenticates in a new session")
+  } finally {
+    // Kill the whole detached process group so Next dev workers cannot linger.
+    if (app.pid) {
+      try { process.kill(-app.pid, "SIGTERM") } catch { /* It exited already. */ }
+    }
+  }
+}
+await testHttpAuthentication(authenticatedManagerId)
 
 const second = new PrismaClient()
 try {
