@@ -5,7 +5,7 @@ import { defineConfig, devices } from "@playwright/test"
  */
 export default defineConfig({
   testDir: "./visual",
-  testMatch: /(?:preview-readonly|phase-01|phase-02|phase-03|phase-05|phase-06|phase-07|phase-09|phase-10)\.spec\.ts/,
+  testMatch: /(?:preview-readonly|phase-01|phase-02|phase-03|phase-05|phase-06|phase-07|phase-09|phase-10|phase-12)\.spec\.ts/,
   workers: 1,
   retries: 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-preview-report" }]],
