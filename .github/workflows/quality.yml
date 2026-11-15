@@ -195,3 +195,42 @@ jobs:
             console.log("Legacy migration succeeded: identities and data preserved, no fabricated snapshots")
           } finally { await db.$disconnect() }
           NODE
+
+  # One-time real-manager onboarding rehearsal. This service is a disposable
+  # localhost database: NEVER inject a Vercel or GitHub production secret.
+  phase13-readiness-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: phase13
+          POSTGRES_PASSWORD: phase13-throwaway-only
+          POSTGRES_DB: johnscott_phase13_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U phase13 -d johnscott_phase13_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://phase13:phase13-throwaway-only@127.0.0.1:5432/johnscott_phase13_e2e
+      SESSION_SECRET: ci-only-session-signing-secret-that-is-not-used-in-production
+      CRON_SECRET: ci-only-cron-secret-that-is-not-used-in-production
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Apply schema to isolated PostgreSQL
+        run: npx prisma migrate deploy
+      - name: Verify Phase 13 doctor, staging-only initialization and durable PIN rotation
+        run: node scripts/phase13-integration-smoke.mjs
