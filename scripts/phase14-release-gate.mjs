@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
+import { resolve } from "node:path"
 
 export const RELEASE_CHECKS = Object.freeze([
   "candidateBuildAndRegression",
@@ -90,6 +91,6 @@ function main() {
   if (strict && result.blockers.length > 0) process.exitCode = 2
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1].replace(/\\/g, "/")) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main()
 }
