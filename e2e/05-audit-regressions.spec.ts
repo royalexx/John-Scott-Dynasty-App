@@ -31,7 +31,7 @@ test.describe("audit regressions", () => {
     }
     await expect(page.locator("p.text-2xl")).toHaveText(["0.00", "0.00"])
     // Every starter's actual score is 0.0 (projection lives in its own "proj" line).
-    const actualScores = page.locator("p.text-sm.font-bold.tabular-nums")
+    const actualScores = page.getByTestId("matchup-starters").getByTestId("matchup-actual-points")
     const values = await actualScores.allTextContents()
     expect(values.length).toBeGreaterThan(0)
     for (const value of values) expect(["0.0", "—"]).toContain(value.trim())
