@@ -34,6 +34,10 @@ jobs:
         run: npm ci
       - name: Verify Phase 8 release integration ancestry and source safeguards
         run: node scripts/check-release-candidate.mjs
+      - name: Verify Phase 14 release gate is blocked until evidence and owner approval
+        run: |
+          npm run test:release-gate
+          npm run release:audit
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Build (no external NHL registry refresh)
