@@ -57,7 +57,7 @@ import {
   type PlayerGameLog,
 } from "@/lib/hockey-data"
 import { DEFAULT_BENCH_CAPACITY, displacedLandingSlot } from "@/lib/roster-eligibility"
-import { getCurrentFantasyWeek } from "@/lib/season-calendar"
+import { getCurrentFantasyWeek, MAX_FANTASY_WEEK } from "@/lib/season-calendar"
 import { useStableCallback } from "@/lib/use-stable-callback"
 import { MatchupPanel } from "@/components/hockey/matchup-panel"
 import { PlayerDetailDialog, type PlayerDialogTarget } from "@/components/hockey/player-detail-dialog"
@@ -85,6 +85,17 @@ import { getOrdinal } from "@/components/hockey/team-drawer"
 import type { ActivityItem } from "@/lib/hockey-data"
 
 type MainTab = "MATCH" | "TEAM" | "PLAYERS" | "LEAGUE"
+
+// Keep the original order (season data first), deduplicating game IDs in O(n)
+// instead of scanning the same game log twice with nested findIndex calls.
+function mergeGameLogs(primary: PlayerGameLog[], supplemental: PlayerGameLog[]): PlayerGameLog[] {
+  const seen = new Set<number>()
+  return [...primary, ...supplemental].filter((game) => {
+    if (seen.has(game.gameId)) return false
+    seen.add(game.gameId)
+    return true
+  })
+}
 
 function preloadPortraits(urls: string[]) {
   const load = () => {
@@ -114,22 +125,34 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const benchCapacity = configuredSlots?.BN ?? DEFAULT_BENCH_CAPACITY
   const startingSlots = useMemo(() => (Object.keys(slotCapacities) as Array<keyof typeof slotCapacities>).map((slot) => ({ slot, capacity: slotCapacities[slot] })), [slotCapacities])
   const rosterSize = initialData.league?.rosterSize ?? DEFAULT_ROSTER_SIZE
-  const initialRoster = initialData.roster.length > 0 ? initialData.roster : fallbackRoster
-  const standings = initialData.standings.length > 0 ? initialData.standings : fallbackStandings
+  const initialRoster = initialData.teamId ? initialData.roster : initialData.roster.length > 0 ? initialData.roster : fallbackRoster
+  const standings = initialData.teamId ? initialData.standings : initialData.standings.length > 0 ? initialData.standings : fallbackStandings
   // Register authoritative DB rosters before any child derives opponent lineups from them.
   setLeagueContext(initialData.teamName, initialData.leagueRosters)
-  const draftPicks = initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
-  const [activities, setActivities] = useState<ActivityItem[]>(initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
+  const draftPicks = initialData.teamId ? initialData.draftPicks : initialData.draftPicks.length > 0 ? initialData.draftPicks : fallbackDraftPicks
+  const [activities, setActivities] = useState<ActivityItem[]>(initialData.teamId ? initialData.activities : initialData.activities.length > 0 ? initialData.activities : fallbackActivities)
   const [activeTab, setActiveTab] = useState<MainTab>("TEAM")
   const [allDynastyPlayers, setAllDynastyPlayers] = useState<MarketPlayer[]>([])
+  // Player dialogs can be opened from any tab; an index avoids scanning the
+  // entire registry and normalizing thousands of names for each selection.
+  const canonicalPlayerIndex = useMemo(() => {
+    const byId = new Map<number, MarketPlayer>()
+    const byName = new Map<string, MarketPlayer>()
+    for (const player of allDynastyPlayers) {
+      if (player.nhlId && !byId.has(Number(player.nhlId))) byId.set(Number(player.nhlId), player)
+      const normalized = normalizeSearchText(player.name)
+      if (!byName.has(normalized)) byName.set(normalized, player)
+    }
+    return { byId, byName }
+  }, [allDynastyPlayers])
   const [scheduleGames, setScheduleGames] = useState<NhlScheduleGame[]>([])
   const [playerGameLogs, setPlayerGameLogs] = useState<Record<string, PlayerGameLog[]>>({})
 
   // Stable identity so memoized lists (roster rows, matchup rows, market grid) don't re-render on every parent render.
   const selectCanonicalPlayer = useStableCallback((source: Partial<PlayerDialogTarget> & Pick<PlayerDialogTarget, "name"> & { nhlId?: number }) => {
     const sourceNhlId = source.marketPlayer?.nhlId ?? source.nhlId
-    const databasePlayer = (sourceNhlId ? allDynastyPlayers.find((candidate) => Number(candidate.nhlId) === Number(sourceNhlId)) : undefined)
-      ?? allDynastyPlayers.find((candidate) => normalizeSearchText(candidate.name) === normalizeSearchText(source.name))
+    const databasePlayer = (sourceNhlId ? canonicalPlayerIndex.byId.get(Number(sourceNhlId)) : undefined)
+      ?? canonicalPlayerIndex.byName.get(normalizeSearchText(source.name))
     const rosterPlayer = roster.find((candidate) => normalizeSearchText(candidate.name) === normalizeSearchText(source.name))
     const owner = rosterPlayer ? teamName : source.ownerName
     setSelectedPlayer({
@@ -155,6 +178,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
 
   const [week, setWeek] = useState(getCurrentFantasyWeek())
   const [weekView, setWeekView] = useState<WeekLineupView | null>(null)
+  const [storedMatchupResults, setStoredMatchupResults] = useState(initialData.matchupResults ?? [])
   const weekRef = useRef(week)
   weekRef.current = week
   const [roster, setRoster] = useState<Player[]>(initialRoster)
@@ -212,21 +236,25 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
       .then((response) => response.ok ? response.json() : [])
       .then((playersData: unknown) => {
         if (!isMounted || !Array.isArray(playersData)) return
-        const scheduledPlayers = playersData.map((player: MarketPlayer) => ({
-          ...player,
-          gameLog: [...(player.gameLog ?? []), ...(player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [])]
-            .filter((game, index, games) => games.findIndex((candidate) => candidate.gameId === game.gameId) === index),
-          schedule: getPlayerSchedule(
-            player.team,
-            scheduleGamesRef.current,
-            [...(player.gameLog ?? []), ...(player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [])]
-              .filter((game, index, games) => games.findIndex((candidate) => candidate.gameId === game.gameId) === index),
-            player.position,
-            player.currentSeasonStats,
-            player.projection,
-            weekRef.current
-          ),
-        }))
+        const scheduledPlayers = playersData.map((player: MarketPlayer) => {
+          const gameLog = mergeGameLogs(
+            player.gameLog ?? [],
+            player.nhlId ? playerGameLogsRef.current[String(player.nhlId)] ?? [] : [],
+          )
+          return {
+            ...player,
+            gameLog,
+            schedule: getPlayerSchedule(
+              player.team,
+              scheduleGamesRef.current,
+              gameLog,
+              player.position,
+              player.currentSeasonStats,
+              player.projection,
+              weekRef.current,
+            ),
+          }
+        })
         setAllDynastyPlayers(scheduledPlayers)
         const playersByNhlId = new Map(scheduledPlayers.map((player) => [Number(player.nhlId), player]))
         const portraitsByName = new Map(scheduledPlayers.map((player) => [normalizeSearchText(player.name), player]))
@@ -256,7 +284,9 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
         const rosterPortraits = initialRoster
           .map((player) => (player.nhlId ? playersByNhlId.get(Number(player.nhlId)) : undefined)?.headshot ?? portraitsByName.get(normalizeSearchText(player.name))?.headshot)
           .filter((headshot): headshot is string => Boolean(headshot))
-        preloadPortraits([...new Set([...rosterPortraits, ...scheduledPlayers.slice(0, 50).map((player) => player.headshot).filter((headshot): headshot is string => Boolean(headshot))])])
+        // Prioritize a handful of initial Team headshots, not 50 unrelated
+        // market-player portraits. Offscreen portraits load lazily on demand.
+        preloadPortraits([...new Set(rosterPortraits)].slice(0, 8))
       })
       .catch((error: unknown) => console.error("Error loading market players:", error))
     return () => { isMounted = false }
@@ -267,7 +297,16 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   })
   const [liveMatchups, setLiveMatchups] = useState<Record<string, LiveMatchupSummary>>({})
   const handleLiveSummary = useCallback((summary: LiveMatchupSummary) => {
-    setLiveMatchups((current) => ({ ...current, [summary.id]: summary }))
+    setLiveMatchups((current) => {
+      const previous = current[summary.id]
+      // Avoid re-rendering the entire dashboard when the same matchup scores
+      // are recalculated from an unchanged roster.
+      if (previous && Object.keys(previous).length === Object.keys(summary).length &&
+        (Object.keys(summary) as Array<keyof LiveMatchupSummary>).every((key) => Object.is(previous[key], summary[key]))) {
+        return current
+      }
+      return { ...current, [summary.id]: summary }
+    })
   }, [])
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerDialogTarget | null>(null)
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null)
@@ -278,7 +317,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false)
   const [teamDrawer, setTeamDrawer] = useState<"schedule" | "team-settings" | "settings" | "transactions" | "news" | null>(null)
   const [playerNicknames, setPlayerNicknames] = useState<Record<string, string>>({})
-  const [tradeMode, setTradeMode] = useState(false)
+  const [tradeNavigationRequest, setTradeNavigationRequest] = useState(0)
   const [teamName, setTeamName] = useState(initialData.teamName)
   const [teamLogo, setTeamLogo] = useState(initialData.teamLogo ?? "")
   const [pendingClaims, setPendingClaims] = useState<WaiverClaim[]>([])
@@ -288,12 +327,31 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const waiverBudgetSync = useRef(0)
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
-      .then((data) => { if (!cancelled) setWeekView(data) })
-      .catch((error: unknown) => console.error("Could not load the week lineup", error))
-    return () => { cancelled = true }
-  }, [week])
+    const loadWeek = () => {
+      void fetch(`/api/roster/week?week=${week}`, { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() as Promise<WeekLineupView> : null)
+        .then((data) => {
+          if (cancelled || !data) return
+          setWeekView(data)
+          if (data.matchupResults) {
+            // Persisted matchup totals are authoritative for DAILY mode.
+            // Refresh selected-week scores without discarding other weeks.
+            setStoredMatchupResults((current) => [
+              ...current.filter((row) => row.week !== week), ...data.matchupResults,
+            ])
+          }
+        })
+        .catch((error: unknown) => console.error("Could not load the week lineup or scores", error))
+    }
+    loadWeek()
+    const poll = initialData.league?.lineupLockMode === "DAILY" && week === getCurrentFantasyWeek()
+      ? window.setInterval(loadWeek, 30_000)
+      : null
+    return () => {
+      cancelled = true
+      if (poll !== null) window.clearInterval(poll)
+    }
+  }, [week, initialData.league?.lineupLockMode])
   const [userFaab, setUserFaab] = useState(initialData.userFaab ?? fallbackFaabBudget)
   const refreshWaiverBudget = useCallback(async () => {
     if (!initialData.teamId) return
@@ -493,8 +551,37 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
     const source = visibleRoster.find((player) => player.id === playerId) ?? roster.find((player) => player.id === playerId)
     const target = resolvedTargetId ? visibleRoster.find((player) => player.id === resolvedTargetId) ?? roster.find((player) => player.id === resolvedTargetId) : undefined
     if (!source) return
+    if (week > (weekView?.currentWeek ?? getCurrentFantasyWeek())) {
+      if (!initialData.teamId) return
+      const targetNhlId = target ? Number(target.nhlId) : undefined
+      const playerNhlId = Number(source.nhlId)
+      if (!Number.isInteger(playerNhlId) || (target && !Number.isInteger(targetNhlId))) {
+        setToast("Cannot plan an unregistered player.")
+        return
+      }
+      // A future plan is an independent database record, not an optimistic
+      // mutation of the live roster. The server returns the authoritative view.
+      void fetch("/api/roster/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamId: initialData.teamId, playerId: playerNhlId, targetSlot: target ? target.slot : destSlot,
+          week, ...(targetNhlId !== undefined ? { targetPlayerId: targetNhlId } : {}),
+        }),
+      }).then(async (response) => {
+        const body = await response.json().catch(() => null) as { error?: string; lineup?: WeekLineupView } | null
+        if (!response.ok) throw new Error(body?.error ?? "Could not save future lineup")
+        if (!body?.lineup) throw new Error("Missing saved lineup")
+        if (weekRef.current === week) setWeekView(body.lineup)
+        setToast(`Week ${week} lineup saved; today's roster is unchanged.`)
+      }).catch((error: unknown) => {
+        console.error("Future lineup save failed", error)
+        setToast(error instanceof Error ? error.message : "Future lineup save failed")
+      }).finally(() => window.setTimeout(() => setToast(null), 4000))
+      return
+    }
     if (weekView?.locked ?? weekView?.frozen) {
-      setToast("This week's lineup is locked. Switch to a later week to slot players from a trade.")
+      setToast("This week's starting lineup is locked. Frozen starters cannot be changed.")
       window.setTimeout(() => setToast(null), 4000)
       return
     }
@@ -764,28 +851,33 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
   const activeTabIndex = mainTabs.indexOf(activeTab)
   const tabProgress = useMotionValue(activeTabIndex)
   const underlineX = useTransform(tabProgress, (value) => `${value * 100}%`)
-  const shiftWeek = (step: number) => setWeek((current) => Math.max(1, current + step))
+  const shiftWeek = (step: number) => setWeek((current) => Math.min(MAX_FANTASY_WEEK, Math.max(1, current + step)))
   const renderRosterRow = (player: Player) => (
     <PlayerItem key={player.id} player={player} fallbackSlot={player.slot} onEdit={onEditRosterSlot} onSelect={selectCanonicalPlayer} nickname={playerNicknames[player.id]} />
   )
 
   return (
-    <div className="flex min-h-screen justify-center bg-black font-sans antialiased">
-      <main className="relative flex min-h-0 h-dvh w-full max-w-[430px] flex-col overflow-hidden border-x border-[#121927] bg-[#070a12] shadow-2xl">
-        
-        {/* Sleeper League Header */}
-        <header className="flex items-center justify-between bg-[#070a12] px-3.5 pt-3 pb-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <button type="button" onClick={() => setDmOpen(true)} aria-label="Open direct messages" className="relative rounded-full p-1 text-zinc-400 hover:bg-[#172338] hover:text-white"><MessageSquare className="size-5" />{hasUnreadMessages && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white">!</span>}</button>
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-[#22314d] bg-[#162033] text-xs">🏒</div>
-            <h1 className="truncate text-sm font-black uppercase tracking-wider text-white">JOHN SCOTT DYNASTY</h1>
+    <div className="flex min-h-dvh justify-center bg-background font-sans antialiased">
+      <main data-testid="app-shell" className="relative flex h-dvh min-h-0 w-full max-w-[430px] flex-col overflow-hidden border-x border-border bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-2xl">
+        {initialData.isPreviewFixture && (
+          <div data-testid="preview-fixture-banner" className="shrink-0 border-b border-amber-400/30 bg-amber-950/60 px-3 py-1 text-center text-[11px] font-bold tracking-wide text-amber-200">
+            UI PREVIEW · SAMPLE DATA · READ ONLY
           </div>
-          <button type="button" onClick={() => setTeamDrawer("settings")} aria-label="League & Team Settings" className="p-1 text-zinc-400 transition hover:text-white"><Settings className="size-5" /></button>
+        )}
+        
+        {/* League identity and 44px utility controls */}
+        <header data-testid="app-header" className="relative z-10 flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" onClick={() => setDmOpen(true)} aria-label="Open direct messages" className="ui-touch-target relative flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover hover:text-foreground"><MessageSquare className="size-5" />{hasUnreadMessages && <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#f43f5e] text-xs font-black text-white">!</span>}</button>
+            <div aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised text-sm">🏒</div>
+            <h1 className="min-w-0 truncate text-[13px] font-extrabold uppercase tracking-wide text-foreground">JOHN SCOTT DYNASTY</h1>
+          </div>
+          <button type="button" onClick={() => setTeamDrawer("settings")} aria-label="League & Team Settings" className="ui-touch-target flex shrink-0 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover hover:text-foreground"><Settings className="size-5" /></button>
         </header>
 
-        {/* 4 Core Tabs */}
-        <nav className="border-b border-[#141d2f] bg-[#070a12]">
-          <div className="relative mx-3 flex">
+        {/* Four primary destinations; SwipePager remains the source of swipe behavior. */}
+        <nav aria-label="Main navigation" className="relative z-10 shrink-0 border-b border-border bg-background">
+          <div className="relative mx-2 flex">
             {mainTabs.map((tab) => {
               const active = activeTab === tab
               return (
@@ -793,9 +885,19 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
+                  aria-pressed={active}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return
+                    event.preventDefault()
+                    const direction = event.key === "ArrowRight" ? 1 : -1
+                    const nextIndex = (mainTabs.indexOf(tab) + direction + mainTabs.length) % mainTabs.length
+                    setActiveTab(mainTabs[nextIndex])
+                    const target = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[nextIndex]
+                    target?.focus()
+                  }}
                   className={cn(
-                    "relative flex-1 py-2.5 text-center text-xs font-black tracking-widest transition-colors",
-                    active ? "text-[#19ffff]" : "text-[#5e7090] hover:text-zinc-300"
+                    "relative min-h-11 flex-1 rounded-lg py-2 text-center text-xs font-bold tracking-wide transition-colors",
+                    active ? "text-brand" : "text-text-muted hover:bg-surface-hover hover:text-foreground"
                   )}
                 >
                   {tab}
@@ -804,7 +906,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
             })}
             <motion.span
               aria-hidden="true"
-              className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-1/4 rounded-full bg-[#19ffff] shadow-[0_0_8px_#19ffff]"
+              className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-1/4 rounded-full bg-brand"
               style={{ x: underlineX }}
             />
           </div>
@@ -824,38 +926,58 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           className="relative z-0 min-h-0 min-w-0 flex-1 pointer-events-auto"
         >
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "MATCH"} inert={activeTab !== "MATCH"}>
-            <MatchupPanel matchupResults={initialData.matchupResults} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
+            <MatchupPanel matchupResults={storedMatchupResults} lineupLockMode={initialData.league?.lineupLockMode} roster={lineupRoster} players={allDynastyPlayers} teamName={teamName} playerNicknames={playerNicknames} week={week} weekLineup={weekView} selectedMatchupId={selectedMatchupId} onMatchupChange={setSelectedMatchupId} onLiveSummary={handleLiveSummary} onWeekChange={setWeek} slotCapacities={slotCapacities} onMove={onMoveStable} onSelectPlayer={selectCanonicalPlayer} />
           </div>
 
           <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "TEAM"} inert={activeTab !== "TEAM"}>
-            <div className="flex flex-col pb-16">
+            <div className="flex flex-col pb-4">
               <TeamHeader teamName={teamName} logoUrl={teamLogo} standing={standings.find((row) => row.team === teamName)} rank={standings.findIndex((row) => row.team === teamName) + 1} pendingClaims={pendingClaims.length} faabBalance={userFaab} onAction={(action) => {
                 if (action === "trade") {
-                  setTradeMode(true)
+                  setTradeNavigationRequest((request) => request + 1)
                   setActiveTab("PLAYERS")
                 } else setTeamDrawer(action)
               }} />
-              <LineupAlerts roster={roster} capacities={slotCapacities} irSlots={initialData.league?.irSlots ?? 1} lock={initialData.lineupLock} />
+              {weekView?.source === "unavailable" && (
+                <div data-testid="historical-lineup-unavailable" role="status" className="mx-3 mt-2 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
+                  Historical lineup unavailable: this week's roster was not recorded. Current players are intentionally not shown as past starters.
+                </div>
+              )}
+              {weekView?.source !== "unavailable" && (
+                <LineupAlerts
+                  roster={rosterForDisplay}
+                  capacities={slotCapacities}
+                  irSlots={initialData.league?.irSlots ?? 1}
+                  lock={week === (weekView?.currentWeek ?? getCurrentFantasyWeek()) ? initialData.lineupLock : undefined}
+                  onReview={
+                    week >= (weekView?.currentWeek ?? getCurrentFantasyWeek()) &&
+                    !(weekView?.locked ?? weekView?.frozen) &&
+                    !(week === (weekView?.currentWeek ?? getCurrentFantasyWeek()) &&
+                      initialData.lineupLock?.mode === "WEEKLY" && initialData.lineupLock.locked)
+                      ? onEditRosterSlot
+                      : undefined
+                  }
+                />
+              )}
               {/* Starters Subheader */}
               <div className="flex items-center justify-between border-b border-[#101726] bg-[#070a12] px-3.5 pt-3 pb-2">
-                <button type="button" className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">
-                  <span>Starters ({startersCount})</span>
-                </button>
-                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-1 text-xs font-bold text-[#19ffff]">
-                  <button type="button" onClick={() => shiftWeek(-1)} aria-label="Previous team week" className="rounded p-1 hover:bg-[#172338]">
-                    <ChevronLeft className="size-3.5" />
+                <span className="flex items-center gap-1 text-xs font-black text-white uppercase tracking-tight">Starters ({startersCount})</span>
+                <SwipeSurface zone="week" onSwipeLeft={() => shiftWeek(1)} onSwipeRight={() => shiftWeek(-1)} className="flex items-center gap-0 text-xs font-bold text-brand">
+                  <button type="button" onClick={() => shiftWeek(-1)} disabled={week <= 1} aria-label="Previous team week" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-brand hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30">
+                    <ChevronLeft className="size-4" />
                   </button>
-                  <span>Week {week}</span>
-                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-xs font-black uppercase text-[#5e7090]">Locked</span>}
-                  <button type="button" onClick={() => shiftWeek(1)} aria-label="Next team week" className="rounded p-1 hover:bg-[#172338]">
-                    <ChevronRight className="size-3.5" />
+                  <span role="status" aria-live="polite" className="min-w-12 text-center tabular-nums">Week {week}</span>
+                  {(weekView?.locked ?? weekView?.frozen) && <span className="ml-1 text-[11px] font-bold uppercase text-text-secondary">Locked</span>}
+                  <button type="button" onClick={() => shiftWeek(1)} disabled={week >= MAX_FANTASY_WEEK} aria-label="Next team week" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-brand hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-30">
+                    <ChevronRight className="size-4" />
                   </button>
                 </SwipeSurface>
               </div>
               {(weekView?.locked ?? weekView?.frozen) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week is locked. Switch to a later week to slot players from a trade.</p>
-              ) : week > (initialData.lineupLock?.week ?? week) ? (
-                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">Week {week} lineup. Players from a trade can be moved here before this week locks.</p>
+                <p className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">This week's starting lineup is locked. Frozen starters cannot be changed.</p>
+              ) : week > (weekView?.currentWeek ?? getCurrentFantasyWeek()) ? (
+                <p data-testid="future-lineup-plan-banner" className="border-b border-[#101726] bg-[#070a12] px-3.5 py-2 text-xs leading-relaxed text-[#8ba0c7]">
+                  {weekView?.source === "plan" ? `Week ${week} planned lineup saved. It will apply automatically before this week's first NHL game if your roster is unchanged.` : `Week ${week} shows your current roster. Move players to save an independent future-week plan.`}
+                </p>
               ) : null}
 
               {/* Starters Rows */}
@@ -896,7 +1018,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
               {taxi.map((player) => (
                 <div key={player.id} className={cn("flex items-center justify-between border-b border-[#0f1726] bg-[#070a12] px-3.5 py-2", ((player.nhlGamesPlayed ?? 0) >= (initialData.league?.taxiMaxGames ?? TAXI_MAX_NHL_GAMES)) ? "bg-rose-500/10" : "")}>
                   <div className="flex items-center gap-2.5">
-                    <button type="button" onClick={() => setEditingPlayer(player)} className={cn("flex size-7 shrink-0 items-center justify-center rounded-[5px] text-xs font-black uppercase", slotBadgeColors.TAXI)}>
+                    <button type="button" onClick={() => setEditingPlayer(player)} aria-label={`Edit ${player.name} in taxi squad`} className={cn("flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-[5px] text-xs font-bold uppercase focus-visible:outline-2 focus-visible:outline-ring", slotBadgeColors.TAXI)}>
                       TX
                     </button>
                     <button type="button" onClick={() => selectCanonicalPlayer(player)} className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2.5 text-left">
@@ -920,26 +1042,22 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
                 ))}
               </div>
 
-              {/* Watermark */}
-              <div className="mt-8 flex items-center justify-center gap-1.5 text-zinc-600 opacity-60">
-                <span>⚡</span>
-                <span className="text-xs font-black tracking-widest uppercase">sleeper</span>
-              </div>
+              {/* Player content ends naturally; no third-party branding. */}
             </div>
           </div>
 
-          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
-            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeMode={tradeMode} />
+          <div className="h-full min-h-0 w-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-contain pb-4" aria-hidden={activeTab !== "PLAYERS"} inert={activeTab !== "PLAYERS"}>
+            <PlayersMarketView teamName={teamName} roster={roster} players={allDynastyPlayers} allLeagueRosterIds={allLeagueRosterIds} tradeBlock={tradeBlock} tradeOffers={tradeOffers} onAcceptTrade={onAcceptTradeStable} onDeclineTrade={onDeclineTradeStable} onCounterTrade={onCounterTradeStable} onInitiateTrade={onInitiateTradeStable} onSelect={selectCanonicalPlayer} onClaim={setClaimPlayer} onOpenTradeBuilder={onOpenTradeBuilderStable} activeTradeFilter={activeTradeFilter} setActiveTradeFilter={setActiveTradeFilter} tradeRequestId={tradeNavigationRequest} />
           </div>
           <div className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden" aria-hidden={activeTab !== "LEAGUE"} inert={activeTab !== "LEAGUE"}>
             <LeagueFeed matchupResults={initialData.matchupResults} week={week} teamName={teamName} teamLogo={teamLogo} isCommissioner={initialData.isCommissioner} onWeekChange={setWeek} onSelectMatchup={(matchupId) => { setSelectedMatchupId(matchupId); setActiveTab("MATCH") }} liveMatchups={liveMatchups} standings={standings} activities={activities} roster={roster} players={allDynastyPlayers} onTrade={handleLeagueTrade} onSelectPlayer={handleLeaguePlayer} onSettings={() => setTeamDrawer("settings")} />
           </div>
         </SwipePager>
 
-        <div className="absolute inset-x-3 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20">
-          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex w-full items-center gap-2 rounded-full border border-[#1e2d47] bg-[#0c1424]/95 px-3.5 py-2 text-left text-xs shadow-lg backdrop-blur transition hover:border-[#19ffff]/50">
-            <MessageSquare className="size-3.5 shrink-0 text-[#19ffff]" />
-            <span className="truncate text-xs text-[#8ba0c7]"><b className="text-white">Chat:</b> {chatPreview}</span>
+        <div data-testid="chat-dock" className="relative z-20 shrink-0 border-t border-border bg-background px-3 py-2">
+          <button type="button" onClick={() => setChatOpen(true)} aria-label="Open league chat" className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-border-strong bg-surface-raised px-3 py-2 text-left text-xs transition-colors hover:border-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            <MessageSquare className="size-4 shrink-0 text-brand" />
+            <span className="truncate text-xs text-text-secondary"><b className="text-foreground">Chat:</b> {chatPreview}</span>
           </button>
         </div>
 
@@ -948,6 +1066,7 @@ export default function SleeperDynastyApp({ initialData }: { initialData: Dashbo
           onOpenChange={setChatOpen}
           leagueId={initialData.leagueId}
           latestPreview={chatPreview}
+          readOnly={Boolean(initialData.isPreviewFixture)}
           onLatestMessage={(message) => setChatPreview(message)}
         />
 

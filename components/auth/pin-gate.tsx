@@ -21,6 +21,12 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
   const [shaking, setShaking] = useState(false)
   const [loading, setLoading] = useState(false)
   const submittedPin = useRef("")
+  const pinSectionRef = useRef<HTMLElement>(null)
+
+  // Restore focus when the two-step login picker becomes the PIN keypad.
+  useEffect(() => {
+    if (selected) pinSectionRef.current?.querySelector<HTMLButtonElement>("button")?.focus()
+  }, [selected?.id])
 
   useEffect(() => {
     if (pin.length !== 4 || !selected || loading || submittedPin.current === pin) return
@@ -52,8 +58,21 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
     setPin((current) => current + digit)
   }
 
+  const handleKeypadKey = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (loading || event.altKey || event.ctrlKey || event.metaKey) return
+    if (/^[0-9]$/.test(event.key)) {
+      event.preventDefault()
+      addDigit(event.key)
+    } else if (event.key === "Backspace") {
+      event.preventDefault()
+      setError("")
+      submittedPin.current = ""
+      setPin((current) => current.slice(0, -1))
+    }
+  }
+
   return (
-    <main className="min-h-screen bg-[#050812] px-4 py-8 text-white">
+    <main className="min-h-dvh bg-background px-4 py-8 text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[430px] flex-col justify-center">
         <header className="mb-8 text-center">
           <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-[#19ffff]/30 bg-[#102642] text-[#19ffff] shadow-[0_0_30px_rgba(25,255,255,0.12)]">
@@ -61,7 +80,7 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
           </div>
           <p className="mt-5 text-xs font-black uppercase tracking-[0.3em] text-[#19ffff]">John Scott Dynasty</p>
           <h1 className="mt-2 text-2xl font-black">Manager Access</h1>
-          <p className="mt-2 text-sm text-[#8ba0c7]">Choose your team to unlock the league.</p>
+          <p className="mt-2 text-sm text-text-secondary">Choose your team to unlock the league.</p>
         </header>
 
         {!selected ? (
@@ -74,25 +93,25 @@ export function PinGate({ teams }: { teams: PinGateTeam[] }) {
                 className="flex min-h-24 items-center gap-3 rounded-2xl border border-[#1b2b46] bg-[#0d1424] p-3 text-left transition hover:border-[#19ffff]/60 hover:bg-[#102642] active:scale-[0.98]"
               >
                 {team.avatarUrl ? <img src={team.avatarUrl} alt="" className="size-10 rounded-full object-cover" /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#172338] text-xs font-black text-[#19ffff]">{team.managerName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
-                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-xs text-[#6d86ab]">@{team.managerHandle}</small>{team.isCommissioner && <small className="mt-1 inline-block rounded-full bg-amber-400/15 px-1.5 py-0.5 text-xs font-black text-amber-300">👑 Commish</small>}</span>
+                <span className="min-w-0"><b className="block truncate text-xs">{team.name}</b><small className="mt-1 block truncate text-xs text-text-secondary">@{team.managerHandle}</small>{team.isCommissioner && <small className="mt-1 inline-block rounded-full bg-amber-400/15 px-1.5 py-0.5 text-xs font-black text-amber-300">👑 Commish</small>}</span>
               </button>
             ))}
           </div>
         ) : (
-          <section className="rounded-3xl border border-[#1b2b46] bg-[#0d1424] p-5">
-            <button type="button" onClick={() => { setSelected(null); setPin(""); setError(""); submittedPin.current = "" }} className="flex items-center gap-1 text-xs font-bold text-[#8ba0c7]"><ArrowLeft className="size-4" /> Change team</button>
+          <section ref={pinSectionRef} onKeyDown={handleKeypadKey} aria-label="Manager PIN entry" className="rounded-3xl border border-border bg-surface p-5">
+            <button type="button" onClick={() => { setSelected(null); setPin(""); setError(""); submittedPin.current = "" }} className="flex min-h-11 items-center gap-2 rounded-lg text-xs font-bold text-text-secondary focus-visible:outline-2 focus-visible:outline-ring"><ArrowLeft className="size-4" /> Change team</button>
             <div className="mt-6 text-center">
               <h2 className="text-xl font-black">{selected.name}</h2>
               <p className="mt-1 text-xs text-[#8ba0c7]">PIN for @{selected.managerHandle}</p>
-              <div className={cn("mt-6 flex justify-center gap-3", shaking && "animate-[shake_0.45s_ease-in-out]")} aria-label="PIN progress">
-                {[0, 1, 2, 3].map((index) => <span key={index} className={cn("size-3 rounded-full border", pin.length > index ? "border-[#19ffff] bg-[#19ffff] shadow-[0_0_10px_#19ffff]" : "border-[#5e7090]")} />)}
+              <div role="status" aria-live="polite" aria-label={`${pin.length} of 4 PIN digits entered`} className={cn("mt-6 flex justify-center gap-3", shaking && "animate-[shake_0.45s_ease-in-out]")}>
+                {[0, 1, 2, 3].map((index) => <span key={index} aria-hidden="true" className={cn("size-3 rounded-full border", pin.length > index ? "border-[#19ffff] bg-[#19ffff] shadow-[0_0_10px_#19ffff]" : "border-[#5e7090]")} />)}
               </div>
-              <p className="mt-4 min-h-5 text-xs text-rose-300">{error}</p>
+              <p role={error ? "alert" : undefined} className="mt-4 min-h-5 text-xs text-danger">{error}</p>
               <div className="mx-auto mt-4 grid max-w-[280px] grid-cols-3 gap-3">
-                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => <button key={digit} type="button" onClick={() => addDigit(digit)} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">{digit}</button>)}
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => <button key={digit} type="button" onClick={() => addDigit(digit)} disabled={loading} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">{digit}</button>)}
                 <span />
-                <button type="button" onClick={() => addDigit("0")} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">0</button>
-                <button type="button" aria-label="Backspace" onClick={() => { setError(""); submittedPin.current = ""; setPin((current) => current.slice(0, -1)) }} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-[#8ba0c7] hover:border-[#19ffff] active:scale-90"><Delete className="size-5" /></button>
+                <button type="button" onClick={() => addDigit("0")} disabled={loading} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-xl font-black hover:border-[#19ffff] active:scale-90">0</button>
+                <button type="button" aria-label="Backspace" onClick={() => { setError(""); submittedPin.current = ""; setPin((current) => current.slice(0, -1)) }} disabled={loading} className="flex size-16 items-center justify-center rounded-2xl border border-[#263858] bg-[#101829] text-[#8ba0c7] hover:border-[#19ffff] active:scale-90"><Delete className="size-5" /></button>
               </div>
             </div>
           </section>

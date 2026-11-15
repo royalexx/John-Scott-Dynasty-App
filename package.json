@@ -4,14 +4,21 @@
   "private": true,
   "scripts": {
     "sync-players": "node scripts/sync-players.mjs",
-    "prisma:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts",
-    "prebuild": "node scripts/sync-players.mjs",
+    "prisma:seed": "ts-node --project tsconfig.seed.json prisma/seed.ts",
+    "league:readiness": "ts-node --project tsconfig.seed.json scripts/league-readiness.ts",
+    "league:bootstrap": "ts-node --project tsconfig.seed.json scripts/bootstrap-league.ts",
+    "release:audit": "node scripts/phase14-release-gate.mjs --audit",
+    "release:verify": "node scripts/phase14-release-gate.mjs --require-ready",
+    "test:release-gate": "node --test scripts/phase14-release-gate.test.mjs",
     "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:visual": "playwright test --config playwright.visual.config.ts",
+    "test:preview": "playwright test --config playwright.preview.config.ts",
+    "test:production-no-db": "playwright test --config playwright.production-no-db.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -43,6 +50,6 @@
     "typescript": "5.7.3"
   },
   "prisma": {
-    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+    "seed": "ts-node --project tsconfig.seed.json prisma/seed.ts"
   }
 }

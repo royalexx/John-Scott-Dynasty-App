@@ -17,7 +17,6 @@ function TeamSide({
   name,
   record,
   score,
-  winPct,
   gamesLeft,
   winning,
   active,
@@ -26,12 +25,10 @@ function TeamSide({
   name: string
   record: string
   score: number
-  winPct: number
   gamesLeft: number
   winning: boolean
   active: boolean
 }) {
-  const favorite = winPct >= 50
   return (
     <div className={cn("min-w-0", align === "right" && "text-right")}>
       <div className={cn("flex items-center gap-2", align === "right" && "flex-row-reverse")}>
@@ -46,9 +43,6 @@ function TeamSide({
       <p className={cn("mt-2 font-black tabular-nums leading-8", active ? "text-2xl" : "text-[1.5rem]", winning ? "text-white" : "text-zinc-300")}>
         {score.toFixed(2)}
       </p>
-      <span className={cn("mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold", favorite ? "bg-emerald-400/15 text-emerald-300" : "bg-rose-400/15 text-rose-300")}>
-        {winPct}%
-      </span>
       <p className="mt-1 text-[12px] text-[#8ba0c7]">{gamesLeftLabel(gamesLeft)}</p>
     </div>
   )
@@ -71,9 +65,6 @@ export function MatchupBanner({
   awayGamesLeft: number
   active?: boolean
 }) {
-  const totalProjection = projectedHome + projectedAway
-  const homeWinPct = totalProjection === 0 ? 50 : Math.round((projectedHome / totalProjection) * 100)
-  const awayWinPct = 100 - homeWinPct
   const homeWinning = summary.homeScore >= summary.awayScore
   const isFinal = summary.status === "Final"
 
@@ -88,14 +79,13 @@ export function MatchupBanner({
       </div>
 
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-2">
-        <TeamSide align="left" name={summary.homeTeam} record={summary.homeRecord} score={summary.homeScore} winPct={homeWinPct} gamesLeft={homeGamesLeft} winning={homeWinning} active={active} />
+        <TeamSide align="left" name={summary.homeTeam} record={summary.homeRecord} score={summary.homeScore} gamesLeft={homeGamesLeft} winning={homeWinning} active={active} />
         <span className="pt-8 text-xs font-semibold text-zinc-500">vs</span>
-        <TeamSide align="right" name={summary.awayTeam} record={summary.awayRecord} score={summary.awayScore} winPct={awayWinPct} gamesLeft={awayGamesLeft} winning={!homeWinning} active={active} />
+        <TeamSide align="right" name={summary.awayTeam} record={summary.awayRecord} score={summary.awayScore} gamesLeft={awayGamesLeft} winning={!homeWinning} active={active} />
       </div>
 
       <p className="mt-3 text-center text-[13px] text-[#5e7090]">
-        proj {projectedHome.toFixed(1)} – {projectedAway.toFixed(1)}
-        <span className="sr-only">{`Projected split: ${homeWinPct}% ${summary.homeTeam}, ${awayWinPct}% ${summary.awayTeam}`}</span>
+        Projected points: {projectedHome.toFixed(1)} – {projectedAway.toFixed(1)}
       </p>
     </div>
   )

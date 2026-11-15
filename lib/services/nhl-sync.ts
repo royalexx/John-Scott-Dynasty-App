@@ -1,12 +1,15 @@
 import { PlayerStatus, Position, Prisma, SlotType } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { scoreGameStat, DEFAULT_LEAGUE_SCORING, type LeagueScoring } from "@/lib/scoring"
-import { scoreTeams } from "@/lib/matchup-scoring"
+import { scoreTeams, scoreTeamsByGame } from "@/lib/matchup-scoring"
 import { isWeekFinal } from "@/lib/matchup-scoring"
 import { getCurrentFantasyWeek, getEasternDate, getFantasyWeekDates } from "@/lib/season-calendar"
 import { getLockSummary } from "@/lib/services/lineup-locks"
 import { isStarterSlot } from "@/lib/lineup-lock"
 import { freezeWeekLineup, scoringSlotsForWeek } from "@/lib/services/week-lineups"
+import { activateDueLineupPlans } from "@/lib/services/future-lineup-plans"
+import { captureStartedDailyGamesForLeague, dailyScoringEntries } from "@/lib/services/daily-game-lineups"
+import { normalizeLockMode } from "@/lib/lineup-lock"
 
 const NHL_HEADERS = { Accept: "application/json", "User-Agent": "JohnScottDynasty/1.0" }
 const ACTIVE_STATES = ["LIVE", "CRIT", "FINAL", "OFF"]
@@ -309,10 +312,9 @@ export async function syncScheduleForWeeks(season: number, weeks: number[]) {
 }
 
 /**
- * Scores a fantasy week from the NHL games played on the week's real calendar dates.
- * Past weeks, and the current week once it has started under weekly lock, are copied into
- * an immutable WeekLineup snapshot before scoring so later trades and lineup moves cannot rewrite them.
- * Marks the matchup final once the week is over and every NHL game in it has finished.
+ * Scores a fantasy week using an authoritative lineup snapshot whenever locked.
+ * Never backfill an old week with today's roster: if a historical snapshot is
+ * absent or missing a matchup team, preserve its existing scores and final flag.
  */
 export async function updateWeeklyMatchupScores(leagueId: string, week: number) {
   const league = await prisma.league.findUnique({ where: { id: leagueId }, select: { currentSeason: true, scoringSettings: true, lineupLockMode: true } })
@@ -323,24 +325,53 @@ export async function updateWeeklyMatchupScores(leagueId: string, week: number) 
   })
   if (matchups.length === 0) return 0
 
+  const now = new Date()
+  const currentWeek = getCurrentFantasyWeek(league.currentSeason, now)
+  if (week > currentWeek) return 0
   const { dates, endDate } = getFantasyWeekDates(week, league.currentSeason)
-  const currentWeek = getCurrentFantasyWeek(league.currentSeason)
-  if (week < currentWeek) {
-    await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
-  } else if (week === currentWeek) {
-    const lock = await getLockSummary(league.currentSeason, league.lineupLockMode)
-    if (lock.mode === "WEEKLY" && lock.weekStarted) await freezeWeekLineup(prisma, leagueId, league.currentSeason, week)
-  }
-  const [games, slots] = await Promise.all([
-    prisma.nhlGame.findMany({ where: { gameDate: { in: dates } }, select: { id: true, gameState: true } }),
-    scoringSlotsForWeek(leagueId, league.currentSeason, week),
-  ])
-  const stats = await prisma.playerGameStat.findMany({
-    where: { gameId: { in: games.map((game) => game.id) }, playerId: { in: slots.filter((slot) => isStarterSlot(slot.slot)).map((slot) => slot.playerId) } },
-  })
-  const totals = scoreTeams(slots, stats, league.scoringSettings as LeagueScoring | null)
-  const final = isWeekFinal(endDate, getEasternDate(), games.map((game) => game.gameState))
+  const mode = normalizeLockMode(league.lineupLockMode)
+  const requiredTeamIds = [...new Set(matchups.flatMap((matchup) => [matchup.homeTeamId, matchup.awayTeamId]))]
+  if (week === currentWeek) await activateDueLineupPlans(leagueId, league.currentSeason, now)
 
+  const games = await prisma.nhlGame.findMany({
+    where: { gameDate: { in: dates } }, select: { id: true, gameState: true, startTimeUTC: true },
+  })
+  let totals: Map<string, number>
+
+  if (mode === "DAILY") {
+    // Every game has independent team/slot evidence. No historical day is
+    // reconstructed from today's roster, even for a late stat correction.
+    if (week === currentWeek) await captureStartedDailyGamesForLeague(leagueId, league.currentSeason, now)
+    const startedGameIds = games.filter((game) => game.startTimeUTC <= now && !["POST", "CANCELLED", "CANCELED"].includes(game.gameState)).map((game) => game.id)
+    const gameSlots = await dailyScoringEntries(leagueId, league.currentSeason, week, startedGameIds, requiredTeamIds)
+    if (gameSlots === null) {
+      console.warn("DAILY matchup scoring skipped: incomplete game lineup snapshots", { leagueId, season: league.currentSeason, week })
+      return 0
+    }
+    const stats = await prisma.playerGameStat.findMany({
+      where: { gameId: { in: startedGameIds } },
+    })
+    totals = scoreTeamsByGame(gameSlots, stats, league.scoringSettings as LeagueScoring | null)
+  } else {
+    let requireSnapshot = week < currentWeek
+    if (week === currentWeek) {
+      const lock = await getLockSummary(league.currentSeason, league.lineupLockMode, now)
+      if (lock.weekStarted) {
+        await freezeWeekLineup(prisma, leagueId, league.currentSeason, week, now)
+        requireSnapshot = true
+      }
+    }
+    const slots = await scoringSlotsForWeek(leagueId, league.currentSeason, week, requiredTeamIds, requireSnapshot)
+    if (!slots) {
+      console.warn("WEEKLY matchup scoring skipped: incomplete frozen lineup", { leagueId, season: league.currentSeason, week })
+      return 0
+    }
+    const stats = await prisma.playerGameStat.findMany({
+      where: { gameId: { in: games.map((game) => game.id) }, playerId: { in: slots.filter((slot) => isStarterSlot(slot.slot)).map((slot) => slot.playerId) } },
+    })
+    totals = scoreTeams(slots, stats, league.scoringSettings as LeagueScoring | null)
+  }
+  const final = isWeekFinal(endDate, getEasternDate(now), games.map((game) => game.gameState))
   await prisma.$transaction(
     matchups.map((matchup) => {
       const home = totals.get(matchup.homeTeamId) ?? 0
@@ -397,6 +428,10 @@ export async function enforceRosterLocks() {
   const leagues = await prisma.league.findMany({ select: { id: true, currentSeason: true, lineupLockMode: true } })
   let locked = 0
   for (const league of leagues) {
+    await activateDueLineupPlans(league.id, league.currentSeason)
+    if (normalizeLockMode(league.lineupLockMode) === "DAILY") {
+      await captureStartedDailyGamesForLeague(league.id, league.currentSeason)
+    }
     const summary = await getLockSummary(league.currentSeason, league.lineupLockMode)
     const inLeague = { team: { leagueId: league.id } }
     if (summary.mode === "WEEKLY") {

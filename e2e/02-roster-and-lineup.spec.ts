@@ -23,10 +23,12 @@ test("roster names and player profiles render safely", async ({ page }) => {
 })
 
 test("lineup slot dialog can swap an eligible player", async ({ page }) => {
-  // Never persist lineup swaps to the shared database.
-  await page.route("**/api/roster/move", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) }),
-  )
+  // Intercept all roster mutations; assert the UI never sends duplicate writes.
+  const moveRequests: Array<{ playerId?: number; targetPlayerId?: number; week?: number }> = []
+  await page.route("**/api/roster/move", (route) => {
+    moveRequests.push(route.request().postDataJSON())
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ roster: [] }) })
+  })
   await page.goto("/")
   const slotButton = page.locator("button").filter({ hasText: /^C$|^W$|^F$|^D$|^G$/ }).first()
   await slotButton.click()
@@ -35,6 +37,13 @@ test("lineup slot dialog can swap an eligible player", async ({ page }) => {
   if (await target.count()) {
     await target.click()
     await expect(page.getByText(/Swapped .* with .*/)).toBeVisible()
+    // A locked lineup may reject the move before making an HTTP request.
+    // When a request is sent it must be a single, fully specified mutation.
+    expect(moveRequests.length).toBeLessThanOrEqual(1)
+    if (moveRequests.length === 1) {
+      expect(moveRequests[0].week).toBeDefined()
+      expect(moveRequests[0].targetPlayerId).toBeDefined()
+    }
   } else {
     await page.getByRole("button", { name: "Close swap player drawer" }).click()
   }
