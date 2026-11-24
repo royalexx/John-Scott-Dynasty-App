@@ -52,6 +52,12 @@
   --ds-radius-lg: 16px;
   --ds-radius-xl: 20px;
 
+  /* Figma/iOS corner smoothing preset: 60%. CSS uses a superellipse K of
+     approximately 1.777468 after radius compensation; unsupported engines
+     keep ordinary border-radius without a layout or clipping polyfill. */
+  --ds-corner-smoothing: 0.6;
+  --ds-corner-superellipse: superellipse(1.777468);
+
   /* Base UI/shadcn-compatible semantic aliases. */
   --background: var(--ds-canvas);
   --foreground: var(--ds-text);
@@ -150,6 +156,38 @@
   /* Preserve existing scroll behavior for compact tab bars on mobile. */
   ::-webkit-scrollbar { display: none; }
   * { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/*
+ * Global 60% continuous-corner smoothing.
+ *
+ * Native corner-shape applies the superellipse to every nonzero border radius,
+ * including Tailwind utilities, Base UI surfaces, inline radii and pseudo
+ * elements. The compensated semantic tokens retain the intended apparent
+ * corner size (original radius × 1.6) in supporting browsers.
+ *
+ * True circles and pill-shaped controls deliberately remain circular; 50%
+ * rounded portraits should never become rounded-square avatars.
+ *
+ * Safari / Firefox currently ignore corner-shape and use the original
+ * border-radius values. Avoid SVG masks/clip-path: they would crop shadows,
+ * outlines or interactive descendants.
+ */
+@supports (corner-shape: superellipse(1.777468)) {
+  :root {
+    --ds-radius-sm: 12.8px;
+    --ds-radius-md: 19.2px;
+    --ds-radius-lg: 25.6px;
+    --ds-radius-xl: 32px;
+  }
+
+  :where(*, *::before, *::after) {
+    corner-shape: var(--ds-corner-superellipse);
+  }
+
+  :where(.rounded-full, [class*="rounded-full"], [data-slot="player-portrait"]) {
+    corner-shape: round;
+  }
 }
 
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
