@@ -58,8 +58,8 @@ for (const width of [320, 390, 430]) {
       expect(styles.regular, `A visible rounded component exists in ${tab}`).not.toBeNull()
       expect(styles.regular!.shape).toMatch(/superellipse\(1\.7774/)
       expect(styles.regular!.radius).not.toBe("0px")
-      if (styles.pill) expect(styles.pill.shape).toBe("round")
-      if (styles.portrait) expect(styles.portrait.shape).toBe("round")
+      if (styles.pill) expect(["round", "superellipse(1)"]).toContain(styles.pill.shape)
+      if (styles.portrait) expect(["round", "superellipse(1)"]).toContain(styles.portrait.shape)
       expect(styles.overflow, `${tab} horizontal overflow`).toBeLessThanOrEqual(1)
     }
     expect(mutations).toEqual([])
