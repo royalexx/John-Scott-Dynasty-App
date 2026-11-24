@@ -19,13 +19,13 @@ for (const width of [320, 390, 430]) {
       const root = getComputedStyle(document.documentElement)
       return {
         supports: CSS.supports("corner-shape", "superellipse(1.777468)"),
-        smoothing: root.getPropertyValue("--ds-corner-smoothing").trim(),
+        smoothing: Number.parseFloat(root.getPropertyValue("--ds-corner-smoothing").trim()),
         exponent: root.getPropertyValue("--ds-corner-superellipse").trim(),
         radiusSmall: root.getPropertyValue("--ds-radius-sm").trim(),
         radiusMedium: root.getPropertyValue("--ds-radius-md").trim(),
       }
     })
-    expect(browser.smoothing).toBe("0.6")
+    expect(browser.smoothing).toBeCloseTo(0.6, 6)
     expect(browser.exponent).toBe("superellipse(1.777468)")
     // Chromium 139+ supports corner-shape; browsers without support will retain
     // the original radii instead of losing borders, shadows or touch targets.
