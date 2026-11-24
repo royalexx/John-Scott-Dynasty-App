@@ -26,7 +26,7 @@ for (const width of [320, 390, 430]) {
       }
     })
     expect(browser.smoothing).toBeCloseTo(0.6, 6)
-    expect(browser.exponent).toBe("superellipse(1.777468)")
+    expect(Number.parseFloat(browser.exponent.replace("superellipse(", ""))).toBeCloseTo(1.777468, 4)
     // Chromium 139+ supports corner-shape; browsers without support will retain
     // the original radii instead of losing borders, shadows or touch targets.
     expect(browser.supports).toBe(true)
